@@ -9,7 +9,7 @@ use gb_core::{CallError, Header, Machine};
 
 use crate::length::SongLength;
 use crate::pattern::{word, Pattern};
-use crate::songdb::{self, Game, Localizer, SongDef};
+use crate::songdb::{self, Game, SongDef};
 
 /// Upper bound for one call into the sound engine (about 10 frames of CPU time).
 const CALL_BUDGET: u32 = 700_000;
@@ -18,8 +18,6 @@ const CALL_BUDGET: u32 = 700_000;
 pub struct Song {
     /// Position in [`crate::Player::songs`].
     pub index: usize,
-    /// Display name in the language chosen with [`Driver::localize`].
-    pub title: String,
     /// Stable song key from the song database; `None` for songs it does not know.
     pub key: Option<String>,
     /// The value the game passes to its play routine.
@@ -34,7 +32,6 @@ impl Song {
     fn new(index: usize, id: u16, bank: u8, def: Option<&SongDef>) -> Song {
         Song {
             index,
-            title: String::new(),
             key: def.map(|d| d.key.clone()),
             id,
             bank,
@@ -163,8 +160,6 @@ pub struct Driver {
     /// Song database series and game the ROM was matched to.
     pub series: &'static str,
     pub game_id: String,
-    /// Display name of the game in the language chosen with [`Driver::localize`].
-    pub game: String,
     pub songs: Vec<Song>,
     /// First bank of the audio engine, used to reset the machine.
     home_bank: u8,
@@ -186,26 +181,10 @@ fn rom_at(rom: &[u8], bank: u8, addr: u16) -> Option<&[u8]> {
 }
 
 impl Driver {
-    /// Find the sound engine of `rom`. Names are in English until [`Driver::localize`].
+    /// Find the sound engine of `rom` and the song database entries of its songs.
     pub fn detect(rom: &[u8]) -> Option<Driver> {
         let title = Header::parse(rom).map(|h| h.title).unwrap_or_default();
-        let mut driver = detect_gen2(rom, &title).or_else(|| detect_gen1(rom, &title))?;
-        driver.localize(songdb::FALLBACK_LANGUAGE);
-        Some(driver)
-    }
-
-    /// Set the game and song names to `language`. Returns problems found in the user's name
-    /// files, which are then skipped.
-    pub fn localize(&mut self, language: &str) -> Vec<String> {
-        let (names, warnings) = Localizer::new(self.series, language);
-        self.game = names.game(&self.game_id);
-        for song in &mut self.songs {
-            song.title = match &song.key {
-                Some(key) => names.song(key),
-                None => format!("Song ${:02X}", song.id),
-            };
-        }
-        warnings
+        detect_gen2(rom, &title).or_else(|| detect_gen1(rom, &title))
     }
 
     /// Reset the sound engine and start `song`.
@@ -424,7 +403,6 @@ fn detect_gen1(rom: &[u8], title: &str) -> Option<Driver> {
         probe,
         series: songdb::GEN1,
         game_id: game_id(game),
-        game: String::new(),
         songs,
         home_bank,
     })
@@ -589,7 +567,6 @@ fn detect_gen2(rom: &[u8], title: &str) -> Option<Driver> {
         probe,
         series: songdb::GEN2,
         game_id: game_id(game),
-        game: String::new(),
         songs,
         home_bank: bank,
     })

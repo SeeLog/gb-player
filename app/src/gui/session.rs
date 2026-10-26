@@ -4,7 +4,7 @@
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 
-use gb_music::songdb::LANGUAGES;
+use gb_music::songdb::{Names, LANGUAGES};
 use gb_music::{frames_to_secs, PlayState, Player, Song, SongLength};
 
 use super::views::{LanguageView, LengthView, LibraryView, SongView, TickView};
@@ -27,7 +27,8 @@ pub struct Session {
     error: Option<String>,
     rom_path: Option<PathBuf>,
     songs: Vec<Song>,
-    game: String,
+    /// Game and song names in the UI language.
+    names: Names,
     title: String,
     lengths: HashMap<usize, SongLength>,
     analyzer: Option<Analyzer>,
@@ -88,7 +89,7 @@ impl Session {
             error,
             rom_path: None,
             songs: Vec::new(),
-            game: String::new(),
+            names: Names::default(),
             title: String::new(),
             lengths: HashMap::new(),
             analyzer: None,
@@ -120,30 +121,31 @@ impl Session {
         match Player::new(rom, self.sample_rate) {
             Ok(mut p) => {
                 p.volume = self.settings.volume;
-                let warnings = p.set_language(self.text.language());
                 self.lengths.clear();
                 self.analyzer = Some(Analyzer::start(p.rom(), p.driver().clone()));
                 self.rom_path = Some(path.to_path_buf());
                 *self.player.lock().unwrap() = Some(p);
-                self.refresh_names(warnings);
+                self.refresh_names();
             }
             Err(e) => self.error = Some(self.text.fmt("err_unsupported", &[("error", &e)])),
         }
     }
 
-    /// Copy the names from the player after loading a ROM or switching languages.
-    fn refresh_names(&mut self, warnings: Vec<String>) {
-        if let Some((songs, game, title)) = self.with_player(|p| {
+    /// Look up the game and song names in the UI language after loading a ROM or switching
+    /// languages.
+    fn refresh_names(&mut self) {
+        let Some((songs, title, (names, warnings))) = self.with_player(|p| {
             (
                 p.songs().to_vec(),
-                p.game().to_string(),
                 p.title().to_string(),
+                Names::new(p.driver(), self.text.language()),
             )
-        }) {
-            self.songs = songs;
-            self.game = game;
-            self.title = title;
-        }
+        }) else {
+            return;
+        };
+        self.songs = songs;
+        self.title = title;
+        self.names = names;
         self.error = (!warnings.is_empty()).then(|| warnings.join("\n"));
     }
 
@@ -216,9 +218,7 @@ impl Session {
     /// Switch the UI text and the game and song names to `language`, and remember it.
     pub fn set_language(&mut self, language: String) {
         self.text = Text::new(&language);
-        if let Some(warnings) = self.with_player(|p| p.set_language(&language)) {
-            self.refresh_names(warnings);
-        }
+        self.refresh_names();
         self.settings.language = Some(language);
         self.settings.save();
         self.reload_themes();
@@ -264,7 +264,7 @@ impl Session {
                 .into_iter()
                 .map(|(k, v)| (k.to_string(), v.to_string()))
                 .collect(),
-            game: self.game.clone(),
+            game: self.names.game.clone(),
             title: self.title.clone(),
             rom_path: self.rom_path.as_ref().map(|p| p.display().to_string()),
             songs: self
@@ -272,7 +272,7 @@ impl Session {
                 .iter()
                 .map(|song| SongView {
                     index: song.index,
-                    title: song.title.clone(),
+                    title: self.names.song(song.index).to_string(),
                     length: self.lengths.get(&song.index).map(|&l| l.into()),
                 })
                 .collect(),

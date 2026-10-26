@@ -96,15 +96,6 @@ impl Player {
         &self.machine.mem.cart.header.title
     }
 
-    pub fn game(&self) -> &str {
-        &self.driver.game
-    }
-
-    /// Switch game and song names to `language`; see [`Driver::localize`].
-    pub fn set_language(&mut self, language: &str) -> Vec<String> {
-        self.driver.localize(language)
-    }
-
     pub fn songs(&self) -> &[Song] {
         &self.driver.songs
     }

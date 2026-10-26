@@ -9,6 +9,7 @@
 use std::ffi::OsString;
 use std::io::Write;
 
+use gb_music::songdb::Names;
 use gb_music::{analyze, frames_to_secs, PlayState, Player, SongLength, ANALYSIS_FRAMES};
 
 use crate::i18n::Text;
@@ -35,13 +36,15 @@ pub fn run(args: &[OsString], language: &str) -> i32 {
     }
 }
 
-fn load(t: &Text, path: &str) -> Result<Player, String> {
+/// Load `path` and look up its names in the output language.
+fn load(t: &Text, path: &str) -> Result<(Player, Names), String> {
     let rom = std::fs::read(path).map_err(|e| format!("{path}: {e}"))?;
-    let mut player = Player::new(rom, RATE).map_err(|e| e.to_string())?;
-    for warning in player.set_language(t.language()) {
+    let player = Player::new(rom, RATE).map_err(|e| e.to_string())?;
+    let (names, warnings) = Names::new(player.driver(), t.language());
+    for warning in warnings {
         eprintln!("{warning}");
     }
-    Ok(player)
+    Ok((player, names))
 }
 
 /// Pad `s` to `width` terminal columns, counting East Asian wide characters as two.
@@ -60,8 +63,8 @@ fn secs(frames: u32) -> String {
 }
 
 fn info(t: &Text, path: &str) -> Result<(), String> {
-    let player = load(t, path)?;
-    println!("{} ({})", player.game(), player.title());
+    let (player, names) = load(t, path)?;
+    println!("{} ({})", names.game, player.title());
     println!("engine: {:04X?}", player.driver().engine);
     let rom = player.rom();
     for song in player.songs() {
@@ -80,7 +83,7 @@ fn info(t: &Text, path: &str) -> Result<(), String> {
             song.index + 1,
             song.id,
             song.bank,
-            pad(&song.title, 32),
+            pad(names.song(song.index), 32),
             desc
         );
     }
@@ -88,7 +91,7 @@ fn info(t: &Text, path: &str) -> Result<(), String> {
 }
 
 fn wav(t: &Text, path: &str, song: &str, out: &str, loops: Option<&str>) -> Result<(), String> {
-    let mut player = load(t, path)?;
+    let (mut player, names) = load(t, path)?;
     let index = song
         .parse::<usize>()
         .map_err(|_| t.get("err_song_number"))?
@@ -130,7 +133,11 @@ fn wav(t: &Text, path: &str, song: &str, out: &str, loops: Option<&str>) -> Resu
         "{}",
         t.fmt(
             "wav_written",
-            &[("title", &s.title), ("secs", &secs), ("path", &out)]
+            &[
+                ("title", &names.song(index)),
+                ("secs", &secs),
+                ("path", &out)
+            ]
         )
     );
     Ok(())

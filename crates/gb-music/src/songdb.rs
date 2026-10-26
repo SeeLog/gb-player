@@ -18,6 +18,7 @@ use std::sync::OnceLock;
 
 use serde::Deserialize;
 
+use crate::driver::Driver;
 use crate::length::{SongLength, FRAME_RATE};
 
 pub const GEN1: &str = "pokemon-gen1";
@@ -116,19 +117,19 @@ impl Series {
     }
 }
 
-/// Display names in one language.
+/// The display names of one `<lang>.toml` file.
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Names {
+struct NameTable {
     #[serde(default)]
-    pub games: HashMap<String, String>,
+    games: HashMap<String, String>,
     #[serde(default)]
-    pub songs: HashMap<String, String>,
+    songs: HashMap<String, String>,
 }
 
 struct Loaded {
     series: Series,
-    locales: HashMap<&'static str, Names>,
+    locales: HashMap<&'static str, NameTable>,
 }
 
 fn builtin() -> &'static HashMap<&'static str, Loaded> {
@@ -184,8 +185,8 @@ pub fn language_code(tag: &str) -> String {
 
 /// Name lookup for one series in one language.
 pub struct Localizer {
-    layers: Vec<Names>,
-    builtin: Vec<&'static Names>,
+    layers: Vec<NameTable>,
+    builtin: Vec<&'static NameTable>,
 }
 
 impl Localizer {
@@ -212,7 +213,7 @@ impl Localizer {
         (Localizer { layers, builtin }, warnings)
     }
 
-    fn lookup(&self, pick: impl Fn(&Names) -> Option<&String>) -> Option<String> {
+    fn lookup(&self, pick: impl Fn(&NameTable) -> Option<&String>) -> Option<String> {
         self.layers
             .iter()
             .chain(self.builtin.iter().copied())
@@ -227,6 +228,37 @@ impl Localizer {
     pub fn game(&self, id: &str) -> String {
         self.lookup(|n| n.games.get(id))
             .unwrap_or_else(|| id.to_string())
+    }
+}
+
+/// The game and song names of a detected ROM in one language.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Names {
+    pub game: String,
+    /// Song titles, in the order of [`Driver::songs`].
+    pub songs: Vec<String>,
+}
+
+impl Names {
+    /// Look up the names of `driver`'s game and songs in `language`. Problems found in the
+    /// user's name files are returned as warnings; those files are then skipped.
+    pub fn new(driver: &Driver, language: &str) -> (Names, Vec<String>) {
+        let (names, warnings) = Localizer::new(driver.series, language);
+        let songs = driver
+            .songs
+            .iter()
+            .map(|song| match &song.key {
+                Some(key) => names.song(key),
+                None => format!("Song ${:02X}", song.id),
+            })
+            .collect();
+        let game = names.game(&driver.game_id);
+        (Names { game, songs }, warnings)
+    }
+
+    /// The title of the song at `index` in [`Driver::songs`].
+    pub fn song(&self, index: usize) -> &str {
+        self.songs.get(index).map_or("", String::as_str)
     }
 }
 
