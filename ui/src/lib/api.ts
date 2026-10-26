@@ -33,3 +33,13 @@ export const onLibrary = (f: (l: Library) => void): Promise<UnlistenFn> =>
 
 export const onTick = (f: (t: Tick) => void): Promise<UnlistenFn> =>
   listen<Tick>("tick", (e) => f(e.payload));
+
+/** Seconds into a song after which Previous starts it again instead of going back a song. */
+export const RESTART_AFTER = 3;
+
+/** Previous, as in most music players: back to the start of the song once it has played a
+ * little, otherwise to the previous song. */
+export function previous(tick: Tick | null) {
+  if (tick?.current != null && tick.position > RESTART_AFTER) api.play(tick.current);
+  else api.skip(-1);
+}

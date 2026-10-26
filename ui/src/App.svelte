@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { getCurrentWebview } from "@tauri-apps/api/webview";
-  import { api, onLibrary, onTick } from "./lib/api";
+  import { api, onLibrary, onTick, previous } from "./lib/api";
   import { translator } from "./lib/format";
   import type { Library, Tick } from "./lib/types";
   import Icon from "./lib/Icon.svelte";
@@ -91,7 +91,7 @@
       e.preventDefault();
       api.toggle();
     } else if (e.key === "ArrowLeft") {
-      api.skip(-1);
+      previous(tick);
     } else if (e.key === "ArrowRight") {
       api.skip(1);
     }

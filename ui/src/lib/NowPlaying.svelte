@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { api } from "./api";
+  import { RESTART_AFTER, api, previous } from "./api";
   import { describe, fmtTime, type Translate } from "./format";
   import type { Library, Tick } from "./types";
   import Icon from "./Icon.svelte";
@@ -9,6 +9,9 @@
 
   const CHANNELS = ["channel_pulse1", "channel_pulse2", "channel_wave", "channel_noise"];
   const LOOP_COUNTS: (number | null)[] = [null, 1, 2, 3];
+
+  // Previous restarts the song once it has played a little (see `previous`).
+  const restarts = $derived(tick?.current != null && tick.position > RESTART_AFTER);
 
   const song = $derived(
     tick?.current != null ? library.songs.find((s) => s.index === tick!.current) : undefined,
@@ -91,7 +94,12 @@
   {/if}
 
   <div class="transport">
-    <button class="round" onclick={() => api.skip(-1)} title={t("prev")} aria-label={t("prev")}>
+    <button
+      class="round"
+      onclick={() => previous(tick)}
+      title={restarts ? t("prev_restart") : t("prev")}
+      aria-label={restarts ? t("prev_restart") : t("prev")}
+    >
       <Icon name="prev" />
     </button>
     <button class="round" onclick={() => api.stop()} title={t("stop")} aria-label={t("stop")}>
