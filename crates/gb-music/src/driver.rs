@@ -45,9 +45,82 @@ pub enum Engine {
     Gen2 { play_music: u16, update_sound: u16 },
 }
 
+/// Where the sound engine keeps its per-channel playback state in WRAM.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChannelProbe {
+    /// Gen 1: parallel arrays starting at `wChannelCommandPointers`.
+    Gen1 { command_pointers: u16 },
+    /// Gen 2: one `channel_struct` per channel starting at `wChannel1`.
+    Gen2 { channel1: u16 },
+}
+
+/// The position of one music channel in its score: everything that decides which commands it
+/// reads next. Tempo remainders and similar timing state are deliberately left out.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ChannelKey {
+    pub address: u16,
+    pub return_address: u16,
+    pub loop_count: u8,
+    pub flags: u8,
+}
+
+impl ChannelProbe {
+    /// Read the score position of the four music channels; `None` for an inactive channel.
+    pub fn read(&self, m: &mut Machine) -> [Option<ChannelKey>; 4] {
+        let mut keys = [None; 4];
+        for (c, key) in keys.iter_mut().enumerate() {
+            let c16 = c as u16;
+            *key = match *self {
+                ChannelProbe::Gen1 {
+                    command_pointers: p,
+                } => {
+                    // wChannelSoundIDs, wChannelFlags1 and wChannelLoopCounters follow the
+                    // command pointers and return addresses as arrays of eight bytes.
+                    let arrays = p + 32;
+                    (m.read(arrays + c16) != 0).then(|| ChannelKey {
+                        address: m.read16(p + 2 * c16),
+                        return_address: m.read16(p + 16 + 2 * c16),
+                        loop_count: m.read(arrays + 8 * 19 + c16),
+                        // Only the "inside sound_call" bit; the others change mid-note.
+                        flags: m.read(arrays + 8 + c16) & 0x02,
+                    })
+                }
+                ChannelProbe::Gen2 { channel1 } => {
+                    let base = channel1 + 0x32 * c16;
+                    let flags = m.read(base + 3);
+                    (flags & 1 != 0).then(|| ChannelKey {
+                        address: m.read16(base + 6),
+                        return_address: m.read16(base + 8),
+                        loop_count: m.read(base + 0x16),
+                        flags: flags & 0x06,
+                    })
+                }
+            };
+        }
+        keys
+    }
+
+    /// Check right after starting `song` that the probe points at real channel state.
+    pub fn validate(&self, m: &mut Machine, song: &Song) -> bool {
+        match *self {
+            ChannelProbe::Gen1 {
+                command_pointers: p,
+            } => {
+                let ids: Vec<u8> = (0..4).map(|c| m.read(p + 32 + c)).collect();
+                ids.contains(&(song.id as u8)) && ids.iter().all(|&i| i == 0 || i == song.id as u8)
+            }
+            ChannelProbe::Gen2 { channel1 } => (0..4).any(|c| {
+                let base = channel1 + 0x32 * c;
+                m.read(base + 3) & 1 != 0 && m.read16(base) == song.id
+            }),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Driver {
     pub engine: Engine,
+    pub probe: Option<ChannelProbe>,
     pub game: &'static str,
     pub songs: Vec<Song>,
     /// First bank of the audio engine, used to reset the machine.
@@ -278,6 +351,12 @@ fn detect_gen1(rom: &[u8]) -> Option<Driver> {
         }
     }
     let home_bank = audio_banks[0].0;
+    // In the Gen 1 audio RAM layout wNewSoundID directly precedes wAudioROMBank, and the
+    // channel arrays end 233 bytes earlier. Only trust that layout if the first part holds.
+    let new_sound_id = word(home, pm + 2);
+    let probe = (new_sound_id + 1 == audio_rom_bank).then(|| ChannelProbe::Gen1 {
+        command_pointers: audio_rom_bank - 233,
+    });
     let game = if yellow {
         "Pokémon Yellow"
     } else {
@@ -285,6 +364,7 @@ fn detect_gen1(rom: &[u8]) -> Option<Driver> {
     };
     Some(Driver {
         engine,
+        probe,
         game,
         songs,
         home_bank,
@@ -397,6 +477,11 @@ fn detect_gen2(rom: &[u8]) -> Option<Driver> {
         return None;
     }
     let table = word(body, 10);
+    // wMusicID follows the eight channel structs and twelve bytes of other audio state.
+    let music_id = word(body, 4);
+    let probe = music_id
+        .checked_sub(8 * 0x32 + 12)
+        .map(|channel1| ChannelProbe::Gen2 { channel1 });
     let entries = rom_at(rom, bank, table)?;
 
     let mut ids = Vec::new();
@@ -445,6 +530,7 @@ fn detect_gen2(rom: &[u8]) -> Option<Driver> {
             play_music: pm as u16,
             update_sound: update_sound as u16,
         },
+        probe,
         game,
         songs,
         home_bank: bank,

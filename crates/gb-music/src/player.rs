@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use gb_core::{CallError, CartridgeError, Machine, CPU_CLOCK, CYCLES_PER_FRAME};
 
-use crate::driver::{Driver, Song};
+use crate::driver::{ChannelKey, ChannelProbe, Driver, Song};
 
 /// Video frames per second; sound engines advance once per frame.
 pub const FRAME_RATE: f64 = CPU_CLOCK as f64 / CYCLES_PER_FRAME as f64;
@@ -51,9 +51,16 @@ pub enum SongLength {
     Unknown,
 }
 
-/// Find the loop structure of `song` by running it faster than real time and watching for
-/// the sound engine to return to an earlier state. Only the sound engine runs, so its whole
-/// RAM is its state: once a snapshot repeats, everything after it repeats exactly.
+/// Find the loop structure of `song` by running it faster than real time.
+///
+/// When the driver knows where the engine keeps each channel's position in the score, a
+/// channel has looped once it reaches a position (command address, return address, loop
+/// counter) it was at before. Tempo remainders are ignored on purpose: Gen 1 and 2 carry the
+/// fractional part of note lengths over, so the full RAM may take many loops to repeat even
+/// though the music has long started over.
+///
+/// Otherwise the whole RAM is compared between frames. Only the sound engine runs, so it is
+/// the engine's state: once a snapshot repeats, everything after it repeats exactly.
 pub fn analyze(
     rom: &[u8],
     driver: &Driver,
@@ -65,6 +72,101 @@ pub fn analyze(
     };
     m.mem.apu.set_output_enabled(false);
     driver.play(&mut m, song)?;
+    match driver.probe {
+        Some(probe) if probe.validate(&mut m, song) => {
+            analyze_score(&mut m, driver, probe, max_frames)
+        }
+        _ => analyze_ram(&mut m, driver, max_frames),
+    }
+}
+
+fn run_frame(m: &mut Machine, driver: &Driver) -> Result<(), CallError> {
+    let spent = driver.update(m)?;
+    m.idle(CYCLES_PER_FRAME.saturating_sub(spent));
+    Ok(())
+}
+
+#[derive(Clone, Copy)]
+enum ChannelLoop {
+    Searching,
+    Unused,
+    Loops { intro: u32, period: u32 },
+    Ended { at: u32 },
+}
+
+fn analyze_score(
+    m: &mut Machine,
+    driver: &Driver,
+    probe: ChannelProbe,
+    max_frames: u32,
+) -> Result<SongLength, CallError> {
+    let mut seen: [HashMap<ChannelKey, u32>; 4] = Default::default();
+    let mut prev = probe.read(m);
+    let mut state = prev.map(|k| {
+        if k.is_some() {
+            ChannelLoop::Searching
+        } else {
+            ChannelLoop::Unused
+        }
+    });
+    for (c, k) in prev.iter().enumerate() {
+        if let Some(k) = k {
+            seen[c].insert(*k, 0);
+        }
+    }
+    for frame in 1..max_frames {
+        if !state.iter().any(|s| matches!(s, ChannelLoop::Searching)) {
+            break;
+        }
+        run_frame(m, driver)?;
+        let keys = probe.read(m);
+        for c in 0..4 {
+            if !matches!(state[c], ChannelLoop::Searching) || keys[c] == prev[c] {
+                continue;
+            }
+            match keys[c] {
+                None => state[c] = ChannelLoop::Ended { at: frame },
+                Some(k) => match seen[c].get(&k) {
+                    Some(&first) => {
+                        state[c] = ChannelLoop::Loops {
+                            intro: first,
+                            period: frame - first,
+                        }
+                    }
+                    None => {
+                        seen[c].insert(k, frame);
+                    }
+                },
+            }
+        }
+        prev = keys;
+    }
+
+    let mut intro = 0;
+    let mut period = 0;
+    let mut end = 0;
+    for s in state {
+        match s {
+            ChannelLoop::Searching => return Ok(SongLength::Unknown),
+            ChannelLoop::Unused => {}
+            ChannelLoop::Loops {
+                intro: i,
+                period: p,
+            } => {
+                intro = intro.max(i);
+                period = period.max(p);
+            }
+            ChannelLoop::Ended { at } => end = end.max(at),
+        }
+    }
+    Ok(if period > 0 {
+        SongLength::Loops { intro, period }
+    } else {
+        SongLength::Ends { at: end }
+    })
+}
+
+fn analyze_ram(m: &mut Machine, driver: &Driver, max_frames: u32) -> Result<SongLength, CallError> {
     let mut seen: HashMap<u64, u32> = HashMap::new();
     for frame in 0..max_frames {
         let hash = m.state_hash();
@@ -80,8 +182,7 @@ pub fn analyze(
             });
         }
         seen.insert(hash, frame);
-        let spent = driver.update(&mut m)?;
-        m.idle(CYCLES_PER_FRAME.saturating_sub(spent));
+        run_frame(m, driver)?;
     }
     Ok(SongLength::Unknown)
 }
