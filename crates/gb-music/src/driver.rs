@@ -170,22 +170,41 @@ const YELLOW_VBLANK: &str = "3E ?? CD ?? ?? CD ?? ?? 3E ?? CD ?? ?? CD ?? ??";
 /// (sound ID, channel count, first channel)
 type HeaderGroup = (u8, usize, u8);
 
-/// A Gen 1 audio bank starts with a table of 3-byte channel headers, preceded by padding.
-/// Returns (sound ID, channel count, first channel) for every header group.
-fn gen1_header_groups(bank: &[u8]) -> Vec<HeaderGroup> {
-    let mut groups = Vec::new();
-    if bank.len() < 0x400 || bank[0..3] != [0xFF, 0xFF, 0xFF] {
-        return groups;
+/// audio/engine_N.asm `AudioN_PlaySound`: ld l,a / ld e,a / ld h,0 / ld d,h / add hl,hl /
+/// add hl,de / ld de,SFX_Headers_N / add hl,de — the sound ID times three plus the table base.
+const GEN1_HEADER_LOOKUP: &str = "6F 5F 26 00 54 29 19 11 ?? ?? 19";
+
+/// Locate the channel header table of an audio bank. The international releases put it at
+/// the start of the bank behind `FF FF FF` padding; the Japanese ones put engine code first,
+/// so the table address is taken from the engine's own lookup code.
+fn gen1_header_table(bank: &[u8]) -> Option<&[u8]> {
+    let lookup = Pattern::new(GEN1_HEADER_LOOKUP);
+    for pos in lookup.find_all(bank) {
+        let base = word(bank, pos + 8);
+        if (0x4000..0x8000).contains(&base) {
+            return Some(&bank[base as usize - 0x4000..]);
+        }
     }
+    (bank.get(0..3) == Some(&[0xFF, 0xFF, 0xFF][..])).then_some(bank)
+}
+
+/// Parse a Gen 1 header table: 3-byte channel headers indexed by sound ID, where ID 0 is
+/// unused. Returns (sound ID, channel count, first channel) for every header group.
+fn gen1_header_groups(table: &[u8]) -> Vec<HeaderGroup> {
+    let mut groups = Vec::new();
     let mut id = 1usize;
     while id <= 0xFF {
-        let first = bank[id * 3];
+        let Some(&first) = table.get(id * 3) else {
+            break;
+        };
         let count = (first >> 6) as usize + 1;
         if id + count > 0x100 {
             break;
         }
         let valid = (0..count).all(|k| {
-            let e = &bank[(id + k) * 3..(id + k) * 3 + 3];
+            let Some(e) = table.get((id + k) * 3..(id + k) * 3 + 3) else {
+                return false;
+            };
             let ptr = u16::from_le_bytes([e[1], e[2]]);
             let ch = e[0] & 0x0F;
             let hi_ok = if k == 0 {
@@ -213,7 +232,10 @@ fn detect_gen1(rom: &[u8]) -> Option<Driver> {
     // Audio banks are the ones whose header table parses into a sizeable list.
     let bank_count = (rom.len() / 0x4000).min(0x100);
     let mut audio_banks: Vec<(u8, Vec<HeaderGroup>)> = (1..bank_count)
-        .map(|b| (b as u8, gen1_header_groups(bank_slice(rom, b as u8))))
+        .map(|b| {
+            let table = gen1_header_table(bank_slice(rom, b as u8));
+            (b as u8, table.map(gen1_header_groups).unwrap_or_default())
+        })
         .filter(|(_, g)| g.len() >= 20 && g.iter().any(|&(_, _, ch)| ch < 4))
         .collect();
     audio_banks.sort_by_key(|(b, _)| *b);
@@ -449,5 +471,25 @@ mod tests {
         let groups = gen1_header_groups(&bank);
         assert_eq!(groups.len(), 20);
         assert_eq!(groups[19], (20, 3, 0));
+    }
+
+    #[test]
+    fn header_table_found_through_lookup_code() {
+        // Japanese layout: engine code first, table elsewhere in the bank.
+        let mut bank = vec![0u8; 0x4000];
+        bank[0x100..0x10B].copy_from_slice(&[
+            0x6F, 0x5F, 0x26, 0x00, 0x54, 0x29, 0x19, 0x11, 0x00, 0x60, 0x19,
+        ]);
+        let table = 0x2000;
+        let mut id = 1;
+        for _ in 0..19 {
+            bank[table + id * 3..table + id * 3 + 3].copy_from_slice(&[0x07, 0x00, 0x50]);
+            id += 1;
+        }
+        bank[table + id * 3..table + id * 3 + 6]
+            .copy_from_slice(&[0x40, 0x00, 0x51, 0x01, 0x00, 0x52]);
+        let groups = gen1_header_groups(gen1_header_table(&bank).unwrap());
+        assert_eq!(groups.len(), 20);
+        assert_eq!(groups[19], (20, 2, 0));
     }
 }
