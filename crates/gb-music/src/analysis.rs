@@ -4,8 +4,9 @@ use std::collections::HashMap;
 
 use gb_core::{CallError, Machine, CYCLES_PER_FRAME};
 
-use crate::driver::{ChannelKey, ChannelProbe, Driver, Song};
+use crate::driver::{Driver, Song};
 use crate::length::{SongLength, FRAME_RATE};
+use crate::probe::{ChannelKey, ChannelProbe, CHANNELS};
 
 /// The default number of frames [`analyze`] runs a song for: ten minutes of music, long
 /// enough for any loop in the supported games.
@@ -63,7 +64,7 @@ fn analyze_score(
     probe: ChannelProbe,
     max_frames: u32,
 ) -> Result<SongLength, CallError> {
-    let mut seen: [HashMap<ChannelKey, u32>; 4] = Default::default();
+    let mut seen: [HashMap<ChannelKey, u32>; CHANNELS] = Default::default();
     let mut prev = probe.read(m);
     let mut prev_timers = probe.note_timers(m);
     let mut state = prev.map(|k| {
@@ -85,7 +86,7 @@ fn analyze_score(
         run_frame(m, driver)?;
         let keys = probe.read(m);
         let timers = probe.note_timers(m);
-        for c in 0..4 {
+        for c in 0..CHANNELS {
             let new_note = keys[c] != prev[c] || timers[c] > prev_timers[c];
             if !matches!(state[c], ChannelLoop::Searching) || !new_note {
                 continue;

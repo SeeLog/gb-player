@@ -10,6 +10,7 @@ use gb_core::{CallError, Header, Machine};
 use crate::length::SongLength;
 use crate::pattern::{word, Pattern};
 use crate::playback::{Playback, Rate, Reg, Step, Target, Value};
+use crate::probe::{ChannelProbe, Field, SongCheck};
 use crate::songdb::{self, Game, SongDef};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -57,98 +58,6 @@ pub enum Engine {
     },
     /// Pokémon Gold / Silver / Crystal.
     Gen2 { play_music: u16, update_sound: u16 },
-}
-
-/// Where the sound engine keeps its per-channel playback state in WRAM.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ChannelProbe {
-    /// Gen 1: parallel arrays starting at `wChannelCommandPointers`.
-    Gen1 { command_pointers: u16 },
-    /// Gen 2: one `channel_struct` per channel starting at `wChannel1`.
-    Gen2 { channel1: u16 },
-}
-
-/// The position of one music channel in its score: everything that decides which commands it
-/// reads next. Tempo remainders and similar timing state are deliberately left out.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct ChannelKey {
-    pub address: u16,
-    pub return_address: u16,
-    pub loop_count: u8,
-    pub flags: u8,
-}
-
-impl ChannelProbe {
-    /// Read the score position of the four music channels; `None` for an inactive channel.
-    pub fn read(&self, m: &mut Machine) -> [Option<ChannelKey>; 4] {
-        let mut keys = [None; 4];
-        for (c, key) in keys.iter_mut().enumerate() {
-            let c16 = c as u16;
-            *key = match *self {
-                ChannelProbe::Gen1 {
-                    command_pointers: p,
-                } => {
-                    // wChannelSoundIDs, wChannelFlags1 and wChannelLoopCounters follow the
-                    // command pointers and return addresses as arrays of eight bytes.
-                    let at = |offset: u16| p.wrapping_add(offset);
-                    (m.read(at(32 + c16)) != 0).then(|| ChannelKey {
-                        address: m.read16(at(2 * c16)),
-                        return_address: m.read16(at(16 + 2 * c16)),
-                        loop_count: m.read(at(32 + 8 * 19 + c16)),
-                        // Only the "inside sound_call" bit; the others change mid-note.
-                        flags: m.read(at(32 + 8 + c16)) & 0x02,
-                    })
-                }
-                ChannelProbe::Gen2 { channel1 } => {
-                    // channel_struct: MusicAddress +$06, LastMusicAddress +$08, LoopCount +$18.
-                    let at = |offset: u16| channel1.wrapping_add(0x32 * c16 + offset);
-                    let flags = m.read(at(3));
-                    (flags & 1 != 0).then(|| ChannelKey {
-                        address: m.read16(at(6)),
-                        return_address: m.read16(at(8)),
-                        loop_count: m.read(at(0x18)),
-                        flags: flags & 0x06,
-                    })
-                }
-            };
-        }
-        keys
-    }
-
-    /// Frames left on each channel's current note. A rise means a new note was read, which
-    /// catches a channel whose loop is a single note and whose position therefore never
-    /// changes between frames.
-    pub fn note_timers(&self, m: &mut Machine) -> [u8; 4] {
-        let mut timers = [0; 4];
-        for (c, t) in timers.iter_mut().enumerate() {
-            let c16 = c as u16;
-            *t = match *self {
-                // wChannelNoteDelayCounters
-                ChannelProbe::Gen1 {
-                    command_pointers: p,
-                } => m.read(p.wrapping_add(32 + 8 * 18 + c16)),
-                // channel_struct NoteDuration
-                ChannelProbe::Gen2 { channel1 } => m.read(channel1.wrapping_add(0x32 * c16 + 0x15)),
-            };
-        }
-        timers
-    }
-
-    /// Check right after starting `song` that the probe points at real channel state.
-    pub fn validate(&self, m: &mut Machine, song: &Song) -> bool {
-        match *self {
-            ChannelProbe::Gen1 {
-                command_pointers: p,
-            } => {
-                let ids: Vec<u8> = (0..4).map(|c| m.read(p.wrapping_add(32 + c))).collect();
-                ids.contains(&(song.id as u8)) && ids.iter().all(|&i| i == 0 || i == song.id as u8)
-            }
-            ChannelProbe::Gen2 { channel1 } => (0..4).any(|c| {
-                let base = channel1.wrapping_add(0x32 * c);
-                m.read(base.wrapping_add(3)) & 1 != 0 && m.read16(base) == song.id
-            }),
-        }
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -433,7 +342,7 @@ fn detect_gen1(rom: &[u8], title: &str) -> Option<Driver> {
     let probe = audio_rom_bank
         .checked_sub(233)
         .filter(|_| new_sound_id.wrapping_add(1) == audio_rom_bank)
-        .map(|command_pointers| ChannelProbe::Gen1 { command_pointers });
+        .map(gen1_probe);
     Some(Driver {
         playback: engine.playback(home_bank),
         engine,
@@ -442,6 +351,28 @@ fn detect_gen1(rom: &[u8], title: &str) -> Option<Driver> {
         game_id: game_id(game),
         songs,
     })
+}
+
+/// The channel state of the Gen 1 engine: parallel arrays starting at
+/// `wChannelCommandPointers`. The command pointers and return addresses are words; after them
+/// come byte arrays of eight entries each, among them wChannelSoundIDs (0), wChannelFlags1
+/// (1), wChannelNoteDelayCounters (18) and wChannelLoopCounters (19).
+fn gen1_probe(command_pointers: u16) -> ChannelProbe {
+    let p = command_pointers;
+    let array = |n: u16| Field::byte(p.wrapping_add(32 + 8 * n), 1);
+    ChannelProbe {
+        active: array(0),
+        address: Field::word(p, 2),
+        return_address: Field::word(p.wrapping_add(16), 2),
+        loop_count: array(19),
+        // Only the "inside sound_call" bit; the others change mid-note.
+        flags: array(1).masked(0x02),
+        note_timer: array(18),
+        check: Some(SongCheck {
+            song_id: array(0),
+            all: true,
+        }),
+    }
 }
 
 type Gen1Builder = Box<dyn Fn(u16) -> Engine>;
@@ -555,9 +486,7 @@ fn detect_gen2(rom: &[u8], title: &str) -> Option<Driver> {
     let table = word(body, 10);
     // wMusicID follows the eight channel structs and twelve bytes of other audio state.
     let music_id = word(body, 4);
-    let probe = music_id
-        .checked_sub(8 * 0x32 + 12)
-        .map(|channel1| ChannelProbe::Gen2 { channel1 });
+    let probe = music_id.checked_sub(8 * 0x32 + 12).map(gen2_probe);
     let entries = rom_at(rom, bank, table)?;
 
     let mut ids = Vec::new();
@@ -610,6 +539,25 @@ fn detect_gen2(rom: &[u8], title: &str) -> Option<Driver> {
         game_id: game_id(game),
         songs,
     })
+}
+
+/// The channel state of the Gen 2 engine: one $32-byte `channel_struct` per channel starting
+/// at `wChannel1`, with the music ID at +$00, the flags at +$03, MusicAddress at +$06,
+/// LastMusicAddress at +$08, NoteDuration at +$15 and LoopCount at +$18.
+fn gen2_probe(channel1: u16) -> ChannelProbe {
+    let field = |offset: u16| Field::byte(channel1.wrapping_add(offset), 0x32);
+    ChannelProbe {
+        active: field(3).masked(0x01),
+        address: Field::word(channel1.wrapping_add(6), 0x32),
+        return_address: Field::word(channel1.wrapping_add(8), 0x32),
+        loop_count: field(0x18),
+        flags: field(3).masked(0x06),
+        note_timer: field(0x15),
+        check: Some(SongCheck {
+            song_id: Field::word(channel1, 0x32),
+            all: false,
+        }),
+    }
 }
 
 fn game_id(game: Option<&Game>) -> String {

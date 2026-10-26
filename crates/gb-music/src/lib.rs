@@ -8,6 +8,7 @@ pub mod length;
 pub mod pattern;
 pub mod playback;
 pub mod player;
+pub mod probe;
 pub mod songdb;
 
 pub use analysis::{analyze, ANALYSIS_FRAMES};
