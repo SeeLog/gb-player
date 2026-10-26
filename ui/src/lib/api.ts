@@ -16,6 +16,9 @@ export const api = {
   setAutoNext: (autoNext: boolean) => invoke<void>("set_auto_next", { autoNext }),
   setVolume: (volume: number) => invoke<void>("set_volume", { volume }),
   setMuted: (channel: number, muted: boolean) => invoke<void>("set_muted", { channel, muted }),
+  setTheme: (theme: string) => invoke<void>("set_theme", { theme }),
+  saveTheme: (name: string, base: string, colors: Record<string, string>) =>
+    invoke<string>("save_theme", { name, base, colors }),
   setLanguage: (language: string) => invoke<void>("set_language", { language }),
 };
 

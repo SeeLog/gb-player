@@ -19,8 +19,10 @@
     const g = c.getContext("2d")!;
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.clearRect(0, 0, w, h);
+    // Read the palette on every draw so a palette change shows at once.
+    const css = getComputedStyle(c);
 
-    g.strokeStyle = "rgba(35, 61, 22, 0.18)";
+    g.strokeStyle = css.getPropertyValue("--lcd-grid");
     g.lineWidth = 1;
     for (let x = 0.5; x < w; x += 16) {
       g.beginPath();
@@ -47,7 +49,7 @@
     const n = Math.min(POINTS, samples.length - start);
     if (!active || n < 2) return;
     const gain = 1.6 / Math.max(volume, 0.05);
-    g.strokeStyle = "#233d16";
+    g.strokeStyle = css.getPropertyValue("--lcd-ink");
     g.lineWidth = 2;
     g.lineJoin = "round";
     g.beginPath();

@@ -7,6 +7,8 @@
   import Icon from "./lib/Icon.svelte";
   import SongList from "./lib/SongList.svelte";
   import NowPlaying from "./lib/NowPlaying.svelte";
+  import ThemeEditor from "./lib/ThemeEditor.svelte";
+  import { applyTheme, type Draft } from "./lib/theme";
 
   let library = $state<Library | null>(null);
   let tick = $state<Tick | null>(null);
@@ -33,6 +35,23 @@
   $effect(() => {
     if (library) document.documentElement.lang = library.language;
   });
+
+  // A draft from the theme editor is shown instead of the chosen theme while it is open.
+  let draft = $state<Draft | null>(null);
+  const theme = $derived(library?.themes.find((th) => th.id === library!.theme));
+  $effect(() => {
+    if (draft) applyTheme(draft.base, draft.colors);
+    else if (theme) applyTheme(theme.base, theme.colors);
+  });
+
+  function editTheme() {
+    if (!theme) return;
+    draft = {
+      name: theme.custom ? theme.name : t("theme_new_name"),
+      base: theme.base,
+      colors: { ...theme.colors },
+    };
+  }
 
   function onKey(e: KeyboardEvent) {
     const typing = e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement;
@@ -76,6 +95,27 @@
       <span>{t("open_rom")}</span>
     </button>
     {#if library}
+      <label class="lang" title={t("theme")}>
+        <Icon name="palette" size={18} />
+        <select
+          value={library.theme}
+          onchange={(e) => api.setTheme(e.currentTarget.value)}
+          disabled={!!draft}
+          aria-label={t("theme")}
+        >
+          {#each library.themes as th (th.id)}
+            <option value={th.id}>{th.name}</option>
+          {/each}
+        </select>
+      </label>
+      <button
+        class="open square"
+        onclick={editTheme}
+        title={t("edit_theme")}
+        aria-label={t("edit_theme")}
+      >
+        <Icon name="edit" size={18} />
+      </button>
       <label class="lang" title={t("language")}>
         <Icon name="globe" size={18} />
         <select value={library.language} onchange={(e) => api.setLanguage(e.currentTarget.value)}>
@@ -105,6 +145,15 @@
         <span>{t("open_rom")}</span>
       </button>
     </div>
+  {/if}
+
+  {#if library && draft}
+    <ThemeEditor
+      {library}
+      {t}
+      bind:draft={() => draft!, (d) => (draft = d)}
+      onclose={() => (draft = null)}
+    />
   {/if}
 
   {#if dragging}
@@ -188,6 +237,11 @@
   .open:hover,
   .lang:hover {
     border-color: var(--faint);
+  }
+  .square {
+    width: 32px;
+    padding: 0;
+    justify-content: center;
   }
   .lang select {
     background: transparent;

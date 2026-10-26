@@ -47,7 +47,30 @@ gb-player --lang en pokemon.gb           # 言語を指定して起動(既定は
 `--info` / `--wav` は bun なしの `cargo run --release -- --info pokemon.gb` でも動きます。
 
 GUIのキー操作: Space 再生/一時停止、← → 前/次の曲、Ctrl+O ROMを開く、Ctrl+F 検索。
-言語・音量・ループ設定は `%APPDATA%\gb-player\settings.toml`(Linux/macOSは `~/.config/gb-player/settings.toml`)に保存されます。
+言語・音量・ループ・テーマの設定は `%APPDATA%\gb-player\settings.toml`(Linux/macOSは `~/.config/gb-player/settings.toml`)に保存されます。
+
+## テーマ
+
+画面右上のパレットのメニューで配色を切り替えられます。内蔵は DMG(初代の4階調の緑)/ Pocket(グレー)/
+Color(紺と黄)/ Light(明るい背景)の4つです。
+
+隣の鉛筆ボタンでテーマエディタが開き、色を変えるとその場で画面に反映されます。「名前を付けて保存…」で
+`%APPDATA%\gb-player\themes\<名前>.toml`(Linux/macOSは `~/.config/gb-player/themes/`)に保存され、メニューに追加されます。
+このフォルダのファイルは手で書いても構いません(起動時と保存時に読み込みます)。
+
+```toml
+name = "夜のマサラタウン"   # 省略するとファイル名
+base = "color"              # 元にする内蔵テーマ: dmg / pocket / color / light
+[colors]                    # 変えたい色だけ書く(書かなかった色は base のまま)
+bg = "#0b0d1e"
+accent = "#ff8fb1"
+lcd-grid = "rgba(30, 42, 63, 0.15)"
+```
+
+色の名前は `bg` `panel` `panel-2` `line` `text` `muted` `faint` `accent` `accent-2` `accent-ink`
+`lcd-hi` `lcd` `lcd-lo` `lcd-ink` `lcd-grid` `bezel` `overlay` `danger` です。値は `#rgb` / `#rrggbb` /
+`#rrggbbaa` か、数値だけの `rgb()` `rgba()` `hsl()` `hsla()` に限ります。知らない名前や色でない値は無視され、
+画面上部に警告が出ます。
 
 ## 曲名
 

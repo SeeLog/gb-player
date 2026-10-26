@@ -1,20 +1,97 @@
 :root {
+  --radius: 10px;
+  --font: "Segoe UI Variable", "Segoe UI", "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
+}
+
+/* Built-in palettes, picked with data-palette on <html> ("dmg" by default). Not tied to
+   :root, so the theme editor can read a palette's colours from a probe element. */
+:root,
+[data-palette="dmg"] {
   color-scheme: dark;
-  --bg: #0f1311;
-  --panel: #161b18;
-  --panel-2: #1d2420;
-  --line: #29322d;
-  --text: #e4ece6;
-  --muted: #8b998f;
-  --faint: #5d6a62;
+  --bg: #0b140c;
+  --panel: #112014;
+  --panel-2: #18291a;
+  --line: #26392a;
+  --text: #dbe8c8;
+  --muted: #8fa886;
+  --faint: #6b8765;
   --accent: #9bbc0f;
   --accent-2: #8bac0f;
   --accent-ink: #0f380f;
-  --lcd: #9aae2a;
-  --lcd-dark: #233d16;
+  --lcd-hi: #a9c923;
+  --lcd: #9bbc0f;
+  --lcd-lo: #8bac0f;
+  --lcd-ink: #0f380f;
+  --lcd-grid: rgba(15, 56, 15, 0.18);
+  --bezel: #1c2a1e;
+  --overlay: rgba(255, 255, 255, 0.05);
   --danger: #e36b5f;
-  --radius: 10px;
-  --font: "Segoe UI Variable", "Segoe UI", "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
+}
+
+[data-palette="pocket"] {
+  color-scheme: dark;
+  --bg: #121314;
+  --panel: #191b1d;
+  --panel-2: #212427;
+  --line: #2f3337;
+  --text: #e6e7e8;
+  --muted: #9a9fa5;
+  --faint: #7a8188;
+  --accent: #a9b89a;
+  --accent-2: #94a385;
+  --accent-ink: #1e231a;
+  --lcd-hi: #d2d7bf;
+  --lcd: #c5cbb0;
+  --lcd-lo: #b3b99d;
+  --lcd-ink: #2f322b;
+  --lcd-grid: rgba(47, 50, 43, 0.15);
+  --bezel: #2a2c2f;
+  --overlay: rgba(255, 255, 255, 0.05);
+  --danger: #e36b5f;
+}
+
+[data-palette="color"] {
+  color-scheme: dark;
+  --bg: #0e1024;
+  --panel: #151833;
+  --panel-2: #1d2142;
+  --line: #2b3060;
+  --text: #e8e9f5;
+  --muted: #a0a4c8;
+  --faint: #7a7faa;
+  --accent: #f8d030;
+  --accent-2: #d0407f;
+  --accent-ink: #2a2100;
+  --lcd-hi: #d6e6a0;
+  --lcd: #c8dc8c;
+  --lcd-lo: #b4c878;
+  --lcd-ink: #1e2a3f;
+  --lcd-grid: rgba(30, 42, 63, 0.15);
+  --bezel: #262a52;
+  --overlay: rgba(255, 255, 255, 0.05);
+  --danger: #ff7a6b;
+}
+
+[data-palette="light"] {
+  color-scheme: light;
+  --bg: #f3f2ec;
+  --panel: #fbfaf6;
+  --panel-2: #e9e7df;
+  --line: #d4d1c6;
+  --text: #1f241c;
+  --muted: #535b4e;
+  --faint: #6e7568;
+  --accent: #5a7d0a;
+  --accent-2: #4b6a08;
+  --accent-ink: #ffffff;
+  --lcd-hi: #a9c923;
+  --lcd: #9bbc0f;
+  --lcd-lo: #8bac0f;
+  --lcd-ink: #0f380f;
+  --lcd-grid: rgba(15, 56, 15, 0.18);
+  --bezel: #c9c6bb;
+  --overlay: rgba(0, 0, 0, 0.06);
+  --danger: #b8322a;
 }
 
 * {

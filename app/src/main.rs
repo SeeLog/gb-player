@@ -9,6 +9,7 @@ mod console;
 mod gui;
 mod i18n;
 mod settings;
+mod themes;
 
 use std::path::PathBuf;
 

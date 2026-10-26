@@ -9,6 +9,9 @@ version = "0.1.0"
 
 [profile.dev]
 opt-level = 1
+# Incremental builds at opt-level 1 keep failing to link (unresolved anon.*.llvm.*
+# symbols) after small changes.
+incremental = false
 
 [profile.dev.package."*"]
 opt-level = 3

@@ -191,12 +191,12 @@
   .lcd {
     border-radius: 12px;
     padding: 12px 14px 10px;
-    background: linear-gradient(160deg, #a7bb34, var(--lcd) 60%, #8a9e22);
-    color: var(--lcd-dark);
+    background: linear-gradient(160deg, var(--lcd-hi), var(--lcd) 60%, var(--lcd-lo));
+    color: var(--lcd-ink);
     box-shadow:
       inset 0 0 0 1px rgba(0, 0, 0, 0.25),
       inset 0 2px 10px rgba(0, 0, 0, 0.25),
-      0 0 0 6px #252c28;
+      0 0 0 6px var(--bezel);
   }
   .lcd-head {
     display: flex;
@@ -239,7 +239,7 @@
     position: absolute;
     inset: 0 auto 0 0;
     border-radius: 4px 0 0 4px;
-    background: rgba(255, 255, 255, 0.05);
+    background: var(--overlay);
   }
   .fill {
     position: absolute;

@@ -14,6 +14,8 @@ pub struct Settings {
     pub loop_count: Option<u32>,
     /// Whether a finished song is followed by the next one.
     pub auto_next: bool,
+    /// A built-in palette such as `dmg`, or `custom:<file stem>` for a custom theme.
+    pub theme: String,
 }
 
 impl Default for Settings {
@@ -23,6 +25,7 @@ impl Default for Settings {
             volume: 0.8,
             loop_count: None,
             auto_next: true,
+            theme: "dmg".into(),
         }
     }
 }
@@ -69,6 +72,7 @@ mod tests {
             volume: 0.5,
             loop_count: Some(2),
             auto_next: false,
+            theme: "custom:night".into(),
         };
         let back: Settings = toml::from_str(&toml::to_string(&s).unwrap()).unwrap();
         assert_eq!(back, s);
@@ -76,5 +80,6 @@ mod tests {
         assert_eq!(partial.volume, 0.25);
         assert_eq!(partial.loop_count, None);
         assert!(partial.auto_next);
+        assert_eq!(partial.theme, "dmg");
     }
 }

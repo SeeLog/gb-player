@@ -1,7 +1,7 @@
 //! The Tauri application: commands for the web UI in `ui/`, ROM loading and playlist
 //! handling, and a ticker that streams the playback state to the UI.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
@@ -16,6 +16,7 @@ use crate::analyzer::Analyzer;
 use crate::audio::{AudioOut, Scope, SharedPlayer, SCOPE_LEN};
 use crate::i18n::{system_language, Text};
 use crate::settings::Settings;
+use crate::themes::{self, Theme};
 
 /// How often the playback state is sent to the UI.
 const TICK: Duration = Duration::from_millis(33);
@@ -35,6 +36,9 @@ struct Session {
     lengths: HashMap<usize, SongLength>,
     analyzer: Option<Analyzer>,
     levels: [f32; 4],
+    themes: Vec<Theme>,
+    /// Problems found in the custom theme files.
+    theme_warnings: Vec<String>,
 }
 
 struct App {
@@ -95,6 +99,8 @@ struct LibraryView {
     auto_next: bool,
     volume: f32,
     muted: [bool; 4],
+    theme: String,
+    themes: Vec<Theme>,
     error: Option<String>,
 }
 
@@ -164,6 +170,10 @@ impl App {
         s.error = (!warnings.is_empty()).then(|| warnings.join("\n"));
     }
 
+    fn reload_themes(&self, s: &mut Session) {
+        (s.themes, s.theme_warnings) = themes::load(&s.text);
+    }
+
     fn play(&self, s: &mut Session, index: usize) {
         if let Some(a) = &s.analyzer {
             a.prioritize(index);
@@ -211,7 +221,21 @@ impl App {
             auto_next: s.settings.auto_next,
             volume: s.settings.volume,
             muted,
-            error: s.error.clone(),
+            theme: if s.themes.iter().any(|t| t.id == s.settings.theme) {
+                s.settings.theme.clone()
+            } else {
+                themes::BUILTIN[0].0.to_string()
+            },
+            themes: s.themes.clone(),
+            error: {
+                let errors: Vec<&str> = s
+                    .error
+                    .iter()
+                    .chain(&s.theme_warnings)
+                    .map(String::as_str)
+                    .collect();
+                (!errors.is_empty()).then(|| errors.join("\n"))
+            },
         }
     }
 
@@ -407,7 +431,34 @@ fn set_language(handle: AppHandle, app: State<'_, App>, language: String) {
     }
     s.settings.language = Some(language);
     s.settings.save();
+    app.reload_themes(&mut s);
     emit_library(&handle, &app, &s);
+}
+
+#[tauri::command]
+fn set_theme(handle: AppHandle, app: State<'_, App>, theme: String) {
+    let mut s = app.lock();
+    s.settings.theme = theme;
+    s.settings.save();
+    emit_library(&handle, &app, &s);
+}
+
+/// Save a custom theme and switch to it; returns its id.
+#[tauri::command]
+fn save_theme(
+    handle: AppHandle,
+    app: State<'_, App>,
+    name: String,
+    base: String,
+    colors: BTreeMap<String, String>,
+) -> Result<String, String> {
+    let mut s = app.lock();
+    let id = themes::save(&name, &base, colors, &s.text)?;
+    app.reload_themes(&mut s);
+    s.settings.theme = id.clone();
+    s.settings.save();
+    emit_library(&handle, &app, &s);
+    Ok(id)
 }
 
 /// Start the audio output on a thread of its own, which keeps the stream alive.
@@ -461,6 +512,8 @@ pub fn run(initial_rom: Option<PathBuf>, language: Option<String>) {
             lengths: HashMap::new(),
             analyzer: None,
             levels: [0.0; 4],
+            themes: Vec::new(),
+            theme_warnings: Vec::new(),
         }),
     };
     let result = tauri::Builder::default()
@@ -479,13 +532,18 @@ pub fn run(initial_rom: Option<PathBuf>, language: Option<String>) {
             set_volume,
             set_muted,
             set_language,
+            set_theme,
+            save_theme,
         ])
         .setup(move |a| {
             let handle = a.handle().clone();
-            if let Some(path) = initial_rom {
+            {
                 let app = handle.state::<App>();
                 let mut s = app.lock();
-                app.load_rom(&mut s, &path);
+                app.reload_themes(&mut s);
+                if let Some(path) = initial_rom {
+                    app.load_rom(&mut s, &path);
+                }
             }
             std::thread::spawn(move || loop {
                 std::thread::sleep(TICK);
