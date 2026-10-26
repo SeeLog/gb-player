@@ -1,0 +1,264 @@
+<script lang="ts">
+  import { onMount } from "svelte";
+  import { getCurrentWebview } from "@tauri-apps/api/webview";
+  import { api, onLibrary, onTick } from "./lib/api";
+  import { translator } from "./lib/format";
+  import type { Library, Tick } from "./lib/types";
+  import Icon from "./lib/Icon.svelte";
+  import SongList from "./lib/SongList.svelte";
+  import NowPlaying from "./lib/NowPlaying.svelte";
+
+  let library = $state<Library | null>(null);
+  let tick = $state<Tick | null>(null);
+  let dragging = $state(false);
+  let search = $state<HTMLInputElement | null>(null);
+
+  const t = $derived(translator(library?.text ?? {}));
+  const hasRom = $derived(!!library && library.songs.length > 0);
+
+  onMount(() => {
+    const unlisten = [
+      onLibrary((l) => (library = l)),
+      onTick((v) => (tick = v)),
+      getCurrentWebview().onDragDropEvent((e) => {
+        const p = e.payload;
+        dragging = p.type === "enter" || p.type === "over";
+        if (p.type === "drop" && p.paths.length > 0) api.openRom(p.paths[0]);
+      }),
+    ];
+    api.library().then((l) => (library = l));
+    return () => unlisten.forEach((u) => u.then((f) => f()));
+  });
+
+  $effect(() => {
+    if (library) document.documentElement.lang = library.language;
+  });
+
+  function onKey(e: KeyboardEvent) {
+    const typing = e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement;
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "o") {
+      e.preventDefault();
+      api.pickRom();
+    } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
+      e.preventDefault();
+      search?.focus();
+    } else if (typing) {
+      if (e.key === "Escape") (e.target as HTMLElement).blur();
+    } else if (e.key === " ") {
+      e.preventDefault();
+      api.toggle();
+    } else if (e.key === "ArrowLeft") {
+      api.skip(-1);
+    } else if (e.key === "ArrowRight") {
+      api.skip(1);
+    }
+  }
+</script>
+
+<svelte:window onkeydown={onKey} />
+
+<div class="shell">
+  <header>
+    <div class="brand">
+      <span class="logo" aria-hidden="true"></span>
+      <span>GB Player</span>
+    </div>
+    {#if library?.game}
+      <div class="game" title={library.romPath ?? ""}>
+        <span class="game-name">{library.game}</span>
+        <span class="badge">{library.title}</span>
+        <span class="count">{t("song_count", { n: library.songs.length })}</span>
+      </div>
+    {/if}
+    <div class="spacer"></div>
+    <button class="open" onclick={() => api.pickRom()} title="Ctrl+O">
+      <Icon name="open" size={18} />
+      <span>{t("open_rom")}</span>
+    </button>
+    {#if library}
+      <label class="lang" title={t("language")}>
+        <Icon name="globe" size={18} />
+        <select value={library.language} onchange={(e) => api.setLanguage(e.currentTarget.value)}>
+          {#each library.languages as l (l.code)}
+            <option value={l.code}>{l.name}</option>
+          {/each}
+        </select>
+      </label>
+    {/if}
+  </header>
+
+  {#if library?.error}
+    <div class="error" role="alert">{library.error}</div>
+  {/if}
+
+  {#if library && hasRom}
+    <main>
+      <SongList {library} {tick} {t} bind:search />
+      <NowPlaying {library} {tick} {t} />
+    </main>
+  {:else}
+    <div class="empty">
+      <div class="cart" aria-hidden="true"></div>
+      <p>{t("drop_hint")}</p>
+      <button class="primary" onclick={() => api.pickRom()}>
+        <Icon name="open" size={18} />
+        <span>{t("open_rom")}</span>
+      </button>
+    </div>
+  {/if}
+
+  {#if dragging}
+    <div class="drop">
+      <div>{t("drop_here")}</div>
+    </div>
+  {/if}
+</div>
+
+<style>
+  .shell {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--line);
+    background: var(--panel);
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+  }
+  .logo {
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    background:
+      radial-gradient(circle at 50% 50%, var(--accent) 0 5px, transparent 5.5px),
+      var(--accent-ink);
+    box-shadow: inset 0 0 0 2px var(--accent);
+  }
+  .game {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    min-width: 0;
+    padding-left: 14px;
+    border-left: 1px solid var(--line);
+  }
+  .game-name {
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .badge {
+    font-size: 11px;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: var(--panel-2);
+    color: var(--muted);
+    border: 1px solid var(--line);
+  }
+  .count {
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .spacer {
+    flex: 1;
+  }
+  .open,
+  .lang {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 32px;
+    padding: 0 12px;
+    border-radius: 8px;
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    color: var(--text);
+  }
+  .open:hover,
+  .lang:hover {
+    border-color: var(--faint);
+  }
+  .lang select {
+    background: transparent;
+    border: 0;
+    outline: none;
+    cursor: pointer;
+  }
+  .lang option {
+    background: var(--panel-2);
+  }
+  .error {
+    padding: 8px 16px;
+    background: color-mix(in srgb, var(--danger) 16%, var(--bg));
+    color: var(--danger);
+    border-bottom: 1px solid color-mix(in srgb, var(--danger) 35%, var(--bg));
+    white-space: pre-wrap;
+  }
+  main {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 380px;
+  }
+  .empty {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 18px;
+    color: var(--muted);
+  }
+  .cart {
+    width: 120px;
+    height: 136px;
+    border-radius: 10px 10px 18px 10px;
+    background:
+      linear-gradient(var(--lcd), var(--lcd)) 50% 30% / 76px 56px no-repeat,
+      repeating-linear-gradient(90deg, var(--line) 0 6px, transparent 6px 10px) 50% 6px / 70px 10px
+        no-repeat,
+      var(--panel-2);
+    border: 1px solid var(--line);
+    opacity: 0.9;
+  }
+  .primary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 18px;
+    border-radius: 10px;
+    background: var(--accent);
+    color: var(--accent-ink);
+    font-weight: 600;
+  }
+  .primary:hover {
+    filter: brightness(1.08);
+  }
+  .drop {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    background: color-mix(in srgb, var(--bg) 75%, transparent);
+    pointer-events: none;
+  }
+  .drop div {
+    padding: 28px 40px;
+    border: 2px dashed var(--accent);
+    border-radius: 16px;
+    color: var(--accent);
+    font-size: 18px;
+    font-weight: 600;
+  }
+</style>

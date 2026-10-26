@@ -1,247 +1,502 @@
-//! The egui application: ROM loading, playlist handling and the main window.
-
-mod format;
-mod song_list;
-mod transport;
+//! The Tauri application: commands for the web UI in `ui/`, ROM loading and playlist
+//! handling, and a ticker that streams the playback state to the UI.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
-use eframe::egui;
 use gb_music::songdb::LANGUAGES;
-use gb_music::{PlayState, Player, Song, SongLength};
+use gb_music::{frames_to_secs, PlayState, Player, Song, SongLength};
+use serde::Serialize;
+use tauri::{AppHandle, Emitter, Manager, RunEvent, State};
+use tauri_plugin_dialog::DialogExt;
 
 use crate::analyzer::Analyzer;
-use crate::audio::{AudioOut, SharedPlayer};
-use crate::i18n::Text;
+use crate::audio::{AudioOut, Scope, SharedPlayer, SCOPE_LEN};
+use crate::i18n::{system_language, Text};
+use crate::settings::Settings;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum LoopMode {
-    /// Keep looping the current song.
-    Forever,
-    /// Play the loop N times, fade out, then continue with the next song.
-    Playlist(u32),
-}
+/// How often the playback state is sent to the UI.
+const TICK: Duration = Duration::from_millis(33);
+/// Output samples sent with each tick for the oscilloscope.
+const SCOPE_POINTS: usize = 1024;
 
-impl LoopMode {
-    fn label(self, t: &Text) -> String {
-        match self {
-            LoopMode::Forever => t.get("loop_forever").to_string(),
-            LoopMode::Playlist(n) => t.fmt("loop_playlist", &[("n", &n)]),
-        }
-    }
-
-    /// The player's loop count for this mode.
-    fn loop_count(self) -> Option<u32> {
-        match self {
-            LoopMode::Forever => None,
-            LoopMode::Playlist(n) => Some(n),
-        }
-    }
-}
-
-pub struct GbPlayerApp {
+struct Session {
     /// UI text in the chosen language; song names follow the same language.
     text: Text,
-    player: SharedPlayer,
-    audio: Option<AudioOut>,
+    settings: Settings,
+    sample_rate: u32,
     error: Option<String>,
     rom_path: Option<PathBuf>,
     songs: Vec<Song>,
     game: String,
+    title: String,
     lengths: HashMap<usize, SongLength>,
     analyzer: Option<Analyzer>,
-    loop_mode: LoopMode,
-    volume: f32,
-    filter: String,
     levels: [f32; 4],
 }
 
-impl GbPlayerApp {
-    pub fn new(initial_rom: Option<PathBuf>, language: &str) -> GbPlayerApp {
-        let text = Text::new(language);
-        let player: SharedPlayer = Arc::new(Mutex::new(None));
-        let (audio, error) = match AudioOut::start(player.clone(), &text) {
-            Ok(a) => (Some(a), None),
-            Err(e) => (None, Some(text.fmt("err_audio", &[("error", &e)]))),
-        };
-        let mut app = GbPlayerApp {
-            text,
-            player,
-            audio,
-            error,
-            rom_path: None,
-            songs: Vec::new(),
-            game: String::new(),
-            lengths: HashMap::new(),
-            analyzer: None,
-            loop_mode: LoopMode::Forever,
-            volume: 0.8,
-            filter: String::new(),
-            levels: [0.0; 4],
-        };
-        if let Some(p) = initial_rom {
-            app.load_rom(&p);
-        }
-        app
-    }
+struct App {
+    player: SharedPlayer,
+    scope: Scope,
+    session: Mutex<Session>,
+}
 
-    fn sample_rate(&self) -> u32 {
-        self.audio.as_ref().map_or(48_000, |a| a.sample_rate)
-    }
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+enum LengthView {
+    Loops { intro: f64, period: f64 },
+    Ends { at: f64 },
+    Unknown,
+}
 
-    fn load_rom(&mut self, path: &Path) {
-        let rom = match std::fs::read(path) {
-            Ok(r) => r,
-            Err(e) => {
-                self.error = Some(
-                    self.text
-                        .fmt("err_read", &[("path", &path.display()), ("error", &e)]),
-                );
-                return;
-            }
-        };
-        match Player::new(rom, self.sample_rate()) {
-            Ok(mut p) => {
-                p.volume = self.volume;
-                let warnings = p.set_language(self.text.language());
-                self.lengths.clear();
-                self.analyzer = Some(Analyzer::start(p.rom(), p.driver().clone()));
-                self.rom_path = Some(path.to_path_buf());
-                *self.player.lock().unwrap() = Some(p);
-                self.refresh_names(warnings);
-            }
-            Err(e) => self.error = Some(self.text.fmt("err_unsupported", &[("error", &e)])),
+impl From<SongLength> for LengthView {
+    fn from(l: SongLength) -> LengthView {
+        match l {
+            SongLength::Loops { intro, period } => LengthView::Loops {
+                intro: frames_to_secs(intro),
+                period: frames_to_secs(period),
+            },
+            SongLength::Ends { at } => LengthView::Ends {
+                at: frames_to_secs(at),
+            },
+            SongLength::Unknown => LengthView::Unknown,
         }
     }
+}
 
-    /// Switch the UI text and the game and song names to `language`.
-    fn set_language(&mut self, language: &str) {
-        self.text = Text::new(language);
-        if let Some(warnings) = self.with_player(|p| p.set_language(language)) {
-            self.refresh_names(warnings);
-        }
-    }
+#[derive(Debug, Clone, Serialize)]
+struct SongView {
+    index: usize,
+    title: String,
+    /// `None` while the song is still being analysed.
+    length: Option<LengthView>,
+}
 
-    /// Copy the names from the player after loading a ROM or switching languages.
-    fn refresh_names(&mut self, warnings: Vec<String>) {
-        if let Some((songs, game)) =
-            self.with_player(|p| (p.songs().to_vec(), format!("{} ({})", p.game(), p.title())))
-        {
-            self.songs = songs;
-            self.game = game;
-        }
-        self.error = (!warnings.is_empty()).then(|| warnings.join("\n"));
-    }
+#[derive(Debug, Clone, Serialize)]
+struct LanguageView {
+    code: &'static str,
+    name: &'static str,
+}
 
-    fn language_selector(&mut self, ui: &mut egui::Ui) {
-        let current = self.text.language().to_string();
-        let name = |code: &str| {
-            LANGUAGES
-                .iter()
-                .find(|(c, _)| *c == code)
-                .map_or(code.to_string(), |(_, n)| n.to_string())
-        };
-        let mut selected = current.clone();
-        egui::ComboBox::from_id_salt("language")
-            .selected_text(name(&current))
-            .show_ui(ui, |ui| {
-                for (code, label) in LANGUAGES {
-                    ui.selectable_value(&mut selected, code.to_string(), *label);
-                }
-            });
-        ui.label(self.text.get("language"));
-        if selected != current {
-            self.set_language(&selected);
-        }
+/// Everything about the loaded ROM and the settings, sent when any of it changes.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LibraryView {
+    language: String,
+    languages: Vec<LanguageView>,
+    text: HashMap<String, String>,
+    game: String,
+    title: String,
+    rom_path: Option<String>,
+    songs: Vec<SongView>,
+    loop_count: Option<u32>,
+    volume: f32,
+    muted: [bool; 4],
+    error: Option<String>,
+}
+
+/// The playback state, sent on every tick.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TickView {
+    current: Option<usize>,
+    /// `none` (no ROM), `stopped`, `playing`, `paused`, `finished` or `failed`.
+    state: &'static str,
+    failure: Option<String>,
+    /// Seconds since the song started.
+    position: f64,
+    length: LengthView,
+    levels: [f32; 4],
+    /// The latest output samples, oldest first.
+    scope: Vec<f32>,
+}
+
+impl App {
+    fn lock(&self) -> MutexGuard<'_, Session> {
+        self.session.lock().unwrap()
     }
 
     fn with_player<R>(&self, f: impl FnOnce(&mut Player) -> R) -> Option<R> {
         self.player.lock().unwrap().as_mut().map(f)
     }
 
-    fn play(&mut self, index: usize) {
-        if let Some(a) = &self.analyzer {
+    fn load_rom(&self, s: &mut Session, path: &Path) {
+        let rom = match std::fs::read(path) {
+            Ok(r) => r,
+            Err(e) => {
+                s.error = Some(
+                    s.text
+                        .fmt("err_read", &[("path", &path.display()), ("error", &e)]),
+                );
+                return;
+            }
+        };
+        match Player::new(rom, s.sample_rate) {
+            Ok(mut p) => {
+                p.volume = s.settings.volume;
+                let warnings = p.set_language(s.text.language());
+                s.lengths.clear();
+                s.analyzer = Some(Analyzer::start(p.rom(), p.driver().clone()));
+                s.rom_path = Some(path.to_path_buf());
+                *self.player.lock().unwrap() = Some(p);
+                self.refresh_names(s, warnings);
+            }
+            Err(e) => s.error = Some(s.text.fmt("err_unsupported", &[("error", &e)])),
+        }
+    }
+
+    /// Copy the names from the player after loading a ROM or switching languages.
+    fn refresh_names(&self, s: &mut Session, warnings: Vec<String>) {
+        if let Some((songs, game, title)) = self.with_player(|p| {
+            (
+                p.songs().to_vec(),
+                p.game().to_string(),
+                p.title().to_string(),
+            )
+        }) {
+            s.songs = songs;
+            s.game = game;
+            s.title = title;
+        }
+        s.error = (!warnings.is_empty()).then(|| warnings.join("\n"));
+    }
+
+    fn play(&self, s: &mut Session, index: usize) {
+        if let Some(a) = &s.analyzer {
             a.prioritize(index);
         }
-        let length = self.lengths.get(&index).copied();
-        let mode = self.loop_mode;
+        let length = s.lengths.get(&index).copied();
+        let count = s.settings.loop_count;
         self.with_player(|p| {
             p.play(index);
-            p.loop_count = mode.loop_count();
+            p.loop_count = count;
             if let Some(l) = length {
                 p.set_length(index, l);
             }
         });
     }
 
-    fn poll_background(&mut self) {
-        if let Some(a) = &self.analyzer {
-            while let Ok((index, length)) = a.results.try_recv() {
-                self.lengths.insert(index, length);
-                self.with_player(|p| p.set_length(index, length));
-            }
+    fn library(&self, s: &Session) -> LibraryView {
+        let muted = self
+            .with_player(|p| std::array::from_fn(|ch| p.muted(ch)))
+            .unwrap_or_default();
+        LibraryView {
+            language: s.text.language().to_string(),
+            languages: LANGUAGES
+                .iter()
+                .map(|&(code, name)| LanguageView { code, name })
+                .collect(),
+            text: s
+                .text
+                .table()
+                .into_iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
+            game: s.game.clone(),
+            title: s.title.clone(),
+            rom_path: s.rom_path.as_ref().map(|p| p.display().to_string()),
+            songs: s
+                .songs
+                .iter()
+                .map(|song| SongView {
+                    index: song.index,
+                    title: song.title.clone(),
+                    length: s.lengths.get(&song.index).map(|&l| l.into()),
+                })
+                .collect(),
+            loop_count: s.settings.loop_count,
+            volume: s.settings.volume,
+            muted,
+            error: s.error.clone(),
+        }
+    }
+
+    /// Advance the playlist and collect analysis results; returns the state for the UI and
+    /// whether the library changed.
+    fn tick(&self, s: &mut Session) -> (TickView, bool) {
+        let results: Vec<_> = s
+            .analyzer
+            .as_ref()
+            .map(|a| a.results.try_iter().collect())
+            .unwrap_or_default();
+        let changed = !results.is_empty();
+        for (index, length) in results {
+            s.lengths.insert(index, length);
+            self.with_player(|p| p.set_length(index, length));
         }
         // Advance the playlist when a song has finished.
-        let finished = self.with_player(|p| {
-            (p.state() == PlayState::Finished)
-                .then(|| p.current())
-                .flatten()
+        let finished = self
+            .with_player(|p| (p.state() == PlayState::Finished).then(|| p.current()))
+            .flatten()
+            .flatten();
+        if let Some(cur) = finished {
+            if !s.songs.is_empty() {
+                self.play(s, (cur + 1) % s.songs.len());
+            }
+        }
+        let info = self.with_player(|p| {
+            (
+                p.current(),
+                p.state(),
+                p.paused(),
+                p.position_frames(),
+                p.length(),
+                p.take_levels(),
+            )
         });
-        if let Some(Some(cur)) = finished {
-            if !self.songs.is_empty() {
-                self.play((cur + 1) % self.songs.len());
-            }
+        let scope = {
+            let samples = self.scope.lock().unwrap();
+            let skip = samples.len().saturating_sub(SCOPE_POINTS);
+            samples.iter().skip(skip).copied().collect()
+        };
+        let Some((current, state, paused, pos, length, levels)) = info else {
+            let view = TickView {
+                current: None,
+                state: "none",
+                failure: None,
+                position: 0.0,
+                length: LengthView::Unknown,
+                levels: [0.0; 4],
+                scope,
+            };
+            return (view, changed);
+        };
+        for (a, b) in s.levels.iter_mut().zip(levels) {
+            *a = (*a * 0.85).max(b);
         }
-        if let Some(lv) = self.with_player(|p| p.take_levels()) {
-            for (a, b) in self.levels.iter_mut().zip(lv) {
-                *a = (*a * 0.85).max(b);
-            }
-        }
+        let (state, failure) = match state {
+            PlayState::Stopped => ("stopped", None),
+            PlayState::Playing if paused => ("paused", None),
+            PlayState::Playing => ("playing", None),
+            PlayState::Finished => ("finished", None),
+            PlayState::Failed(e) => (
+                "failed",
+                Some(s.text.fmt("err_playback_ui", &[("error", &e)])),
+            ),
+        };
+        let view = TickView {
+            current,
+            state,
+            failure,
+            position: frames_to_secs(pos),
+            length: length.into(),
+            levels: s.levels,
+            scope,
+        };
+        (view, changed)
     }
 }
 
-impl eframe::App for GbPlayerApp {
-    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        let dropped = ui
-            .ctx()
-            .input(|i| i.raw.dropped_files.first().map(|f| f.path().to_path_buf()));
-        if let Some(path) = dropped {
-            self.load_rom(&path);
+fn emit_library(handle: &AppHandle, app: &App, s: &Session) {
+    let _ = handle.emit("library", app.library(s));
+}
+
+#[tauri::command]
+fn library(app: State<'_, App>) -> LibraryView {
+    app.library(&app.lock())
+}
+
+#[tauri::command]
+fn open_rom(handle: AppHandle, app: State<'_, App>, path: PathBuf) {
+    let mut s = app.lock();
+    app.load_rom(&mut s, &path);
+    emit_library(&handle, &app, &s);
+}
+
+#[tauri::command]
+async fn pick_rom(handle: AppHandle) {
+    let picked = handle
+        .dialog()
+        .file()
+        .add_filter("Game Boy ROM", &["gb", "gbc", "GB", "GBC"])
+        .blocking_pick_file();
+    let Some(Ok(path)) = picked.map(|f| f.into_path()) else {
+        return;
+    };
+    let app = handle.state::<App>();
+    let mut s = app.lock();
+    app.load_rom(&mut s, &path);
+    emit_library(&handle, &app, &s);
+}
+
+#[tauri::command]
+fn play(app: State<'_, App>, index: usize) {
+    let mut s = app.lock();
+    app.play(&mut s, index);
+}
+
+/// Play or pause; starts the current (or first) song again when nothing is playing.
+#[tauri::command]
+fn toggle(app: State<'_, App>) {
+    let mut s = app.lock();
+    let Some((current, state, paused)) = app.with_player(|p| (p.current(), p.state(), p.paused()))
+    else {
+        return;
+    };
+    match (current, state) {
+        (Some(_), PlayState::Playing) => {
+            app.with_player(|p| p.set_paused(!paused));
         }
-        self.poll_background();
+        (Some(c), _) => app.play(&mut s, c),
+        (None, _) if !s.songs.is_empty() => app.play(&mut s, 0),
+        _ => {}
+    }
+}
 
-        egui::Panel::top("top").show(ui, |ui| {
-            ui.horizontal(|ui| {
-                if ui.button(self.text.get("open_rom")).clicked() {
-                    if let Some(path) = rfd::FileDialog::new()
-                        .add_filter("Game Boy ROM", &["gb", "gbc", "GB", "GBC"])
-                        .pick_file()
-                    {
-                        self.load_rom(&path);
-                    }
+#[tauri::command]
+fn stop(app: State<'_, App>) {
+    app.with_player(|p| p.stop());
+}
+
+/// Play the song `delta` places away from the current one, wrapping around the list.
+#[tauri::command]
+fn skip(app: State<'_, App>, delta: i64) {
+    let mut s = app.lock();
+    let n = s.songs.len() as i64;
+    if n == 0 {
+        return;
+    }
+    let current = app.with_player(|p| p.current()).flatten();
+    let next = current.map_or(0, |c| (c as i64 + delta).rem_euclid(n));
+    app.play(&mut s, next as usize);
+}
+
+#[tauri::command]
+fn set_loop_count(handle: AppHandle, app: State<'_, App>, count: Option<u32>) {
+    let mut s = app.lock();
+    s.settings.loop_count = count;
+    app.with_player(|p| p.loop_count = count);
+    emit_library(&handle, &app, &s);
+}
+
+#[tauri::command]
+fn set_volume(app: State<'_, App>, volume: f32) {
+    let volume = volume.clamp(0.0, 1.0);
+    app.lock().settings.volume = volume;
+    app.with_player(|p| p.volume = volume);
+}
+
+#[tauri::command]
+fn set_muted(handle: AppHandle, app: State<'_, App>, channel: usize, muted: bool) {
+    if channel >= 4 {
+        return;
+    }
+    let s = app.lock();
+    app.with_player(|p| p.set_muted(channel, muted));
+    emit_library(&handle, &app, &s);
+}
+
+/// Switch the UI text and the game and song names to `language`, and remember it.
+#[tauri::command]
+fn set_language(handle: AppHandle, app: State<'_, App>, language: String) {
+    let mut s = app.lock();
+    s.text = Text::new(&language);
+    if let Some(warnings) = app.with_player(|p| p.set_language(&language)) {
+        app.refresh_names(&mut s, warnings);
+    }
+    s.settings.language = Some(language);
+    s.settings.save();
+    emit_library(&handle, &app, &s);
+}
+
+/// Start the audio output on a thread of its own, which keeps the stream alive.
+fn start_audio(player: SharedPlayer, scope: Scope, t: &Text) -> Result<u32, String> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let language = t.language().to_string();
+    std::thread::spawn(
+        move || match AudioOut::start(player, scope, &Text::new(&language)) {
+            Ok(out) => {
+                let _ = tx.send(Ok(out.sample_rate));
+                loop {
+                    std::thread::park();
                 }
-                if !self.game.is_empty() {
-                    ui.label(&self.game);
-                    ui.weak(self.text.fmt("song_count", &[("n", &self.songs.len())]));
-                }
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    self.language_selector(ui);
-                });
-            });
-            if let Some(e) = &self.error {
-                ui.colored_label(egui::Color32::from_rgb(220, 80, 80), e);
             }
-        });
-        egui::Panel::bottom("transport").show(ui, |ui| {
-            ui.add_space(4.0);
-            self.transport(ui);
-            ui.add_space(4.0);
-        });
-        egui::CentralPanel::default().show(ui, |ui| self.song_list(ui));
+            Err(e) => {
+                let _ = tx.send(Err(e));
+            }
+        },
+    );
+    rx.recv().unwrap_or_else(|e| Err(e.to_string()))
+}
 
-        ui.ctx().request_repaint_after(Duration::from_millis(33));
+/// Run the GUI. `language` overrides the saved language for this run.
+pub fn run(initial_rom: Option<PathBuf>, language: Option<String>) {
+    let settings = Settings::load();
+    let text = Text::new(
+        &language
+            .or_else(|| settings.language.clone())
+            .unwrap_or_else(system_language),
+    );
+    let player: SharedPlayer = Arc::new(Mutex::new(None));
+    let scope: Scope = Arc::new(Mutex::new(std::collections::VecDeque::with_capacity(
+        SCOPE_LEN,
+    )));
+    let (sample_rate, error) = match start_audio(player.clone(), scope.clone(), &text) {
+        Ok(rate) => (rate, None),
+        Err(e) => (48_000, Some(text.fmt("err_audio", &[("error", &e)]))),
+    };
+    let app = App {
+        player,
+        scope,
+        session: Mutex::new(Session {
+            text,
+            settings,
+            sample_rate,
+            error,
+            rom_path: None,
+            songs: Vec::new(),
+            game: String::new(),
+            title: String::new(),
+            lengths: HashMap::new(),
+            analyzer: None,
+            levels: [0.0; 4],
+        }),
+    };
+    let result = tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .manage(app)
+        .invoke_handler(tauri::generate_handler![
+            library,
+            open_rom,
+            pick_rom,
+            play,
+            toggle,
+            stop,
+            skip,
+            set_loop_count,
+            set_volume,
+            set_muted,
+            set_language,
+        ])
+        .setup(move |a| {
+            let handle = a.handle().clone();
+            if let Some(path) = initial_rom {
+                let app = handle.state::<App>();
+                let mut s = app.lock();
+                app.load_rom(&mut s, &path);
+            }
+            std::thread::spawn(move || loop {
+                std::thread::sleep(TICK);
+                let app = handle.state::<App>();
+                let mut s = app.lock();
+                let (view, changed) = app.tick(&mut s);
+                if changed {
+                    emit_library(&handle, &app, &s);
+                }
+                drop(s);
+                let _ = handle.emit("tick", view);
+            });
+            Ok(())
+        })
+        .build(tauri::generate_context!());
+    match result {
+        Ok(tauri_app) => tauri_app.run(|handle, event| {
+            if let RunEvent::Exit = event {
+                handle.state::<App>().lock().settings.save();
+            }
+        }),
+        Err(e) => eprintln!("{e}"),
     }
 }

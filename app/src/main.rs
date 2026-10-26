@@ -8,17 +8,16 @@ mod cli;
 mod console;
 mod gui;
 mod i18n;
+mod settings;
 
 use std::path::PathBuf;
 
-use eframe::egui;
-
-fn main() -> eframe::Result {
+fn main() {
     let mut args: Vec<std::ffi::OsString> = std::env::args_os().skip(1).collect();
     // `--lang <code>` applies to both the GUI and the CLI commands.
-    let mut language = i18n::system_language();
+    let mut language = None;
     if args.first().is_some_and(|a| a == "--lang") && args.len() >= 2 {
-        language = args[1].to_string_lossy().into_owned();
+        language = Some(args[1].to_string_lossy().into_owned());
         args.drain(..2);
     }
     if args
@@ -26,19 +25,8 @@ fn main() -> eframe::Result {
         .is_some_and(|a| a.to_string_lossy().starts_with("--"))
     {
         console::attach_console();
+        let language = language.unwrap_or_else(i18n::system_language);
         std::process::exit(cli::run(&args, &language));
     }
-    let initial_rom = args.first().map(PathBuf::from);
-    let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_title("GB Player")
-            .with_inner_size([720.0, 560.0])
-            .with_drag_and_drop(true),
-        ..Default::default()
-    };
-    eframe::run_native(
-        "GB Player",
-        options,
-        Box::new(|_cc| Ok(Box::new(gui::GbPlayerApp::new(initial_rom, &language)))),
-    )
+    gui::run(args.first().map(PathBuf::from), language);
 }

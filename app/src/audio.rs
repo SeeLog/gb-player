@@ -1,5 +1,6 @@
 //! Audio output: a cpal stream that pulls samples from the shared [`Player`].
 
+use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
@@ -10,13 +11,19 @@ use crate::i18n::Text;
 
 pub type SharedPlayer = Arc<Mutex<Option<Player>>>;
 
+/// The most recent output samples as mono, for the oscilloscope.
+pub type Scope = Arc<Mutex<VecDeque<f32>>>;
+
+/// Number of samples kept in a [`Scope`].
+pub const SCOPE_LEN: usize = 2048;
+
 pub struct AudioOut {
     _stream: Stream,
     pub sample_rate: u32,
 }
 
 impl AudioOut {
-    pub fn start(player: SharedPlayer, t: &Text) -> Result<AudioOut, String> {
+    pub fn start(player: SharedPlayer, scope: Scope, t: &Text) -> Result<AudioOut, String> {
         let host = cpal::default_host();
         let device = host.default_output_device().ok_or(t.get("err_no_device"))?;
         let supported = device.default_output_config().map_err(|e| e.to_string())?;
@@ -24,10 +31,10 @@ impl AudioOut {
         let config: StreamConfig = supported.into();
         let sample_rate = config.sample_rate;
         let stream = match format {
-            SampleFormat::F32 => build::<f32>(&device, config, player),
-            SampleFormat::I16 => build::<i16>(&device, config, player),
-            SampleFormat::I32 => build::<i32>(&device, config, player),
-            SampleFormat::U16 => build::<u16>(&device, config, player),
+            SampleFormat::F32 => build::<f32>(&device, config, player, scope),
+            SampleFormat::I16 => build::<i16>(&device, config, player, scope),
+            SampleFormat::I32 => build::<i32>(&device, config, player, scope),
+            SampleFormat::U16 => build::<u16>(&device, config, player, scope),
             f => return Err(t.fmt("err_sample_format", &[("format", &format!("{f:?}"))])),
         }?;
         stream.play().map_err(|e| e.to_string())?;
@@ -42,6 +49,7 @@ fn build<T>(
     device: &cpal::Device,
     config: StreamConfig,
     player: SharedPlayer,
+    scope: Scope,
 ) -> Result<Stream, String>
 where
     T: SizedSample + FromSample<f32>,
@@ -57,6 +65,12 @@ where
                 match player.lock().ok().as_deref_mut().and_then(|p| p.as_mut()) {
                     Some(p) => p.render(&mut stereo),
                     None => stereo.fill(0.0),
+                }
+                // Never make the audio thread wait for the UI.
+                if let Ok(mut s) = scope.try_lock() {
+                    s.extend(stereo.chunks(2).map(|f| (f[0] + f[1]) * 0.5));
+                    let excess = s.len().saturating_sub(SCOPE_LEN);
+                    s.drain(..excess);
                 }
                 for (out, s) in data.chunks_mut(channels).zip(stereo.chunks(2)) {
                     let (l, r) = (s[0].clamp(-1.0, 1.0), s[1].clamp(-1.0, 1.0));

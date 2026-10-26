@@ -65,6 +65,15 @@ impl Text {
             .map_or(key, String::as_str)
     }
 
+    /// Every key with its text, for the web UI, which fills in the placeholders itself.
+    pub fn table(&self) -> HashMap<&str, &str> {
+        let mut all = HashMap::new();
+        for t in self.tables.iter().rev() {
+            all.extend(t.iter().map(|(k, v)| (k.as_str(), v.as_str())));
+        }
+        all
+    }
+
     /// The text for `key` with each `{name}` replaced by its value.
     pub fn fmt(&self, key: &str, args: &[(&str, &dyn Display)]) -> String {
         let mut s = self.get(key).to_string();
@@ -96,5 +105,7 @@ mod tests {
         let fr = Text::new("fr");
         assert_eq!(fr.fmt("song_count", &[("n", &3)]), "3 songs");
         assert_eq!(fr.get("no_such_key"), "no_such_key");
+        assert_eq!(ja.table()["search"], "検索");
+        assert_eq!(fr.table()["search"], "Search");
     }
 }

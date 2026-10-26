@@ -4,3 +4,6 @@
 *.sav
 *.wav
 /rom/
+/node_modules
+/ui/dist
+/app/gen/schemas

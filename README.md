@@ -6,7 +6,7 @@ Game Boy / Game Boy Color のROM(.gb / .gbc)を読み込み、ゲーム自身の
 - SM83 CPU・MBC1/2/3/5・APU(4チャンネル)を実装した最小限のエミュレーションコア
 - ゲームの「曲を再生する関数」と「毎フレーム呼ばれる更新関数」をROM内から自動検出して呼び出す(GBS方式)
 - ループ点を自動解析し、無限ループ再生/N回ループ後フェードアウトして次の曲へ、を選択可能
-- チャンネルごとのミュートとレベルメーター
+- チャンネルごとのミュートとレベルメーター、出力波形のオシロスコープ表示
 - 曲名とUIは日本語・英語に対応(OSの言語に合わせて自動選択、切り替え可)
 
 ## 対応ソフト
@@ -23,13 +23,31 @@ Game Boy / Game Boy Color のROM(.gb / .gbc)を読み込み、ゲーム自身の
 
 ## 使い方
 
+GUIは [Tauri](https://tauri.app/) 製で、画面はWeb技術(Svelte + TypeScript、`ui/`)で書いています。
+GUIのビルドには Rust に加えて [bun](https://bun.sh/) が必要です。
+
 ```sh
-cargo run --release                      # GUIを起動(ROMは「ROMを開く…」かドラッグ&ドロップ)
-cargo run --release -- pokemon.gb        # ROMを指定して起動
-cargo run --release -- --info pokemon.gb # 検出結果と全曲のループ長を表示
-cargo run --release -- --wav pokemon.gb 1 out.wav 2   # 1曲目を2ループ+フェードでWAV出力
-cargo run --release -- --lang en pokemon.gb           # 言語を指定して起動(既定はOSの言語。GUIの右上でも切り替え可)
+bun install                              # 初回のみ
+bun run tauri dev                        # 開発用に起動(画面の変更はその場で反映)
+bun run tauri dev -- -- pokemon.gb       # ROMを指定して開発用に起動
+bun run tauri build --no-bundle          # target/release/gb-player(.exe) をビルド
+bun run tauri build                      # Windowsならインストーラ(NSIS)も作る
 ```
+
+ビルドしたexeの使い方:
+
+```sh
+gb-player                                # GUIを起動(ROMは「ROMを開く…」かドラッグ&ドロップ)
+gb-player pokemon.gb                     # ROMを指定して起動
+gb-player --info pokemon.gb              # 検出結果と全曲のループ長を表示
+gb-player --wav pokemon.gb 1 out.wav 2   # 1曲目を2ループ+フェードでWAV出力
+gb-player --lang en pokemon.gb           # 言語を指定して起動(既定は前回選んだ言語かOSの言語。GUIの右上でも切り替え可)
+```
+
+`--info` / `--wav` は bun なしの `cargo run --release -- --info pokemon.gb` でも動きます。
+
+GUIのキー操作: Space 再生/一時停止、← → 前/次の曲、Ctrl+O ROMを開く、Ctrl+F 検索。
+言語・音量・ループ設定は `%APPDATA%\gb-player\settings.toml`(Linux/macOSは `~/.config/gb-player/settings.toml`)に保存されます。
 
 ## 曲名
 
@@ -58,9 +76,12 @@ rustup default stable-x86_64-pc-windows-msvc
 
 `rustup show` の "Default host" が `x86_64-pc-windows-msvc` になっていればOKです。
 
+WebView2 は Windows 10/11 に標準で入っています。
+
 ### Linux
 
-ALSA の開発パッケージ(Debian/Ubuntuなら `libasound2-dev`)が必要です。
+ALSA と WebKitGTK の開発パッケージが必要です(Debian/Ubuntuなら
+`libasound2-dev libwebkit2gtk-4.1-dev libsoup-3.0-dev librsvg2-dev`)。
 
 ### macOS
 
@@ -71,7 +92,8 @@ ALSA の開発パッケージ(Debian/Ubuntuなら `libasound2-dev`)が必要で�
 ```
 crates/gb-core   エミュレーションコア(CPU / メモリマップ / MBC / APU)
 crates/gb-music  サウンドドライバ検出、曲リスト、再生とループ解析
-app              GUI(egui/eframe)と音声出力(cpal)、CLI
+app              GUIのRust側(Tauri)と音声出力(cpal)、CLI
+ui               GUIの画面(Svelte + TypeScript、bun/Viteでビルド)
 songdb           曲データベース(ゲームの照合、曲ID → 曲キー、言語ごとの曲名)
 tools            曲データベースの生成スクリプト
 ```
