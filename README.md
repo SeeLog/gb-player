@@ -76,7 +76,8 @@ rustup default stable-x86_64-pc-windows-msvc
 
 `rustup show` の "Default host" が `x86_64-pc-windows-msvc` になっていればOKです。
 
-WebView2 は Windows 10/11 に標準で入っています。
+bun は `winget install Oven-sh.Bun`(または `powershell -c "irm bun.sh/install.ps1 | iex"`)で入れられます。
+入れた後はPATHを反映させるためにターミナルを開き直してください。WebView2 は Windows 10/11 に標準で入っています。
 
 ### Linux
 
