@@ -101,6 +101,25 @@ impl ChannelProbe {
         keys
     }
 
+    /// Frames left on each channel's current note. A rise means a new note was read, which
+    /// catches a channel whose loop is a single note and whose position therefore never
+    /// changes between frames.
+    pub fn note_timers(&self, m: &mut Machine) -> [u8; 4] {
+        let mut timers = [0; 4];
+        for (c, t) in timers.iter_mut().enumerate() {
+            let c16 = c as u16;
+            *t = match *self {
+                // wChannelNoteDelayCounters
+                ChannelProbe::Gen1 {
+                    command_pointers: p,
+                } => m.read(p + 32 + 8 * 18 + c16),
+                // channel_struct NoteDuration
+                ChannelProbe::Gen2 { channel1 } => m.read(channel1 + 0x32 * c16 + 0x15),
+            };
+        }
+        timers
+    }
+
     /// Check right after starting `song` that the probe points at real channel state.
     pub fn validate(&self, m: &mut Machine, song: &Song) -> bool {
         match *self {

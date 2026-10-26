@@ -102,6 +102,7 @@ fn analyze_score(
 ) -> Result<SongLength, CallError> {
     let mut seen: [HashMap<ChannelKey, u32>; 4] = Default::default();
     let mut prev = probe.read(m);
+    let mut prev_timers = probe.note_timers(m);
     let mut state = prev.map(|k| {
         if k.is_some() {
             ChannelLoop::Searching
@@ -120,8 +121,10 @@ fn analyze_score(
         }
         run_frame(m, driver)?;
         let keys = probe.read(m);
+        let timers = probe.note_timers(m);
         for c in 0..4 {
-            if !matches!(state[c], ChannelLoop::Searching) || keys[c] == prev[c] {
+            let new_note = keys[c] != prev[c] || timers[c] > prev_timers[c];
+            if !matches!(state[c], ChannelLoop::Searching) || !new_note {
                 continue;
             }
             match keys[c] {
@@ -140,6 +143,7 @@ fn analyze_score(
             }
         }
         prev = keys;
+        prev_timers = timers;
     }
 
     let mut intro = 0;
