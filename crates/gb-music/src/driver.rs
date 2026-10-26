@@ -86,12 +86,13 @@ impl ChannelProbe {
                     })
                 }
                 ChannelProbe::Gen2 { channel1 } => {
+                    // channel_struct: MusicAddress +$06, LastMusicAddress +$08, LoopCount +$18.
                     let base = channel1 + 0x32 * c16;
                     let flags = m.read(base + 3);
                     (flags & 1 != 0).then(|| ChannelKey {
                         address: m.read16(base + 6),
                         return_address: m.read16(base + 8),
-                        loop_count: m.read(base + 0x16),
+                        loop_count: m.read(base + 0x18),
                         flags: flags & 0x06,
                     })
                 }
