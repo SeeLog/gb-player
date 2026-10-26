@@ -18,7 +18,8 @@ pub const BUILTIN: [(&str, &str); 4] = [
 ];
 
 /// The colour tokens a theme may set, the CSS custom properties without the leading `--`.
-pub const TOKENS: [&str; 18] = [
+pub const TOKENS: [&str; 19] = [
+    "backdrop",
     "bg",
     "panel",
     "panel-2",
@@ -432,7 +433,7 @@ mod tests {
         let mut warnings = Vec::new();
         let theme = parse(
             Path::new("night.toml"),
-            "base = \"nope\"\n[colors]\nbg = \"#000\"\nfoo = \"#fff\"\ntext = \"red\"\n",
+            "base = \"nope\"\n[colors]\nbackdrop = \"#123\"\nbg = \"#000\"\nfoo = \"#fff\"\ntext = \"red\"\n",
             &t,
             &mut warnings,
         )
@@ -440,7 +441,8 @@ mod tests {
         assert_eq!(theme.id, "custom:night");
         assert_eq!(theme.name, "night");
         assert_eq!(theme.base, "dmg");
-        assert_eq!(theme.colors.len(), 1);
+        assert_eq!(theme.colors.len(), 2);
+        assert_eq!(theme.colors["backdrop"], "#123");
         assert_eq!(theme.colors["bg"], "#000");
         assert_eq!(warnings.len(), 3);
     }

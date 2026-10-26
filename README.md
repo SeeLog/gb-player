@@ -75,10 +75,12 @@ blur = 6                    # ぼかし(0〜40 px)
 dim = 0.2                   # 暗さ(0〜1)
 ```
 
-背景画像はウィンドウ全体の後ろに描かれ、その上に `bg` の色が重なります。`bg` や `panel` を半透明にすると、
-画像に好きな色を乗せたような見た目になります。エディタの「画像を選ぶ…」で選んだ画像は `themes\images\` にコピーされます。
+重なり方は奥から `backdrop`(背景画像があるときは画像)→ `bg` → パネル類です。内蔵テーマの `bg` と
+`panel` `panel-2` は最初から半透明で、`backdrop` の上に重なると不透明な色と同じ見た目になるように
+作ってあるので、画像を設定するだけで透けて見えます。`bg` を不透明に近くすると画像はほとんど見えなくなります
+(エディタに注意が出ます)。エディタの「画像を選ぶ…」で選んだ画像は `themes\images\` にコピーされます。
 
-色の名前は `bg` `panel` `panel-2` `line` `text` `muted` `faint` `accent` `accent-2` `accent-ink`
+色の名前は `backdrop` `bg` `panel` `panel-2` `line` `text` `muted` `faint` `accent` `accent-2` `accent-ink`
 `lcd-hi` `lcd` `lcd-lo` `lcd-ink` `lcd-grid` `bezel` `overlay` `danger` です。値は `#rgb` / `#rrggbb` /
 `#rrggbbaa` か、数値だけの `rgb()` `rgba()` `hsl()` `hsla()` に限ります。知らない名前や色でない値は無視され、
 画面上部に警告が出ます。

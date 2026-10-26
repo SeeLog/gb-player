@@ -480,7 +480,8 @@
     position: relative;
     height: 6px;
     border-radius: 3px;
-    background: var(--bg);
+    /* bg as it looks over the backdrop, whatever is under the meter. */
+    background: linear-gradient(var(--bg), var(--bg)), var(--backdrop);
     overflow: hidden;
   }
   .level {

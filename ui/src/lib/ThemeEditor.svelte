@@ -25,6 +25,8 @@
   const initial: Draft = $state.snapshot(draft);
   const builtins = $derived(library.themes.filter((th) => !th.custom));
   const baseColors = $derived(paletteColors(draft.base));
+  /** bg so opaque that a background image barely shows through it. */
+  const bgHidesImage = $derived(splitColor(value("bg")).alpha >= 0.9);
   /** Text being typed into a colour field, which may not be a colour yet. */
   let typing = $state<Record<string, string>>({});
   let error = $state<string | null>(null);
@@ -99,9 +101,14 @@
 
 <svelte:window onkeydown={(e) => e.key === "Escape" && onclose()} />
 
-<!-- Painted with the base palette's own (opaque) panel colour so it stays readable over
-     translucent theme colours. -->
-<aside class="editor" aria-label={t("theme_editor")} style:background={baseColors.panel}>
+<!-- Painted solid with the base palette's panel over its bg and backdrop, so it stays readable
+     whatever the theme colours and background image are. -->
+<aside
+  class="editor"
+  aria-label={t("theme_editor")}
+  style:background="linear-gradient({baseColors.panel}, {baseColors.panel}),
+    linear-gradient({baseColors.bg}, {baseColors.bg}), {baseColors.backdrop}"
+>
   <div class="head">
     <h2>{t("theme_editor")}</h2>
     <button class="icon" onclick={onclose} title={t("theme_close")} aria-label={t("theme_close")}>
@@ -136,6 +143,9 @@
       </div>
       {#if draft.background}
         {@const bg = draft.background}
+        {#if bgHidesImage}
+          <p class="hint">{t("theme_bg_opaque")}</p>
+        {/if}
         <label class="setting">
           <span>{t("theme_fit")}</span>
           <select
@@ -332,6 +342,15 @@
     white-space: nowrap;
     font-size: 12px;
     color: var(--muted);
+  }
+  .hint {
+    margin: 0;
+    padding: 6px 8px;
+    border-radius: 7px;
+    font-size: 12px;
+    color: var(--text);
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
   }
   .setting {
     display: grid;

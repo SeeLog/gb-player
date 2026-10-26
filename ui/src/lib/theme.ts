@@ -5,6 +5,7 @@ import type { Background } from "./types";
 
 /** The colour tokens, the CSS custom properties without `--` (mirrors `TOKENS` in themes.rs). */
 export const TOKENS = [
+  "backdrop",
   "bg",
   "panel",
   "panel-2",

@@ -313,13 +313,14 @@
     cursor: pointer;
   }
   .lang option {
-    background: var(--panel-2);
+    /* Menus are drawn on their own, so give them a solid colour. */
+    background: var(--backdrop);
   }
   .error {
     padding: 8px 16px;
-    background: color-mix(in srgb, var(--danger) 16%, var(--bg));
+    background: color-mix(in srgb, var(--danger) 16%, transparent);
     color: var(--danger);
-    border-bottom: 1px solid color-mix(in srgb, var(--danger) 35%, var(--bg));
+    border-bottom: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
     white-space: pre-wrap;
   }
   main {
@@ -367,7 +368,7 @@
     inset: 0;
     display: grid;
     place-items: center;
-    background: color-mix(in srgb, var(--bg) 75%, transparent);
+    background: color-mix(in srgb, var(--backdrop) 75%, transparent);
     pointer-events: none;
   }
   .drop div {

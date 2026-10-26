@@ -4,13 +4,17 @@
 }
 
 /* Built-in palettes, picked with data-palette on <html> ("dmg" by default). Not tied to
-   :root, so the theme editor can read a palette's colours from a probe element. */
+   :root, so the theme editor can read a palette's colours from a probe element.
+   Layers from the back: --backdrop (or the theme's background image instead), then --bg, then
+   the panels. bg and the panels are translucent so an image shows through; over the backdrop
+   they add up to the same colours as fully opaque ones would. */
 :root,
 [data-palette="dmg"] {
   color-scheme: dark;
-  --bg: #0b140c;
-  --panel: #112014;
-  --panel-2: #18291a;
+  --backdrop: #040905;
+  --bg: #101b1199;
+  --panel: #122316cc;
+  --panel-2: #1a2b1bcc;
   --line: #26392a;
   --text: #dbe8c8;
   --muted: #8fa886;
@@ -30,9 +34,10 @@
 
 [data-palette="pocket"] {
   color-scheme: dark;
-  --bg: #121314;
-  --panel: #191b1d;
-  --panel-2: #212427;
+  --backdrop: #08090a;
+  --bg: #191a1b99;
+  --panel: #1b1d1fcc;
+  --panel-2: #23262acc;
   --line: #2f3337;
   --text: #e6e7e8;
   --muted: #9a9fa5;
@@ -52,9 +57,10 @@
 
 [data-palette="color"] {
   color-scheme: dark;
-  --bg: #0e1024;
-  --panel: #151833;
-  --panel-2: #1d2142;
+  --backdrop: #060714;
+  --bg: #13162f99;
+  --panel: #171a37cc;
+  --panel-2: #1f2346cc;
   --line: #2b3060;
   --text: #e8e9f5;
   --muted: #a0a4c8;
@@ -74,9 +80,10 @@
 
 [data-palette="light"] {
   color-scheme: light;
-  --bg: #f3f2ec;
-  --panel: #fbfaf6;
-  --panel-2: #e9e7df;
+  --backdrop: #ffffff;
+  --bg: #ebe9df99;
+  --panel: #fdfcf9cc;
+  --panel-2: #e4e2d9cc;
   --line: #d4d1c6;
   --text: #1f241c;
   --muted: #535b4e;
@@ -106,8 +113,8 @@ body,
 }
 
 body {
-  /* Under a translucent --bg (the theme colours are drawn by .shell, over any background image). */
-  background: #000;
+  /* The back layer; .shell draws --bg over it (and over any background image). */
+  background: var(--backdrop);
   color: var(--text);
   font: 14px/1.45 var(--font);
   user-select: none;
@@ -147,7 +154,8 @@ select {
 ::-webkit-scrollbar-thumb {
   background: var(--line);
   border-radius: 5px;
-  border: 2px solid var(--panel);
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
