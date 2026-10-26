@@ -13,6 +13,7 @@ export const api = {
   stop: () => invoke<void>("stop"),
   skip: (delta: number) => invoke<void>("skip", { delta }),
   setLoopCount: (count: number | null) => invoke<void>("set_loop_count", { count }),
+  setAutoNext: (autoNext: boolean) => invoke<void>("set_auto_next", { autoNext }),
   setVolume: (volume: number) => invoke<void>("set_volume", { volume }),
   setMuted: (channel: number, muted: boolean) => invoke<void>("set_muted", { channel, muted }),
   setLanguage: (language: string) => invoke<void>("set_language", { language }),

@@ -10,8 +10,10 @@ pub struct Settings {
     /// `None` follows the OS language.
     pub language: Option<String>,
     pub volume: f32,
-    /// Loops before fading out to the next song; `None` loops forever.
+    /// Loops before fading out; `None` loops forever.
     pub loop_count: Option<u32>,
+    /// Whether a finished song is followed by the next one.
+    pub auto_next: bool,
 }
 
 impl Default for Settings {
@@ -20,6 +22,7 @@ impl Default for Settings {
             language: None,
             volume: 0.8,
             loop_count: None,
+            auto_next: true,
         }
     }
 }
@@ -65,11 +68,13 @@ mod tests {
             language: Some("ja".into()),
             volume: 0.5,
             loop_count: Some(2),
+            auto_next: false,
         };
         let back: Settings = toml::from_str(&toml::to_string(&s).unwrap()).unwrap();
         assert_eq!(back, s);
         let partial: Settings = toml::from_str("volume = 0.25").unwrap();
         assert_eq!(partial.volume, 0.25);
         assert_eq!(partial.loop_count, None);
+        assert!(partial.auto_next);
     }
 }

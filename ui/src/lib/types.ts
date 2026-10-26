@@ -21,6 +21,7 @@ export interface Library {
   romPath: string | null;
   songs: SongView[];
   loopCount: number | null;
+  autoNext: boolean;
   volume: number;
   muted: [boolean, boolean, boolean, boolean];
   error: string | null;

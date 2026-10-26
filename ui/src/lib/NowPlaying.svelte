@@ -128,6 +128,16 @@
     <div class="hint">
       {library.loopCount === null ? t("loop_forever") : t("loop_playlist", { n: library.loopCount })}
     </div>
+    <label class="switch">
+      <input
+        type="checkbox"
+        role="switch"
+        checked={library.autoNext}
+        onchange={(e) => api.setAutoNext(e.currentTarget.checked)}
+      />
+      <span class="track"><span class="thumb"></span></span>
+      <span>{t("auto_next")}</span>
+    </label>
   </div>
 
   <div class="group volume">
@@ -353,6 +363,57 @@
   .hint {
     font-size: 12px;
     color: var(--muted);
+  }
+  .switch {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 4px;
+    font-size: 13px;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .switch input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .track {
+    position: relative;
+    flex: none;
+    width: 34px;
+    height: 20px;
+    border-radius: 10px;
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    transition: background 0.15s;
+  }
+  .thumb {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--muted);
+    transition:
+      transform 0.15s,
+      background 0.15s;
+  }
+  .switch input:checked + .track {
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+  .switch input:checked + .track .thumb {
+    transform: translateX(14px);
+    background: var(--accent-ink);
+  }
+  .switch input:focus-visible + .track {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  .switch:hover {
+    color: var(--text);
   }
   .volume {
     flex-direction: row;

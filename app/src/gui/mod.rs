@@ -92,6 +92,7 @@ struct LibraryView {
     rom_path: Option<String>,
     songs: Vec<SongView>,
     loop_count: Option<u32>,
+    auto_next: bool,
     volume: f32,
     muted: [bool; 4],
     error: Option<String>,
@@ -207,6 +208,7 @@ impl App {
                 })
                 .collect(),
             loop_count: s.settings.loop_count,
+            auto_next: s.settings.auto_next,
             volume: s.settings.volume,
             muted,
             error: s.error.clone(),
@@ -226,13 +228,13 @@ impl App {
             s.lengths.insert(index, length);
             self.with_player(|p| p.set_length(index, length));
         }
-        // Advance the playlist when a song has finished.
+        // Advance the playlist when a song has finished, if asked to.
         let finished = self
             .with_player(|p| (p.state() == PlayState::Finished).then(|| p.current()))
             .flatten()
             .flatten();
         if let Some(cur) = finished {
-            if !s.songs.is_empty() {
+            if s.settings.auto_next && !s.songs.is_empty() {
                 self.play(s, (cur + 1) % s.songs.len());
             }
         }
@@ -372,6 +374,13 @@ fn set_loop_count(handle: AppHandle, app: State<'_, App>, count: Option<u32>) {
 }
 
 #[tauri::command]
+fn set_auto_next(handle: AppHandle, app: State<'_, App>, auto_next: bool) {
+    let mut s = app.lock();
+    s.settings.auto_next = auto_next;
+    emit_library(&handle, &app, &s);
+}
+
+#[tauri::command]
 fn set_volume(app: State<'_, App>, volume: f32) {
     let volume = volume.clamp(0.0, 1.0);
     app.lock().settings.volume = volume;
@@ -466,6 +475,7 @@ pub fn run(initial_rom: Option<PathBuf>, language: Option<String>) {
             stop,
             skip,
             set_loop_count,
+            set_auto_next,
             set_volume,
             set_muted,
             set_language,
