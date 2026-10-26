@@ -1,0 +1,9 @@
+[package]
+name = "gb-music"
+description = "Plays in-game music of Game Boy titles by driving their sound engines"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+gb-core = { path = "../gb-core" }

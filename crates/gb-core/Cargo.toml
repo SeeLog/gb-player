@@ -1,0 +1,11 @@
+[package]
+name = "gb-core"
+description = "Minimal Game Boy emulation core (SM83 CPU, MBC, APU) for music playback"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+
+[dev-dependencies]
+serde_json = "1"

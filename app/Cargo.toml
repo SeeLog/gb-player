@@ -1,0 +1,12 @@
+[package]
+name = "gb-player"
+description = "GUI player for Game Boy game music"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+gb-music = { path = "../crates/gb-music" }
+eframe = "0.37"
+cpal = "0.18"
+rfd = "0.17"
