@@ -15,10 +15,11 @@
         "label": "main",
         "title": "GB Player",
         "width": 1040,
-        "height": 680,
+        "height": 760,
         "minWidth": 760,
-        "minHeight": 520,
-        "backgroundColor": "#0f1311"
+        "minHeight": 600,
+        "decorations": false,
+        "backgroundColor": "#0b140c"
       }
     ],
     "security": {

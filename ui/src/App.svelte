@@ -8,7 +8,8 @@
   import SongList from "./lib/SongList.svelte";
   import NowPlaying from "./lib/NowPlaying.svelte";
   import ThemeEditor from "./lib/ThemeEditor.svelte";
-  import { applyTheme, type Draft } from "./lib/theme";
+  import WindowControls from "./lib/WindowControls.svelte";
+  import { applyTheme, imageUrl, type Draft } from "./lib/theme";
 
   let library = $state<Library | null>(null);
   let tick = $state<Tick | null>(null);
@@ -44,12 +45,35 @@
     else if (theme) applyTheme(theme.base, theme.colors);
   });
 
+  // The background image of the shown theme, loaded as a data: URL.
+  const background = $derived(draft ? draft.background : (theme?.background ?? null));
+  let backgroundUrl = $state<string | null>(null);
+  let backgroundError = $state<string | null>(null);
+  $effect(() => {
+    const image = background?.image;
+    backgroundError = null;
+    if (!image) {
+      backgroundUrl = null;
+      return;
+    }
+    let current = true;
+    imageUrl(image).then(
+      (url) => current && (backgroundUrl = url),
+      (e) => current && ((backgroundUrl = null), (backgroundError = String(e))),
+    );
+    return () => (current = false);
+  });
+  const errorText = $derived(
+    [library?.error, backgroundError].filter(Boolean).join("\n"),
+  );
+
   function editTheme() {
     if (!theme) return;
     draft = {
       name: theme.custom ? theme.name : t("theme_new_name"),
       base: theme.base,
       colors: { ...theme.colors },
+      background: theme.background && { ...theme.background },
     };
   }
 
@@ -76,20 +100,35 @@
 
 <svelte:window onkeydown={onKey} />
 
+{#if background && backgroundUrl}
+  <div class="backdrop" aria-hidden="true">
+    <div
+      class="image"
+      style:background-image="url({backgroundUrl})"
+      style:background-size={background.fit === "tile" ? "auto" : background.fit}
+      style:background-repeat={background.fit === "tile" ? "repeat" : "no-repeat"}
+      style:filter={background.blur > 0 ? `blur(${background.blur}px)` : null}
+      style:inset="{-background.blur * 2}px"
+    ></div>
+    <div class="dim" style:opacity={background.dim}></div>
+  </div>
+{/if}
+
 <div class="shell">
-  <header>
-    <div class="brand">
+  <!-- The window has no system frame: this bar is the title bar (drag it, double-click it). -->
+  <header data-tauri-drag-region>
+    <div class="brand" data-tauri-drag-region>
       <span class="logo" aria-hidden="true"></span>
       <span>GB Player</span>
     </div>
     {#if library?.game}
-      <div class="game" title={library.romPath ?? ""}>
+      <div class="game" title={library.romPath ?? ""} data-tauri-drag-region>
         <span class="game-name">{library.game}</span>
         <span class="badge">{library.title}</span>
         <span class="count">{t("song_count", { n: library.songs.length })}</span>
       </div>
     {/if}
-    <div class="spacer"></div>
+    <div class="spacer" data-tauri-drag-region></div>
     <button class="open" onclick={() => api.pickRom()} title="Ctrl+O">
       <Icon name="open" size={18} />
       <span>{t("open_rom")}</span>
@@ -125,10 +164,11 @@
         </select>
       </label>
     {/if}
+    <WindowControls {t} />
   </header>
 
-  {#if library?.error}
-    <div class="error" role="alert">{library.error}</div>
+  {#if errorText}
+    <div class="error" role="alert">{errorText}</div>
   {/if}
 
   {#if library && hasRom}
@@ -164,18 +204,41 @@
 </div>
 
 <style>
+  .backdrop {
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+  }
+  .backdrop .image {
+    position: absolute;
+    background-position: center;
+  }
+  .backdrop .dim {
+    position: absolute;
+    inset: 0;
+    background: #000;
+  }
   .shell {
+    position: relative;
     height: 100%;
     display: flex;
     flex-direction: column;
+    background: var(--bg);
   }
   header {
     display: flex;
     align-items: center;
-    gap: 14px;
-    padding: 10px 16px;
+    gap: 10px;
+    height: 40px;
+    flex: none;
+    padding-left: 12px;
     border-bottom: 1px solid var(--line);
     background: var(--panel);
+  }
+  /* Only the bar itself drags the window, so let clicks on its text fall through to it. */
+  .brand > *,
+  .game > * {
+    pointer-events: none;
   }
   .brand {
     display: flex;
@@ -227,8 +290,8 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    height: 32px;
-    padding: 0 12px;
+    height: 30px;
+    padding: 0 10px;
     border-radius: 8px;
     background: var(--panel-2);
     border: 1px solid var(--line);
@@ -239,7 +302,7 @@
     border-color: var(--faint);
   }
   .square {
-    width: 32px;
+    width: 30px;
     padding: 0;
     justify-content: center;
   }

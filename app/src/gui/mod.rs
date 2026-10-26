@@ -11,12 +11,13 @@ use gb_music::{frames_to_secs, PlayState, Player, Song, SongLength};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, RunEvent, State};
 use tauri_plugin_dialog::DialogExt;
+use tauri_plugin_window_state::StateFlags;
 
 use crate::analyzer::Analyzer;
 use crate::audio::{AudioOut, Scope, SharedPlayer, SCOPE_LEN};
 use crate::i18n::{system_language, Text};
 use crate::settings::Settings;
-use crate::themes::{self, Theme};
+use crate::themes::{self, Background, Theme};
 
 /// How often the playback state is sent to the UI.
 const TICK: Duration = Duration::from_millis(33);
@@ -451,14 +452,43 @@ fn save_theme(
     name: String,
     base: String,
     colors: BTreeMap<String, String>,
+    background: Option<Background>,
 ) -> Result<String, String> {
     let mut s = app.lock();
-    let id = themes::save(&name, &base, colors, &s.text)?;
+    let id = themes::save(&name, &base, colors, background, &s.text)?;
     app.reload_themes(&mut s);
     s.settings.theme = id.clone();
     s.settings.save();
     emit_library(&handle, &app, &s);
     Ok(id)
+}
+
+/// A background image of the themes folder as a `data:` URL.
+#[tauri::command]
+fn theme_image(app: State<'_, App>, image: String) -> Result<String, String> {
+    themes::image_url(&image, &app.lock().text)
+}
+
+/// Let the user pick a background image and copy it into the themes folder; returns its name
+/// for the theme, or `None` when nothing was picked.
+#[tauri::command]
+async fn pick_theme_image(handle: AppHandle) -> Result<Option<String>, String> {
+    let picked = handle
+        .dialog()
+        .file()
+        .add_filter(
+            "Image",
+            &[
+                "png", "jpg", "jpeg", "webp", "gif", "PNG", "JPG", "JPEG", "WEBP", "GIF",
+            ],
+        )
+        .blocking_pick_file();
+    let Some(Ok(path)) = picked.map(|f| f.into_path()) else {
+        return Ok(None);
+    };
+    let app = handle.state::<App>();
+    let text = Text::new(app.lock().text.language());
+    themes::import_image(&path, &text).map(Some)
 }
 
 /// Start the audio output on a thread of its own, which keeps the stream alive.
@@ -518,6 +548,12 @@ pub fn run(initial_rom: Option<PathBuf>, language: Option<String>) {
     };
     let result = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(
+            // Only the size and place: the frame comes from tauri.conf.json.
+            tauri_plugin_window_state::Builder::new()
+                .with_state_flags(StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED)
+                .build(),
+        )
         .manage(app)
         .invoke_handler(tauri::generate_handler![
             library,
@@ -534,6 +570,8 @@ pub fn run(initial_rom: Option<PathBuf>, language: Option<String>) {
             set_language,
             set_theme,
             save_theme,
+            theme_image,
+            pick_theme_image,
         ])
         .setup(move |a| {
             let handle = a.handle().clone();

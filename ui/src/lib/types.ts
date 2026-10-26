@@ -19,7 +19,19 @@ export interface Theme {
   base: string;
   /** Token (CSS custom property without `--`) to colour. */
   colors: Record<string, string>;
+  background: Background | null;
   custom: boolean;
+}
+
+/** An image drawn behind the window, under the `bg` colour. */
+export interface Background {
+  /** A path inside the themes folder, such as `images/sky.png`. */
+  image: string;
+  fit: "cover" | "contain" | "tile";
+  /** Blur radius in pixels, 0 to 40. */
+  blur: number;
+  /** How much to darken the image, 0 to 1. */
+  dim: number;
 }
 
 export interface Library {

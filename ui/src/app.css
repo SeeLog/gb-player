@@ -106,7 +106,8 @@ body,
 }
 
 body {
-  background: var(--bg);
+  /* Under a translucent --bg (the theme colours are drawn by .shell, over any background image). */
+  background: #000;
   color: var(--text);
   font: 14px/1.45 var(--font);
   user-select: none;

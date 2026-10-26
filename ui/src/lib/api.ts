@@ -2,7 +2,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { Library, Tick } from "./types";
+import type { Background, Library, Tick } from "./types";
 
 export const api = {
   library: () => invoke<Library>("library"),
@@ -17,8 +17,14 @@ export const api = {
   setVolume: (volume: number) => invoke<void>("set_volume", { volume }),
   setMuted: (channel: number, muted: boolean) => invoke<void>("set_muted", { channel, muted }),
   setTheme: (theme: string) => invoke<void>("set_theme", { theme }),
-  saveTheme: (name: string, base: string, colors: Record<string, string>) =>
-    invoke<string>("save_theme", { name, base, colors }),
+  saveTheme: (
+    name: string,
+    base: string,
+    colors: Record<string, string>,
+    background: Background | null,
+  ) => invoke<string>("save_theme", { name, base, colors, background }),
+  themeImage: (image: string) => invoke<string>("theme_image", { image }),
+  pickThemeImage: () => invoke<string | null>("pick_theme_image"),
   setLanguage: (language: string) => invoke<void>("set_language", { language }),
 };
 

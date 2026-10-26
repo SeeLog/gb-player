@@ -1,5 +1,8 @@
 // Applying themes to the page; the palettes themselves are in app.css and app/src/themes.rs.
 
+import { api } from "./api";
+import type { Background } from "./types";
+
 /** The colour tokens, the CSS custom properties without `--` (mirrors `TOKENS` in themes.rs). */
 export const TOKENS = [
   "bg",
@@ -49,16 +52,26 @@ export function paletteColors(base: string): Record<string, string> {
 
 let canvas: CanvasRenderingContext2D | null = null;
 
-/** `#rrggbb` for any CSS colour (alpha dropped), for `<input type="color">`. */
-export function toHex(color: string): string {
+const hex2 = (n: number) =>
+  Math.round(Math.min(255, Math.max(0, n || 0)))
+    .toString(16)
+    .padStart(2, "0");
+
+/** Any CSS colour as `#rrggbb` (for `<input type="color">`) and its alpha from 0 to 1. */
+export function splitColor(color: string): { hex: string; alpha: number } {
   canvas ??= document.createElement("canvas").getContext("2d");
-  if (!canvas) return "#000000";
+  if (!canvas) return { hex: "#000000", alpha: 1 };
   canvas.fillStyle = "#000000";
   canvas.fillStyle = color;
   const v = canvas.fillStyle;
-  if (v.startsWith("#")) return v;
-  const [r, g, b] = (v.match(/[\d.]+/g) ?? []).map(Number);
-  return "#" + [r, g, b].map((n) => Math.round(n || 0).toString(16).padStart(2, "0")).join("");
+  if (v.startsWith("#")) return { hex: v, alpha: 1 };
+  const [r, g, b, a] = (v.match(/[\d.]+/g) ?? []).map(Number);
+  return { hex: "#" + [r, g, b].map(hex2).join(""), alpha: a ?? 1 };
+}
+
+/** `#rrggbb`, or `#rrggbbaa` when `alpha` is below 1. */
+export function joinColor(hex: string, alpha: number): string {
+  return alpha >= 1 ? hex : hex + hex2(alpha * 255);
 }
 
 /** Whether `value` is a colour themes.rs accepts (hex, or rgb()/hsl() with numbers). */
@@ -75,4 +88,23 @@ export interface Draft {
   name: string;
   base: string;
   colors: Record<string, string>;
+  background: Background | null;
+}
+
+const images = new Map<string, Promise<string>>();
+
+/** A background image of the themes folder as a `data:` URL, loaded once. */
+export function imageUrl(name: string): Promise<string> {
+  let url = images.get(name);
+  if (!url) {
+    url = api.themeImage(name);
+    url.catch(() => images.delete(name));
+    images.set(name, url);
+  }
+  return url;
+}
+
+/** Forget a loaded image, after a new file was copied in under its name. */
+export function forgetImage(name: string) {
+  images.delete(name);
 }

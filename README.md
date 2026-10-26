@@ -48,6 +48,7 @@ gb-player --lang en pokemon.gb           # 言語を指定して起動(既定は
 
 GUIのキー操作: Space 再生/一時停止、← → 前/次の曲、Ctrl+O ROMを開く、Ctrl+F 検索。
 言語・音量・ループ・テーマの設定は `%APPDATA%\gb-player\settings.toml`(Linux/macOSは `~/.config/gb-player/settings.toml`)に保存されます。
+ウィンドウの位置と大きさも次回の起動に引き継がれます。
 
 ## テーマ
 
@@ -65,7 +66,17 @@ base = "color"              # 元にする内蔵テーマ: dmg / pocket / color 
 bg = "#0b0d1e"
 accent = "#ff8fb1"
 lcd-grid = "rgba(30, 42, 63, 0.15)"
+panel = "#15183399"         # 末尾2桁(または rgba() の最後)が不透明度。半透明にすると背景画像が透ける
+
+[background]                # 背景画像(省略可)
+image = "images/sky.png"    # themes フォルダ内のファイル(png / jpg / webp / gif、20 MBまで)
+fit = "cover"               # cover(全体を覆う)/ contain(全体を表示)/ tile(並べる)
+blur = 6                    # ぼかし(0〜40 px)
+dim = 0.2                   # 暗さ(0〜1)
 ```
+
+背景画像はウィンドウ全体の後ろに描かれ、その上に `bg` の色が重なります。`bg` や `panel` を半透明にすると、
+画像に好きな色を乗せたような見た目になります。エディタの「画像を選ぶ…」で選んだ画像は `themes\images\` にコピーされます。
 
 色の名前は `bg` `panel` `panel-2` `line` `text` `muted` `faint` `accent` `accent-2` `accent-ink`
 `lcd-hi` `lcd` `lcd-lo` `lcd-ink` `lcd-grid` `bezel` `overlay` `danger` です。値は `#rgb` / `#rrggbb` /

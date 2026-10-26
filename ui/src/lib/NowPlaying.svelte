@@ -183,8 +183,8 @@
   .now {
     display: flex;
     flex-direction: column;
-    gap: 18px;
-    padding: 16px 18px;
+    gap: 14px;
+    padding: 14px 18px;
     background: var(--panel);
     overflow-y: auto;
   }
@@ -218,7 +218,7 @@
     text-overflow: ellipsis;
   }
   .scope {
-    height: 88px;
+    height: 72px;
     margin-top: 6px;
   }
   .bar {

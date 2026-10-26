@@ -2,9 +2,17 @@
   // Side panel for editing a theme; the page shows the draft live while it is open.
   import { api } from "./api";
   import type { Translate } from "./format";
-  import type { Library } from "./types";
+  import type { Background, Library } from "./types";
   import Icon from "./Icon.svelte";
-  import { TOKENS, isColor, paletteColors, toHex, type Draft } from "./theme";
+  import {
+    TOKENS,
+    forgetImage,
+    isColor,
+    joinColor,
+    paletteColors,
+    splitColor,
+    type Draft,
+  } from "./theme";
 
   let {
     library,
@@ -36,6 +44,29 @@
     delete typing[token];
   }
 
+  /** Change the colour or the opacity of a token, keeping the other. */
+  function setPart(token: string, part: { hex?: string; alpha?: number }) {
+    const current = splitColor(value(token));
+    delete typing[token];
+    setColor(token, joinColor(part.hex ?? current.hex, part.alpha ?? current.alpha));
+  }
+
+  function setBackground(part: Partial<Background>) {
+    if (draft.background) draft.background = { ...draft.background, ...part };
+  }
+
+  async function pickImage() {
+    error = null;
+    try {
+      const image = await api.pickThemeImage();
+      if (!image) return;
+      forgetImage(image);
+      draft.background = { fit: "cover", blur: 0, dim: 0, ...draft.background, image };
+    } catch (e) {
+      error = String(e);
+    }
+  }
+
   function onText(token: string, text: string) {
     typing[token] = text;
     if (isColor(text)) setColor(token, text.trim());
@@ -51,7 +82,12 @@
     saving = true;
     error = null;
     try {
-      await api.saveTheme(draft.name, draft.base, $state.snapshot(draft.colors));
+      await api.saveTheme(
+        draft.name,
+        draft.base,
+        $state.snapshot(draft.colors),
+        $state.snapshot(draft.background),
+      );
       onclose();
     } catch (e) {
       error = String(e);
@@ -63,7 +99,9 @@
 
 <svelte:window onkeydown={(e) => e.key === "Escape" && onclose()} />
 
-<aside class="editor" aria-label={t("theme_editor")}>
+<!-- Painted with the base palette's own (opaque) panel colour so it stays readable over
+     translucent theme colours. -->
+<aside class="editor" aria-label={t("theme_editor")} style:background={baseColors.panel}>
   <div class="head">
     <h2>{t("theme_editor")}</h2>
     <button class="icon" onclick={onclose} title={t("theme_close")} aria-label={t("theme_close")}>
@@ -71,50 +109,119 @@
     </button>
   </div>
 
-  <label class="field">
-    <span>{t("theme_base")}</span>
-    <select bind:value={draft.base}>
-      {#each builtins as th (th.id)}
-        <option value={th.id}>{th.name}</option>
-      {/each}
-    </select>
-  </label>
+  <div class="body">
+    <label class="field">
+      <span>{t("theme_base")}</span>
+      <select bind:value={draft.base}>
+        {#each builtins as th (th.id)}
+          <option value={th.id}>{th.name}</option>
+        {/each}
+      </select>
+    </label>
 
-  <div class="tokens">
-    {#each TOKENS as token (token)}
-      {@const set = token in draft.colors}
-      {@const bad = token in typing && !isColor(typing[token])}
-      <div class="token" class:set>
-        <span class="name">{token}</span>
-        <input
-          type="color"
-          value={toHex(value(token))}
-          oninput={(e) => {
-            delete typing[token];
-            setColor(token, e.currentTarget.value);
-          }}
-          aria-label={token}
-        />
-        <input
-          class="text"
-          class:bad
-          value={typing[token] ?? value(token)}
-          oninput={(e) => onText(token, e.currentTarget.value)}
-          onblur={() => delete typing[token]}
-          spellcheck="false"
-          aria-label={token}
-        />
+    <section>
+      <h3>{t("theme_background")}</h3>
+      <span class="image-name" title={draft.background?.image}>
+        {draft.background?.image ?? t("theme_no_image")}
+      </span>
+      <div class="image">
+        <button class="button small" onclick={pickImage}>{t("theme_choose_image")}</button>
         <button
-          class="icon small"
-          onclick={() => clearColor(token)}
-          disabled={!set}
-          title={t("theme_reset")}
-          aria-label={t("theme_reset")}
+          class="button small"
+          onclick={() => (draft.background = null)}
+          disabled={!draft.background}
         >
-          <Icon name="close" size={14} />
+          {t("theme_remove_image")}
         </button>
       </div>
-    {/each}
+      {#if draft.background}
+        {@const bg = draft.background}
+        <label class="setting">
+          <span>{t("theme_fit")}</span>
+          <select
+            value={bg.fit}
+            onchange={(e) => setBackground({ fit: e.currentTarget.value as Background["fit"] })}
+          >
+            <option value="cover">{t("theme_fit_cover")}</option>
+            <option value="contain">{t("theme_fit_contain")}</option>
+            <option value="tile">{t("theme_fit_tile")}</option>
+          </select>
+        </label>
+        <label class="setting">
+          <span>{t("theme_blur")}</span>
+          <input
+            type="range"
+            min="0"
+            max="40"
+            step="1"
+            value={bg.blur}
+            oninput={(e) => setBackground({ blur: e.currentTarget.valueAsNumber })}
+          />
+          <span class="num">{bg.blur}px</span>
+        </label>
+        <label class="setting">
+          <span>{t("theme_dim")}</span>
+          <input
+            type="range"
+            min="0"
+            max="100"
+            step="1"
+            value={Math.round(bg.dim * 100)}
+            oninput={(e) => setBackground({ dim: e.currentTarget.valueAsNumber / 100 })}
+          />
+          <span class="num">{Math.round(bg.dim * 100)}%</span>
+        </label>
+      {/if}
+    </section>
+
+    <section>
+      <h3>{t("theme_colors")}</h3>
+      <div class="tokens">
+        {#each TOKENS as token (token)}
+          {@const set = token in draft.colors}
+          {@const bad = token in typing && !isColor(typing[token])}
+          {@const parts = splitColor(value(token))}
+          <div class="token" class:set>
+            <span class="name">{token}</span>
+            <input
+              type="color"
+              value={parts.hex}
+              oninput={(e) => setPart(token, { hex: e.currentTarget.value })}
+              aria-label={token}
+            />
+            <input
+              class="alpha"
+              type="range"
+              min="0"
+              max="100"
+              step="1"
+              value={Math.round(parts.alpha * 100)}
+              oninput={(e) => setPart(token, { alpha: e.currentTarget.valueAsNumber / 100 })}
+              title="{t('theme_opacity')} {Math.round(parts.alpha * 100)}%"
+              aria-label="{token} {t('theme_opacity')}"
+            />
+            <input
+              class="text"
+              class:bad
+              value={typing[token] ?? value(token)}
+              oninput={(e) => onText(token, e.currentTarget.value)}
+              onblur={() => delete typing[token]}
+              spellcheck="false"
+              aria-label={token}
+            />
+            <button
+              class="icon small"
+              onclick={() => clearColor(token)}
+              disabled={!set}
+              title={t("theme_reset")}
+              aria-label={t("theme_reset")}
+            >
+              <Icon name="close" size={14} />
+            </button>
+          </div>
+        {/each}
+      </div>
+    </section>
   </div>
 
   {#if error}
@@ -138,11 +245,12 @@
 <style>
   .editor {
     position: fixed;
-    top: 0;
+    /* Below the title bar. */
+    top: 40px;
     right: 0;
     bottom: 0;
     z-index: 20;
-    width: 340px;
+    width: 380px;
     display: flex;
     flex-direction: column;
     gap: 12px;
@@ -191,18 +299,74 @@
   .text:focus {
     border-color: var(--accent);
   }
-  .tokens {
+  .body {
     flex: 1;
     overflow-y: auto;
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 18px;
     margin: 0 -6px;
     padding: 0 6px;
   }
+  section {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  h3 {
+    margin: 0 0 2px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--faint);
+  }
+  .image {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .image-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .setting {
+    display: grid;
+    grid-template-columns: 72px 1fr 44px;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .setting select {
+    grid-column: 2 / 4;
+    height: 28px;
+    padding: 0 6px;
+    border-radius: 7px;
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    color: var(--text);
+    outline: none;
+  }
+  .setting .num {
+    text-align: right;
+  }
+  input[type="range"] {
+    width: 100%;
+    margin: 0;
+    accent-color: var(--accent);
+  }
+  .tokens {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
   .token {
     display: grid;
-    grid-template-columns: 1fr 34px 128px 24px;
+    grid-template-columns: 1fr 30px 56px 112px 22px;
     align-items: center;
     gap: 6px;
   }
@@ -216,7 +380,7 @@
     font-weight: 700;
   }
   input[type="color"] {
-    width: 34px;
+    width: 30px;
     height: 26px;
     padding: 2px;
     border-radius: 6px;
@@ -245,8 +409,8 @@
     background: var(--panel-2);
   }
   .icon.small {
-    width: 24px;
-    height: 24px;
+    width: 22px;
+    height: 22px;
   }
   .icon:disabled {
     opacity: 0.25;
@@ -284,6 +448,12 @@
     background: var(--accent);
     border-color: var(--accent);
     color: var(--accent-ink);
+  }
+  .button.small {
+    height: 28px;
+    padding: 0 10px;
+    font-size: 12px;
+    white-space: nowrap;
   }
   .button:disabled {
     opacity: 0.5;

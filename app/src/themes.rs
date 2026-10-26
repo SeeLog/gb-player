@@ -4,6 +4,7 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
+use base64::Engine;
 use serde::{Deserialize, Serialize};
 
 use crate::i18n::Text;
@@ -48,8 +49,45 @@ pub struct Theme {
     /// The built-in palette the colours are laid over.
     pub base: String,
     pub colors: BTreeMap<String, String>,
+    pub background: Option<Background>,
     pub custom: bool,
 }
+
+/// An image drawn behind the whole window, under the `bg` colour.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Background {
+    /// A path inside the themes folder, such as `images/sky.png`.
+    pub image: String,
+    /// `cover`, `contain` or `tile`.
+    pub fit: String,
+    /// Blur radius in pixels, 0 to 40.
+    pub blur: f32,
+    /// How much to darken the image, 0 to 1.
+    pub dim: f32,
+}
+
+impl Default for Background {
+    fn default() -> Background {
+        Background {
+            image: String::new(),
+            fit: "cover".into(),
+            blur: 0.0,
+            dim: 0.0,
+        }
+    }
+}
+
+/// Image types a background may have, by extension.
+const IMAGE_TYPES: [(&str, &str); 5] = [
+    ("png", "image/png"),
+    ("jpg", "image/jpeg"),
+    ("jpeg", "image/jpeg"),
+    ("webp", "image/webp"),
+    ("gif", "image/gif"),
+];
+/// The largest background image that is loaded.
+const MAX_IMAGE_BYTES: u64 = 20 * 1024 * 1024;
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 #[serde(default)]
@@ -59,6 +97,8 @@ struct ThemeFile {
     #[serde(skip_serializing_if = "Option::is_none")]
     base: Option<String>,
     colors: BTreeMap<String, String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    background: Option<Background>,
 }
 
 pub fn dir() -> Option<PathBuf> {
@@ -89,6 +129,115 @@ pub fn is_color(value: &str) -> bool {
         && args
             .chars()
             .all(|c| c.is_ascii_digit() || " .,%/-".contains(c) || "deg".contains(c))
+}
+
+fn image_type(name: &str) -> Option<&'static str> {
+    let ext = Path::new(name).extension()?.to_str()?.to_ascii_lowercase();
+    IMAGE_TYPES
+        .iter()
+        .find(|&&(e, _)| e == ext)
+        .map(|&(_, mime)| mime)
+}
+
+/// Whether `name` is a relative path that stays inside the themes folder and names an image.
+pub fn is_image_name(name: &str) -> bool {
+    use std::path::Component;
+    !name.is_empty()
+        && !name.contains(':')
+        && !name.starts_with(['/', '\\'])
+        && Path::new(name)
+            .components()
+            .all(|c| matches!(c, Component::Normal(_)))
+        && name.split(['/', '\\']).all(|part| part != "..")
+        && image_type(name).is_some()
+}
+
+/// Check a background and clamp its numbers; `None` (with a warning) when it cannot be used.
+fn clean_background(
+    bg: Background,
+    file: &str,
+    t: &Text,
+    warnings: &mut Vec<String>,
+) -> Option<Background> {
+    if !is_image_name(&bg.image) {
+        warnings.push(t.fmt("theme_bad_image", &[("file", &file), ("image", &bg.image)]));
+        return None;
+    }
+    let fit = if matches!(bg.fit.as_str(), "cover" | "contain" | "tile") {
+        bg.fit
+    } else {
+        "cover".into()
+    };
+    Some(Background {
+        image: bg.image.replace('\\', "/"),
+        fit,
+        blur: if bg.blur.is_finite() {
+            bg.blur.clamp(0.0, 40.0)
+        } else {
+            0.0
+        },
+        dim: if bg.dim.is_finite() {
+            bg.dim.clamp(0.0, 1.0)
+        } else {
+            0.0
+        },
+    })
+}
+
+/// A background image of the themes folder as a `data:` URL for the page.
+pub fn image_url(name: &str, t: &Text) -> Result<String, String> {
+    let bad = || t.fmt("theme_bad_image", &[("file", &name), ("image", &name)]);
+    if !is_image_name(name) {
+        return Err(bad());
+    }
+    let mime = image_type(name).ok_or_else(bad)?;
+    let path = dir().ok_or_else(bad)?.join(name);
+    let read =
+        |e: &dyn std::fmt::Display| t.fmt("err_read", &[("path", &path.display()), ("error", &e)]);
+    let size = std::fs::metadata(&path).map_err(|e| read(&e))?.len();
+    if size > MAX_IMAGE_BYTES {
+        return Err(t.fmt("theme_image_too_big", &[("path", &path.display())]));
+    }
+    let bytes = std::fs::read(&path).map_err(|e| read(&e))?;
+    Ok(format!(
+        "data:{mime};base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(bytes)
+    ))
+}
+
+/// Copy a picked image into `images/` of the themes folder; returns the name to use in a theme.
+pub fn import_image(src: &Path, t: &Text) -> Result<String, String> {
+    let dir = dir().ok_or_else(|| t.get("theme_no_dir").to_string())?;
+    let ext = src
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_ascii_lowercase())
+        .filter(|e| IMAGE_TYPES.iter().any(|&(x, _)| x == e))
+        .ok_or_else(|| {
+            t.fmt(
+                "theme_bad_image",
+                &[("file", &src.display()), ("image", &src.display())],
+            )
+        })?;
+    let size = std::fs::metadata(src)
+        .map_err(|e| t.fmt("err_read", &[("path", &src.display()), ("error", &e)]))?
+        .len();
+    if size > MAX_IMAGE_BYTES {
+        return Err(t.fmt("theme_image_too_big", &[("path", &src.display())]));
+    }
+    let stem = file_stem(&src.file_stem().unwrap_or_default().to_string_lossy());
+    let images = dir.join("images");
+    let mut name = format!("{stem}.{ext}");
+    let mut n = 2;
+    while images.join(&name).exists() {
+        name = format!("{stem}-{n}.{ext}");
+        n += 1;
+    }
+    let dest = images.join(&name);
+    std::fs::create_dir_all(&images)
+        .and_then(|_| std::fs::copy(src, &dest))
+        .map_err(|e| t.fmt("err_write", &[("path", &dest.display()), ("error", &e)]))?;
+    Ok(format!("images/{name}"))
 }
 
 /// Keep the known tokens with valid colours; report the rest.
@@ -140,6 +289,9 @@ fn parse(path: &Path, text: &str, t: &Text, warnings: &mut Vec<String>) -> Optio
         name: parsed.name.filter(|n| !n.trim().is_empty()).unwrap_or(stem),
         base,
         colors: clean_colors(parsed.colors, &file, t, warnings),
+        background: parsed
+            .background
+            .and_then(|b| clean_background(b, &file, t, warnings)),
         custom: true,
     })
 }
@@ -153,6 +305,7 @@ pub fn load(t: &Text) -> (Vec<Theme>, Vec<String>) {
             name: name.to_string(),
             base: id.to_string(),
             colors: BTreeMap::new(),
+            background: None,
             custom: false,
         })
         .collect();
@@ -215,6 +368,7 @@ pub fn save(
     name: &str,
     base: &str,
     colors: BTreeMap<String, String>,
+    background: Option<Background>,
     t: &Text,
 ) -> Result<String, String> {
     let dir = dir().ok_or_else(|| t.get("theme_no_dir").to_string())?;
@@ -224,6 +378,7 @@ pub fn save(
         name: Some(name.trim().to_string()).filter(|n| !n.is_empty()),
         base: Some(if is_builtin(base) { base } else { BUILTIN[0].0 }.to_string()),
         colors: clean_colors(colors, &stem, t, &mut warnings),
+        background: background.and_then(|b| clean_background(b, &stem, t, &mut warnings)),
     };
     if !warnings.is_empty() {
         return Err(warnings.join("\n"));
@@ -246,9 +401,12 @@ mod tests {
             "#abc",
             "#A0B1C2",
             "#0f380fcc",
+            "#abc8",
             "rgb(1, 2, 3)",
             "rgba(15, 56, 15, 0.18)",
+            "rgb(15 56 15 / 40%)",
             "hsl(120deg 50% 40% / 0.5)",
+            "hsla(120, 50%, 40%, 0.5)",
         ] {
             assert!(is_color(ok), "{ok}");
         }
@@ -285,6 +443,57 @@ mod tests {
         assert_eq!(theme.colors.len(), 1);
         assert_eq!(theme.colors["bg"], "#000");
         assert_eq!(warnings.len(), 3);
+    }
+
+    #[test]
+    fn image_names() {
+        for ok in ["sky.png", "images/sky.JPG", "a/b/c.webp", "images\\x.gif"] {
+            assert!(is_image_name(ok), "{ok}");
+        }
+        for bad in [
+            "",
+            "sky.svg",
+            "sky",
+            "../sky.png",
+            "images/../../sky.png",
+            "images\\..\\sky.png",
+            "/etc/sky.png",
+            "\\\\server\\share\\sky.png",
+            "C:\\sky.png",
+            "C:sky.png",
+            "./sky.png",
+        ] {
+            assert!(!is_image_name(bad), "{bad}");
+        }
+    }
+
+    #[test]
+    fn background_is_checked_and_clamped() {
+        let t = Text::new("en");
+        let mut warnings = Vec::new();
+        let theme = parse(
+            Path::new("sky.toml"),
+            "[background]\nimage = \"images\\\\sky.png\"\nfit = \"stretch\"\nblur = 99\ndim = -1\n",
+            &t,
+            &mut warnings,
+        )
+        .unwrap();
+        assert!(warnings.is_empty(), "{warnings:?}");
+        let bg = theme.background.unwrap();
+        assert_eq!(bg.image, "images/sky.png");
+        assert_eq!(bg.fit, "cover");
+        assert_eq!(bg.blur, 40.0);
+        assert_eq!(bg.dim, 0.0);
+
+        let theme = parse(
+            Path::new("bad.toml"),
+            "[background]\nimage = \"../secret.png\"\n",
+            &t,
+            &mut warnings,
+        )
+        .unwrap();
+        assert_eq!(theme.background, None);
+        assert_eq!(warnings.len(), 1);
     }
 
     #[test]
