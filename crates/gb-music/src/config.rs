@@ -8,7 +8,7 @@
 
 use serde::Deserialize;
 
-use crate::playback::{Playback, Rate, Reg, Step, Target, Value};
+use crate::playback::{Playback, Rate, Reg, Step, Target, Value, MAX_UPDATES_PER_FRAME};
 use crate::probe::{ChannelProbe, Field, SongCheck};
 
 /// Most songs one game may list (including those of `song_range`).
@@ -62,13 +62,29 @@ pub struct StepDef {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PlaybackDef {
-    /// `"vblank"`: the update runs once per frame.
+    /// `"vblank"` (the default) or `{ timer = { tac = .., tma = .. } }`.
     #[serde(default)]
-    pub rate: Option<String>,
+    pub rate: Option<RateDef>,
     #[serde(default)]
     pub setup: Vec<StepDef>,
     pub start: Vec<StepDef>,
     pub update: Vec<StepDef>,
+}
+
+/// How often the update runs: once per frame (`"vblank"`) or at the rate the timer registers
+/// TAC and TMA would give the timer interrupt.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub enum RateDef {
+    Name(String),
+    Timer { timer: TimerDef },
+}
+
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TimerDef {
+    pub tac: u8,
+    pub tma: u8,
 }
 
 /// A per-channel value: at `at + channel * step`, one byte (or a word with `size = 2`), of
@@ -240,9 +256,17 @@ fn build_steps(
 
 impl PlaybackDef {
     pub fn build(&self) -> Result<Playback, String> {
-        let rate = match self.rate.as_deref() {
-            None | Some("vblank") => Rate::VBlank,
-            Some(r) => return Err(format!("unknown rate \"{r}\" (expected \"vblank\")")),
+        let rate = match &self.rate {
+            None => Rate::VBlank,
+            Some(RateDef::Name(n)) if n == "vblank" => Rate::VBlank,
+            Some(RateDef::Name(n)) => {
+                return Err(format!(
+                    "unknown rate \"{n}\" (expected \"vblank\" or {{ timer = {{ tac, tma }} }})"
+                ))
+            }
+            Some(RateDef::Timer { timer }) => Rate::timer(timer.tac, timer.tma).ok_or(format!(
+                "the timer must be on (TAC bit 2) and run at most {MAX_UPDATES_PER_FRAME} updates per frame"
+            ))?,
         };
         let mut frames = 0;
         let setup = build_steps("setup", &self.setup, Some(&mut frames))?;
@@ -394,6 +418,28 @@ mod tests {
         );
         let many = vec!["{ call = 0x4000 }"; MAX_STEPS + 1].join(", ");
         assert!(playback(&format!("start = [{many}]\n{update}")).is_err());
+    }
+
+    #[test]
+    fn rates() {
+        let steps = "start = [{ call = 0x4000 }]
+update = [{ call = 0x4100 }]
+";
+        let rate = |r: &str| {
+            playback(&format!(
+                "rate = {r}
+{steps}"
+            ))
+            .map(|p| p.rate)
+        };
+        assert_eq!(rate("\"vblank\""), Ok(Rate::VBlank));
+        assert_eq!(
+            rate("{ timer = { tac = 0x04, tma = 0xC0 } }"),
+            Ok(Rate::Timer { period: 64 * 1024 })
+        );
+        assert!(rate("{ timer = { tac = 0x00, tma = 0xC0 } }").is_err());
+        assert!(rate("{ timer = { tac = 0x05, tma = 0xFF } }").is_err());
+        assert!(rate("{ timer = { tac = 0x04 } }").is_err());
     }
 
     #[test]

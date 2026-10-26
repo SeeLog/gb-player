@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use gb_core::{CallError, Machine, CYCLES_PER_FRAME};
+use gb_core::{CallError, Machine};
 
 use crate::driver::{Driver, Song};
 use crate::length::{SongLength, FRAME_RATE};
@@ -44,12 +44,6 @@ pub fn analyze(
     }
 }
 
-fn run_frame(m: &mut Machine, driver: &Driver) -> Result<(), CallError> {
-    let spent = driver.update(m)?;
-    m.idle(CYCLES_PER_FRAME.saturating_sub(spent));
-    Ok(())
-}
-
 #[derive(Clone, Copy)]
 enum ChannelLoop {
     Searching,
@@ -65,6 +59,7 @@ fn analyze_score(
     max_frames: u32,
 ) -> Result<SongLength, CallError> {
     let mut seen: [HashMap<ChannelKey, u32>; CHANNELS] = Default::default();
+    let mut phase = 0;
     let mut prev = probe.read(m);
     let mut prev_timers = probe.note_timers(m);
     let mut state = prev.map(|k| {
@@ -83,7 +78,7 @@ fn analyze_score(
         if !state.iter().any(|s| matches!(s, ChannelLoop::Searching)) {
             break;
         }
-        run_frame(m, driver)?;
+        driver.run_frame(m, &mut phase)?;
         let keys = probe.read(m);
         let timers = probe.note_timers(m);
         for c in 0..CHANNELS {
@@ -135,9 +130,11 @@ fn analyze_score(
 }
 
 fn analyze_ram(m: &mut Machine, driver: &Driver, max_frames: u32) -> Result<SongLength, CallError> {
-    let mut seen: HashMap<u64, u32> = HashMap::new();
+    // With a timer-driven engine the time to the next update is part of the state too.
+    let mut seen: HashMap<(u64, u32), u32> = HashMap::new();
+    let mut phase = 0;
     for frame in 0..max_frames {
-        let hash = m.state_hash();
+        let hash = (m.state_hash(), phase);
         if let Some(&first) = seen.get(&hash) {
             let period = frame - first;
             return Ok(if period == 1 {
@@ -150,7 +147,7 @@ fn analyze_ram(m: &mut Machine, driver: &Driver, max_frames: u32) -> Result<Song
             });
         }
         seen.insert(hash, frame);
-        run_frame(m, driver)?;
+        driver.run_frame(m, &mut phase)?;
     }
     Ok(SongLength::Unknown)
 }

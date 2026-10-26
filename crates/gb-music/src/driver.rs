@@ -153,10 +153,9 @@ impl Driver {
         self.playback.start(m, song)
     }
 
-    /// Run the per-frame update the game normally calls from its VBlank handler.
-    /// Returns the T-cycles it took.
-    pub fn update(&self, m: &mut Machine) -> Result<u32, CallError> {
-        self.playback.update(m)
+    /// Play one video frame of music; see [`Playback::run_frame`].
+    pub fn run_frame(&self, m: &mut Machine, phase: &mut u32) -> Result<(), CallError> {
+        self.playback.run_frame(m, phase)
     }
 }
 

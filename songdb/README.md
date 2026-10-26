@@ -79,13 +79,14 @@ songs = [{ id = 0x01, key = "title" }, { id = 0x02, key = "field", intro = 1.5, 
 song_range = { first = 0x01, last = 0x30 }    # 任意: songs に無い番号も「Song $XX」として出す
 
 [game.playback]
+rate = "vblank"                               # 既定。タイマー割り込みのゲームは { timer = { tac = 0x04, tma = 0xC0 } }
 setup = [                                     # 任意: 曲ごとのリセット直後に1回
   { write = 0xFF26, value = 0x80 },
   { bank = 1, call = 0x4000 },                # ドライバの初期化
   { frames = 30 },                            # update を30回空回し
 ]
 start = [ { bank = 1, call = 0x4003, a = "song" } ]     # 曲を始める
-update = [ { bank = 1, call = 0x4006 } ]                # 毎フレーム(59.7Hz)
+update = [ { bank = 1, call = 0x4006 } ]                # rate の間隔で(既定は毎フレーム 59.7Hz)
 
 [game.probe]                                  # 任意: 正確なループ検出用。無ければRAM全体で判定
 active  = { at = 0xC104, step = 0x32, mask = 0x01 }     # チャンネル c の値は at + c * step
@@ -96,6 +97,9 @@ flags   = { at = 0xC104, step = 0x32, mask = 0x06 }
 timer   = { at = 0xC116, step = 0x32 }                  # 今の音符の残りフレーム
 check   = { song_id = { at = 0xC101, step = 0x32, size = 2 }, all = false }
 ```
+
+`rate` の timer は TAC/TMA レジスタの値で、更新の間隔はタイマー割り込みと同じ(4096Hz / (256 - tma) など)になります。
+更新が1フレームに16回を超える設定は受け付けません。
 
 手順(ステップ)は次のどれか1つです。
 

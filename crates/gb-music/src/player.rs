@@ -3,7 +3,7 @@
 use std::fmt;
 use std::sync::Arc;
 
-use gb_core::{CallError, CartridgeError, Machine, CYCLES_PER_FRAME};
+use gb_core::{CallError, CartridgeError, Machine};
 
 use crate::driver::{Driver, Song};
 use crate::length::{SongLength, FRAME_RATE};
@@ -49,6 +49,8 @@ pub struct Player {
     state: PlayState,
     current: Option<usize>,
     frame: u32,
+    /// T-cycles since the last update, for timer-driven engines.
+    phase: u32,
     length: SongLength,
     /// Number of times to play the looping part before fading out; `None` loops forever.
     pub loop_count: Option<u32>,
@@ -83,6 +85,7 @@ impl Player {
             state: PlayState::Stopped,
             current: None,
             frame: 0,
+            phase: 0,
             length: SongLength::Unknown,
             loop_count: None,
             fade_secs: 8.0,
@@ -166,6 +169,7 @@ impl Player {
         self.machine.mem.apu.mute = mute;
         self.current = Some(index);
         self.frame = 0;
+        self.phase = 0;
         self.length = SongLength::Unknown;
         self.paused = false;
         self.buf.clear();
@@ -208,14 +212,10 @@ impl Player {
     }
 
     fn run_frame(&mut self) {
-        let spent = match self.driver.update(&mut self.machine) {
-            Ok(c) => c,
-            Err(e) => {
-                self.state = PlayState::Failed(e);
-                return;
-            }
-        };
-        self.machine.idle(CYCLES_PER_FRAME.saturating_sub(spent));
+        if let Err(e) = self.driver.run_frame(&mut self.machine, &mut self.phase) {
+            self.state = PlayState::Failed(e);
+            return;
+        }
         let samples = self.machine.mem.apu.take_samples();
         let (g0, g1) = (
             self.gain_at(self.frame),

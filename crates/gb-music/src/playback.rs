@@ -64,15 +64,37 @@ pub enum Step {
         target: Target,
         regs: Vec<(Reg, Value)>,
     },
-    /// Run this many updates, a frame apart.
+    /// Let this many frames of music play.
     Frames(u16),
 }
+
+/// Most updates in one frame; also bounds how fast a timer can make them come.
+pub const MAX_UPDATES_PER_FRAME: u32 = 16;
 
 /// How often the update steps run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Rate {
     /// Once per frame, from the VBlank interrupt.
     VBlank,
+    /// From the timer interrupt, every `period` T-cycles.
+    Timer { period: u32 },
+}
+
+impl Rate {
+    /// The rate of the timer interrupt with these TAC and TMA register values (bit 7 of `tac`
+    /// asks for the doubled CGB clock, as in GBS files); `None` if TAC leaves the timer off or
+    /// it would run more than [`MAX_UPDATES_PER_FRAME`] updates per frame.
+    pub fn timer(tac: u8, tma: u8) -> Option<Rate> {
+        if tac & 0x04 == 0 {
+            return None;
+        }
+        let tick = [1024, 16, 64, 256][(tac & 3) as usize];
+        let mut period = (256 - tma as u32) * tick;
+        if tac & 0x80 != 0 {
+            period /= 2;
+        }
+        (period * MAX_UPDATES_PER_FRAME >= CYCLES_PER_FRAME).then_some(Rate::Timer { period })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -142,9 +164,45 @@ impl Playback {
 
     /// Run one update; returns the T-cycles it took.
     pub fn update(&self, m: &mut Machine) -> Result<u32, CallError> {
-        let mut budget = UPDATE_BUDGET;
-        self.run(&self.update, m, None, &mut budget)?;
-        Ok(UPDATE_BUDGET - budget)
+        self.update_within(m, UPDATE_BUDGET)
+    }
+
+    fn update_within(&self, m: &mut Machine, budget: u32) -> Result<u32, CallError> {
+        let mut left = budget;
+        self.run(&self.update, m, None, &mut left)?;
+        Ok(budget - left)
+    }
+
+    /// Play one video frame of music: run the updates that fall into it and let the time
+    /// between them pass. `phase` carries the T-cycles since the last update from frame to
+    /// frame; it starts at 0 with a new song, so a timer fires its first update a full period in,
+    /// like a real one counting up to overflow. All updates of a frame share one budget.
+    pub fn run_frame(&self, m: &mut Machine, phase: &mut u32) -> Result<(), CallError> {
+        match self.rate {
+            Rate::VBlank => {
+                let spent = self.update(m)?;
+                m.idle(CYCLES_PER_FRAME.saturating_sub(spent));
+            }
+            Rate::Timer { period } => {
+                let mut left = CYCLES_PER_FRAME;
+                let mut budget = UPDATE_BUDGET;
+                for _ in 0..MAX_UPDATES_PER_FRAME {
+                    let wait = period.saturating_sub(*phase);
+                    if wait >= left {
+                        break;
+                    }
+                    m.idle(wait);
+                    left -= wait;
+                    let spent = self.update_within(m, budget)?;
+                    budget = budget.saturating_sub(spent);
+                    *phase = spent;
+                    left = left.saturating_sub(spent);
+                }
+                m.idle(left);
+                *phase = phase.saturating_add(left);
+            }
+        }
+        Ok(())
     }
 
     fn run(
@@ -174,9 +232,9 @@ impl Playback {
                     *budget = budget.saturating_sub(spent);
                 }
                 Step::Frames(n) => {
+                    let mut phase = 0;
                     for _ in 0..*n {
-                        let spent = self.update(m)?;
-                        m.idle(CYCLES_PER_FRAME.saturating_sub(spent));
+                        self.run_frame(m, &mut phase)?;
                     }
                 }
             }
@@ -255,6 +313,56 @@ mod tests {
         m.write(0xC001, 5);
         playback.update(&mut m).unwrap();
         assert_eq!(m.read(0xC000), 2);
+    }
+
+    #[test]
+    fn timer_rates() {
+        // 4096 Hz / (256 - $C0) = 64 Hz.
+        assert_eq!(
+            Rate::timer(0x04, 0xC0),
+            Some(Rate::Timer { period: 64 * 1024 })
+        );
+        assert_eq!(
+            Rate::timer(0x84, 0xC0),
+            Some(Rate::Timer { period: 32 * 1024 })
+        );
+        assert_eq!(Rate::timer(0x00, 0xC0), None, "timer off");
+        assert_eq!(Rate::timer(0x05, 0xFF), None, "262 kHz is far too fast");
+    }
+
+    /// Updates that count themselves in $C000.
+    fn counting(rate: Rate) -> (Machine, Playback) {
+        // ld hl,$C000 / inc [hl] / ret
+        let m = machine(&[(0x0200, &[0x21, 0x00, 0xC0, 0x34, 0xC9])]);
+        let playback = Playback {
+            rate,
+            setup: Vec::new(),
+            start: Vec::new(),
+            update: vec![Step::Call {
+                target: Target::Fixed(0x0200),
+                regs: Vec::new(),
+            }],
+        };
+        (m, playback)
+    }
+
+    #[test]
+    fn timer_driven_updates_follow_their_rate() {
+        for (rate, frames, updates) in [
+            (Rate::VBlank, 60, 60),
+            // The timer fires a full period after the song starts, like a real one overflowing.
+            // 256 Hz: about 4.3 updates per frame.
+            (Rate::timer(0x04, 0xF0).unwrap(), 30, 128),
+            // 16 Hz: one update every 3.7 frames.
+            (Rate::timer(0x04, 0x00).unwrap(), 60, 16),
+        ] {
+            let (mut m, playback) = counting(rate);
+            let mut phase = 0;
+            for _ in 0..frames {
+                playback.run_frame(&mut m, &mut phase).unwrap();
+            }
+            assert_eq!(m.read(0xC000), updates as u8, "{rate:?}");
+        }
     }
 
     #[test]
