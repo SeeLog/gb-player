@@ -230,14 +230,14 @@ impl Fnv64 {
     }
 
     fn write(&mut self, data: &[u8]) {
-        let mut chunks = data.chunks_exact(8);
-        for c in &mut chunks {
-            let v = u64::from_le_bytes(c.try_into().unwrap());
+        let (chunks, remainder) = data.as_chunks::<8>();
+        for c in chunks {
+            let v = u64::from_le_bytes(*c);
             self.0 = (self.0 ^ v)
                 .wrapping_mul(0x0000_0100_0000_01B3)
                 .rotate_left(23);
         }
-        for &b in chunks.remainder() {
+        for &b in remainder {
             self.0 = (self.0 ^ b as u64).wrapping_mul(0x0000_0100_0000_01B3);
         }
     }
