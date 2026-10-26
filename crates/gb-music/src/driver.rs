@@ -9,10 +9,8 @@ use gb_core::{CallError, Header, Machine};
 
 use crate::length::SongLength;
 use crate::pattern::{word, Pattern};
+use crate::playback::{Playback, Rate, Reg, Step, Target, Value};
 use crate::songdb::{self, Game, SongDef};
-
-/// Upper bound for one call into the sound engine (about 10 frames of CPU time).
-const CALL_BUDGET: u32 = 700_000;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Song {
@@ -161,8 +159,8 @@ pub struct Driver {
     pub series: &'static str,
     pub game_id: String,
     pub songs: Vec<Song>,
-    /// First bank of the audio engine, used to reset the machine.
-    home_bank: u8,
+    /// How to start songs and advance the engine.
+    pub playback: Playback,
 }
 
 fn bank_slice(rom: &[u8], bank: u8) -> &[u8] {
@@ -192,76 +190,106 @@ impl Driver {
 
     /// Reset the sound engine and start `song`.
     pub fn play(&self, m: &mut Machine, song: &Song) -> Result<(), CallError> {
-        match self.engine {
-            Engine::Gen1 {
-                play_music,
-                loaded_rom_bank,
-                ..
-            }
-            | Engine::Gen1Yellow {
-                play_music,
-                loaded_rom_bank,
-                ..
-            } => {
-                m.write(0xFF26, 0x80);
-                m.write(0xFF24, 0x77);
-                m.write(0xFF25, 0xFF);
-                m.write(loaded_rom_bank, self.home_bank);
-                m.switch_rom_bank(self.home_bank);
-                // Sound ID $FF stops everything, like the game's StopAllSounds.
-                m.cpu.a = 0xFF;
-                m.cpu.c = self.home_bank;
-                m.call(play_music, CALL_BUDGET)?;
-                m.cpu.a = song.id as u8;
-                m.cpu.c = song.bank;
-                m.call(play_music, CALL_BUDGET)?;
-            }
-            Engine::Gen2 { play_music, .. } => {
-                m.write(0xFF26, 0x80);
-                m.switch_rom_bank(1);
-                m.cpu.set_de(0);
-                m.call(play_music, CALL_BUDGET)?;
-                m.cpu.set_de(song.id);
-                m.call(play_music, CALL_BUDGET)?;
-            }
-        }
-        Ok(())
+        self.playback.start(m, song)
     }
 
     /// Run the per-frame update the game normally calls from its VBlank handler.
     /// Returns the T-cycles it took.
     pub fn update(&self, m: &mut Machine) -> Result<u32, CallError> {
-        match self.engine {
+        self.playback.update(m)
+    }
+}
+
+impl Engine {
+    /// The steps that drive this engine. `home_bank` is the first bank of the audio engine,
+    /// which the Gen 1 engines are reset from.
+    fn playback(&self, home_bank: u8) -> Playback {
+        let write = |addr: u16, v: u16| Step::Write {
+            addr,
+            value: Value::Const(v),
+        };
+        let call = |addr: u16, regs: &[(Reg, Value)]| Step::Call {
+            target: Target::Fixed(addr),
+            regs: regs.to_vec(),
+        };
+        let gen1_start = |play_music: u16, loaded_rom_bank: u16| {
+            vec![
+                write(0xFF26, 0x80),
+                write(0xFF24, 0x77),
+                write(0xFF25, 0xFF),
+                write(loaded_rom_bank, home_bank as u16),
+                Step::Bank(Value::Const(home_bank as u16)),
+                // Sound ID $FF stops everything, like the game's StopAllSounds.
+                call(
+                    play_music,
+                    &[
+                        (Reg::A, Value::Const(0xFF)),
+                        (Reg::C, Value::Const(home_bank as u16)),
+                    ],
+                ),
+                call(
+                    play_music,
+                    &[(Reg::A, Value::Song), (Reg::C, Value::SongBank)],
+                ),
+            ]
+        };
+        let (start, update) = match *self {
             Engine::Gen1 {
+                play_music,
                 audio_rom_bank,
                 loaded_rom_bank,
                 banks,
                 updates,
-                ..
-            } => {
-                let bank = m.read(audio_rom_bank);
-                m.write(loaded_rom_bank, bank);
-                m.switch_rom_bank(bank);
-                let routine = if bank == banks[0] {
-                    updates[0]
-                } else if bank == banks[1] {
-                    updates[1]
-                } else {
-                    updates[2]
-                };
-                m.call(routine, CALL_BUDGET)
-            }
+            } => (
+                gen1_start(play_music, loaded_rom_bank),
+                // The engine copy to run is the one in the bank the music plays from.
+                vec![
+                    Step::Write {
+                        addr: loaded_rom_bank,
+                        value: Value::Ram(audio_rom_bank),
+                    },
+                    Step::Bank(Value::Ram(audio_rom_bank)),
+                    Step::Call {
+                        target: Target::ByRam {
+                            ram: audio_rom_bank,
+                            cases: vec![(banks[0], updates[0]), (banks[1], updates[1])],
+                            default: updates[2],
+                        },
+                        regs: Vec::new(),
+                    },
+                ],
+            ),
             Engine::Gen1Yellow {
+                play_music,
                 loaded_rom_bank,
                 bank,
                 update,
-                ..
-            } => {
-                m.write(loaded_rom_bank, bank);
-                m.switch_rom_bank(bank);
-                m.call(update, CALL_BUDGET)
-            }
-            Engine::Gen2 { update_sound, .. } => m.call(update_sound, CALL_BUDGET),
+            } => (
+                gen1_start(play_music, loaded_rom_bank),
+                vec![
+                    write(loaded_rom_bank, bank as u16),
+                    Step::Bank(Value::Const(bank as u16)),
+                    call(update, &[]),
+                ],
+            ),
+            Engine::Gen2 {
+                play_music,
+                update_sound,
+            } => (
+                vec![
+                    write(0xFF26, 0x80),
+                    Step::Bank(Value::Const(1)),
+                    call(play_music, &[(Reg::De, Value::Const(0))]),
+                    call(play_music, &[(Reg::De, Value::Song)]),
+                ],
+                vec![call(update_sound, &[])],
+            ),
+        };
+        Playback {
+            rate: Rate::VBlank,
+            setup: Vec::new(),
+            start,
+            update,
         }
     }
 }
@@ -407,12 +435,12 @@ fn detect_gen1(rom: &[u8], title: &str) -> Option<Driver> {
         .filter(|_| new_sound_id.wrapping_add(1) == audio_rom_bank)
         .map(|command_pointers| ChannelProbe::Gen1 { command_pointers });
     Some(Driver {
+        playback: engine.playback(home_bank),
         engine,
         probe,
         series: songdb::GEN1,
         game_id: game_id(game),
         songs,
-        home_bank,
     })
 }
 
@@ -570,16 +598,17 @@ fn detect_gen2(rom: &[u8], title: &str) -> Option<Driver> {
         }
         songs.push(Song::new(songs.len(), id, 0, def));
     }
+    let engine = Engine::Gen2 {
+        play_music: pm as u16,
+        update_sound: update_sound as u16,
+    };
     Some(Driver {
-        engine: Engine::Gen2 {
-            play_music: pm as u16,
-            update_sound: update_sound as u16,
-        },
+        playback: engine.playback(bank),
+        engine,
         probe,
         series: songdb::GEN2,
         game_id: game_id(game),
         songs,
-        home_bank: bank,
     })
 }
 

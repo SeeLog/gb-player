@@ -6,6 +6,7 @@ pub mod analysis;
 pub mod driver;
 pub mod length;
 pub mod pattern;
+pub mod playback;
 pub mod player;
 pub mod songdb;
 
