@@ -29,7 +29,32 @@ cargo run --release -- --info pokemon.gb # 検出結果と全曲のループ長�
 cargo run --release -- --wav pokemon.gb 1 out.wav 2   # 1曲目を2ループ+フェードでWAV出力
 ```
 
-Linuxでビルドする場合は ALSA の開発パッケージ(Debian/Ubuntuなら `libasound2-dev`)が必要です。
+ROMは `rom/` に置くのがおすすめです(`.gitignore` で除外済み、`*.gb` / `*.gbc` もどこに置いてもコミットされません)。
+
+## ビルド環境
+
+### Windows
+
+MSVC版のRustツールチェーンを使ってください。GNU版(`x86_64-pc-windows-gnu`)だとMinGWの
+`dlltool.exe` が必要になり、無い環境では `error calling dlltool 'dlltool.exe': program not found` で失敗します。
+
+```powershell
+# C++ビルドツール(リンカ)を入れる
+winget install -e --id Microsoft.VisualStudio.2022.BuildTools --override "--quiet --wait --norestart --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
+# MSVC版ツールチェーンを既定にする
+rustup toolchain install stable-x86_64-pc-windows-msvc
+rustup default stable-x86_64-pc-windows-msvc
+```
+
+`rustup show` の "Default host" が `x86_64-pc-windows-msvc` になっていればOKです。
+
+### Linux
+
+ALSA の開発パッケージ(Debian/Ubuntuなら `libasound2-dev`)が必要です。
+
+### macOS
+
+追加のパッケージは不要です。
 
 ## 構成
 
