@@ -1,3 +1,38 @@
+@import "tailwindcss";
+
+/* The theme colours as Tailwind colours (bg-panel, text-muted, border-line, ...). "inline" keeps
+   the var() in each utility, so switching palettes or overriding a colour at run time works. */
+@theme inline {
+  --color-backdrop: var(--backdrop);
+  --color-bg: var(--bg);
+  --color-panel: var(--panel);
+  --color-panel-2: var(--panel-2);
+  --color-line: var(--line);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-accent: var(--accent);
+  --color-accent-2: var(--accent-2);
+  --color-accent-ink: var(--accent-ink);
+  --color-lcd-hi: var(--lcd-hi);
+  --color-lcd: var(--lcd);
+  --color-lcd-lo: var(--lcd-lo);
+  --color-lcd-ink: var(--lcd-ink);
+  --color-lcd-grid: var(--lcd-grid);
+  --color-bezel: var(--bezel);
+  --color-overlay: var(--overlay);
+  --color-danger: var(--danger);
+  --font-sans: var(--font);
+}
+
+/* Every text size keeps the body line height, as before Tailwind. */
+@theme {
+  --text-xs--line-height: 1.45;
+  --text-sm--line-height: 1.45;
+  --text-base--line-height: 1.45;
+  --text-lg--line-height: 1.45;
+}
+
 :root {
   --radius: 10px;
   --font: "Segoe UI Variable", "Segoe UI", "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
@@ -101,47 +136,39 @@
   --danger: #b8322a;
 }
 
-* {
-  box-sizing: border-box;
-}
+@layer base {
+  html,
+  body,
+  #app {
+    height: 100%;
+    margin: 0;
+  }
 
-html,
-body,
-#app {
-  height: 100%;
-  margin: 0;
-}
+  body {
+    /* The back layer; the shell draws --bg over it (and over any background image). */
+    background: var(--backdrop);
+    color: var(--text);
+    font: 14px/1.45 var(--font);
+    user-select: none;
+    -webkit-user-select: none;
+    overflow: hidden;
+  }
 
-body {
-  /* The back layer; .shell draws --bg over it (and over any background image). */
-  background: var(--backdrop);
-  color: var(--text);
-  font: 14px/1.45 var(--font);
-  user-select: none;
-  -webkit-user-select: none;
-  overflow: hidden;
-}
+  button {
+    cursor: pointer;
+  }
 
-button {
-  font: inherit;
-  color: inherit;
-  background: none;
-  border: 0;
-  padding: 0;
-  cursor: pointer;
-}
+  button:focus-visible,
+  input:focus-visible,
+  select:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
 
-button:focus-visible,
-input:focus-visible,
-select:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-input,
-select {
-  font: inherit;
-  color: inherit;
+  select option {
+    /* Menus are drawn on their own, so give them a solid colour. */
+    background: var(--backdrop);
+  }
 }
 
 .num {
@@ -159,4 +186,45 @@ select {
 }
 ::-webkit-scrollbar-track {
   background: transparent;
+}
+
+/* The volume slider: a filled track up to --v and a round thumb. */
+.volume-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--accent) var(--v), var(--panel-2) var(--v));
+  box-shadow: inset 0 0 0 1px var(--line);
+  cursor: pointer;
+}
+.volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--text);
+  border: 0;
+}
+
+/* The bouncing bars next to the playing song. */
+@keyframes eq {
+  0%,
+  100% {
+    height: 3px;
+  }
+  50% {
+    height: 12px;
+  }
+}
+.eq i {
+  width: 3px;
+  background: var(--accent);
+  animation: eq 0.9s ease-in-out infinite;
+}
+.eq i:nth-child(2) {
+  animation-delay: -0.3s;
+}
+.eq i:nth-child(3) {
+  animation-delay: -0.6s;
 }

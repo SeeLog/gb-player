@@ -1,4 +1,4 @@
-// Calls into the Rust side (the commands in app/src/gui/mod.rs).
+// Calls into the Rust side (the Tauri commands in app/src/gui/).
 
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";

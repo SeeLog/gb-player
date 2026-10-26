@@ -23,7 +23,7 @@ Game Boy / Game Boy Color のROM(.gb / .gbc)を読み込み、ゲーム自身の
 
 ## 使い方
 
-GUIは [Tauri](https://tauri.app/) 製で、画面はWeb技術(Svelte + TypeScript、`ui/`)で書いています。
+GUIは [Tauri](https://tauri.app/) 製で、画面はWeb技術(React + TypeScript + Tailwind CSS、`ui/`)で書いています。
 GUIのビルドには Rust に加えて [bun](https://bun.sh/) が必要です。
 
 ```sh
@@ -130,7 +130,7 @@ ALSA と WebKitGTK の開発パッケージが必要です(Debian/Ubuntuなら
 crates/gb-core   エミュレーションコア(CPU / メモリマップ / MBC / APU)
 crates/gb-music  サウンドドライバ検出、曲リスト、再生とループ解析
 app              GUIのRust側(Tauri)と音声出力(cpal)、CLI
-ui               GUIの画面(Svelte + TypeScript、bun/Viteでビルド)
+ui               GUIの画面(React + TypeScript + Tailwind CSS、bun/Viteでビルド)
 songdb           曲データベース(ゲームの照合、曲ID → 曲キー、言語ごとの曲名)
 tools            曲データベースの生成スクリプト
 ```
