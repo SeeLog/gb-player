@@ -4,6 +4,7 @@
 
 mod audio;
 mod cli;
+mod i18n;
 
 use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};

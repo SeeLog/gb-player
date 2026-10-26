@@ -7,3 +7,5 @@ license.workspace = true
 
 [dependencies]
 gb-core = { path = "../gb-core" }
+serde = { version = "1", features = ["derive"] }
+toml = "0.9"

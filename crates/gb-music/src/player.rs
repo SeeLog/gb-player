@@ -70,6 +70,9 @@ pub fn analyze(
     let Ok(mut m) = Machine::new(rom.to_vec(), 48_000) else {
         return Ok(SongLength::Unknown);
     };
+    if let Some(length) = song.length {
+        return Ok(length);
+    }
     m.mem.apu.set_output_enabled(false);
     driver.play(&mut m, song)?;
     match driver.probe {
@@ -254,8 +257,13 @@ impl Player {
         &self.machine.mem.cart.header.title
     }
 
-    pub fn game(&self) -> &'static str {
-        self.driver.game
+    pub fn game(&self) -> &str {
+        &self.driver.game
+    }
+
+    /// Switch game and song names to `language`; see [`Driver::localize`].
+    pub fn set_language(&mut self, language: &str) -> Vec<String> {
+        self.driver.localize(language)
     }
 
     pub fn songs(&self) -> &[Song] {

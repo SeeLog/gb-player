@@ -7,6 +7,7 @@ Game Boy / Game Boy Color のROM(.gb / .gbc)を読み込み、ゲーム自身の
 - ゲームの「曲を再生する関数」と「毎フレーム呼ばれる更新関数」をROM内から自動検出して呼び出す(GBS方式)
 - ループ点を自動解析し、無限ループ再生/N回ループ後フェードアウトして次の曲へ、を選択可能
 - チャンネルごとのミュートとレベルメーター
+- 曲名とUIは日本語・英語に対応(OSの言語に合わせて自動選択、切り替え可)
 
 ## 対応ソフト
 
@@ -27,7 +28,16 @@ cargo run --release                      # GUIを起動(ROMは「ROMを開く…
 cargo run --release -- pokemon.gb        # ROMを指定して起動
 cargo run --release -- --info pokemon.gb # 検出結果と全曲のループ長を表示
 cargo run --release -- --wav pokemon.gb 1 out.wav 2   # 1曲目を2ループ+フェードでWAV出力
+cargo run --release -- --lang en --info pokemon.gb     # 言語を指定(既定はOSの言語)
 ```
+
+## 曲名
+
+曲名はROMには入っていないので、`songdb/` の曲データベースから引いています。日本語の曲名は場所や場面を表す
+説明的な名前で、公式サウンドトラックの曲名ではありません。英語名は pret の逆アセンブルのラベルが元です。
+
+曲名の修正、他の言語の追加、新しいソフトの曲リストはPR歓迎です。書き方は [songdb/README.md](songdb/README.md) を参照してください。
+手元だけで名前を変えたいときは、同じ形式のファイルを `%APPDATA%\gb-player\songdb\<シリーズ>\<言語>.toml` に置くと内蔵の名前より優先されます。
 
 ROMは `rom/` に置くのがおすすめです(`.gitignore` で除外済み、`*.gb` / `*.gbc` もどこに置いてもコミットされません)。
 
@@ -62,7 +72,8 @@ ALSA の開発パッケージ(Debian/Ubuntuなら `libasound2-dev`)が必要で�
 crates/gb-core   エミュレーションコア(CPU / メモリマップ / MBC / APU)
 crates/gb-music  サウンドドライバ検出、曲リスト、再生とループ解析
 app              GUI(egui/eframe)と音声出力(cpal)、CLI
-tools            曲名テーブルの生成スクリプト
+songdb           曲データベース(ゲームの照合、曲ID → 曲キー、言語ごとの曲名)
+tools            曲データベースの生成スクリプト
 ```
 
 設計の詳細は [docs/DESIGN.md](docs/DESIGN.md) を参照してください。

@@ -5,10 +5,11 @@
 //! pret disassemblies (pokered, pokeyellow, pokegold, pokecrystal); the same engine code is
 //! shared by the Japanese and international releases, only at different addresses.
 
-use gb_core::{CallError, Machine};
+use gb_core::{CallError, Header, Machine};
 
-use crate::names;
 use crate::pattern::{word, Pattern};
+use crate::player::SongLength;
+use crate::songdb::{self, Game, Localizer, SongDef};
 
 /// Upper bound for one call into the sound engine (about 10 frames of CPU time).
 const CALL_BUDGET: u32 = 700_000;
@@ -17,11 +18,29 @@ const CALL_BUDGET: u32 = 700_000;
 pub struct Song {
     /// Position in [`crate::Player::songs`].
     pub index: usize,
+    /// Display name in the language chosen with [`Driver::localize`].
     pub title: String,
+    /// Stable song key from the song database; `None` for songs it does not know.
+    pub key: Option<String>,
     /// The value the game passes to its play routine.
     pub id: u16,
     /// ROM bank whose engine plays the song (Gen 1 only; 0 otherwise).
     pub bank: u8,
+    /// Loop points fixed in the song database, used instead of analyzing the song.
+    pub length: Option<SongLength>,
+}
+
+impl Song {
+    fn new(index: usize, id: u16, bank: u8, def: Option<&SongDef>) -> Song {
+        Song {
+            index,
+            title: String::new(),
+            key: def.map(|d| d.key.clone()),
+            id,
+            bank,
+            length: def.and_then(SongDef::length),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -141,7 +160,11 @@ impl ChannelProbe {
 pub struct Driver {
     pub engine: Engine,
     pub probe: Option<ChannelProbe>,
-    pub game: &'static str,
+    /// Song database series and game the ROM was matched to.
+    pub series: &'static str,
+    pub game_id: String,
+    /// Display name of the game in the language chosen with [`Driver::localize`].
+    pub game: String,
     pub songs: Vec<Song>,
     /// First bank of the audio engine, used to reset the machine.
     home_bank: u8,
@@ -163,8 +186,26 @@ fn rom_at(rom: &[u8], bank: u8, addr: u16) -> Option<&[u8]> {
 }
 
 impl Driver {
+    /// Find the sound engine of `rom`. Names are in English until [`Driver::localize`].
     pub fn detect(rom: &[u8]) -> Option<Driver> {
-        detect_gen2(rom).or_else(|| detect_gen1(rom))
+        let title = Header::parse(rom).map(|h| h.title).unwrap_or_default();
+        let mut driver = detect_gen2(rom, &title).or_else(|| detect_gen1(rom, &title))?;
+        driver.localize(songdb::FALLBACK_LANGUAGE);
+        Some(driver)
+    }
+
+    /// Set the game and song names to `language`. Returns problems found in the user's name
+    /// files, which are then skipped.
+    pub fn localize(&mut self, language: &str) -> Vec<String> {
+        let (names, warnings) = Localizer::new(self.series, language);
+        self.game = names.game(&self.game_id);
+        for song in &mut self.songs {
+            song.title = match &song.key {
+                Some(key) => names.song(key),
+                None => format!("Song ${:02X}", song.id),
+            };
+        }
+        warnings
     }
 
     /// Reset the sound engine and start `song`.
@@ -316,7 +357,7 @@ fn gen1_header_groups(table: &[u8]) -> Vec<HeaderGroup> {
     groups
 }
 
-fn detect_gen1(rom: &[u8]) -> Option<Driver> {
+fn detect_gen1(rom: &[u8], title: &str) -> Option<Driver> {
     let home = &rom[..0x4000];
     let pm_pat = Pattern::new(GEN1_PLAY_MUSIC);
     let pm = pm_pat.find_all(home).next()?;
@@ -341,33 +382,34 @@ fn detect_gen1(rom: &[u8]) -> Option<Driver> {
     } else {
         find_yellow_dispatch(home, pm as u16)?
     };
-    let yellow = matches!(engine, Engine::Gen1Yellow { .. });
-    let table: &[(u8, u8, &str)] = if yellow {
-        names::YELLOW
-    } else {
-        names::RED_BLUE
-    };
+    // Pick the song mapping by header title, or by engine for unknown titles.
+    let series = songdb::series(songdb::GEN1);
+    let game = series.game_for_title(title).or_else(|| {
+        let yellow = matches!(engine, Engine::Gen1Yellow { .. });
+        series.game(if yellow { "yellow" } else { "red-green-blue" })
+    });
 
     let mut songs = Vec::new();
     for (ordinal, (bank, groups)) in audio_banks.iter().enumerate() {
         let ordinal = ordinal as u8 + 1;
         let music: Vec<u8> = groups.iter().filter(|g| g.2 < 4).map(|g| g.0).collect();
-        let known: Vec<&(u8, u8, &str)> = table.iter().filter(|t| t.0 == ordinal).collect();
+        let known: Vec<&SongDef> = game
+            .iter()
+            .flat_map(|g| &g.songs)
+            .filter(|s| s.bank == Some(ordinal))
+            .collect();
         for (n, &id) in music.iter().enumerate() {
-            // Match titles by sound ID; if a release shifted IDs but kept the song order,
+            // Match songs by sound ID; if a release shifted IDs but kept the song order,
             // fall back to the position within the bank.
-            let title = known
+            let def = known
                 .iter()
-                .find(|k| k.1 == id)
+                .find(|k| k.id == id as u16)
                 .or_else(|| (known.len() == music.len()).then(|| &known[n]))
-                .map(|k| k.2.to_string())
-                .unwrap_or_else(|| format!("Song ${id:02X}"));
-            songs.push(Song {
-                index: songs.len(),
-                title,
-                id: id as u16,
-                bank: *bank,
-            });
+                .copied();
+            if def.is_some_and(|d| d.hidden) {
+                continue;
+            }
+            songs.push(Song::new(songs.len(), id as u16, *bank, def));
         }
     }
     let home_bank = audio_banks[0].0;
@@ -377,15 +419,12 @@ fn detect_gen1(rom: &[u8]) -> Option<Driver> {
     let probe = (new_sound_id + 1 == audio_rom_bank).then(|| ChannelProbe::Gen1 {
         command_pointers: audio_rom_bank - 233,
     });
-    let game = if yellow {
-        "Pokémon Yellow"
-    } else {
-        "Pokémon Red / Green / Blue"
-    };
     Some(Driver {
         engine,
         probe,
-        game,
+        series: songdb::GEN1,
+        game_id: game_id(game),
+        game: String::new(),
         songs,
         home_bank,
     })
@@ -480,7 +519,7 @@ const GEN2_WRAPPER: &str =
 /// ld [hl],d / ld hl,Music
 const GEN2_PLAY_MUSIC_BODY: &str = "CD ?? ?? 21 ?? ?? 73 23 72 21 ?? ??";
 
-fn detect_gen2(rom: &[u8]) -> Option<Driver> {
+fn detect_gen2(rom: &[u8], title: &str) -> Option<Driver> {
     let home = &rom[..0x4000];
     let pm = Pattern::new(GEN2_PLAY_MUSIC).find_all(home).next()?;
     let bank = home[pm + 8];
@@ -525,36 +564,39 @@ fn detect_gen2(rom: &[u8]) -> Option<Driver> {
         return None;
     }
 
-    let crystal = ids.len() > names::GOLD_SILVER.len();
-    let (titles, game) = if crystal {
-        (names::CRYSTAL, "Pokémon Crystal")
-    } else {
-        (names::GOLD_SILVER, "Pokémon Gold / Silver")
-    };
-    let songs = ids
-        .iter()
-        .skip(1) // ID 0 is "no music"
-        .enumerate()
-        .map(|(index, &id)| Song {
-            index,
-            title: titles
-                .get(id as usize)
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| format!("Song ${id:02X}")),
-            id,
-            bank: 0,
-        })
-        .collect();
+    // Pick the song mapping by header title; for unknown titles Crystal is told apart from
+    // Gold / Silver by its longer song table.
+    let series = songdb::series(songdb::GEN2);
+    let game = series.game_for_title(title).or_else(|| {
+        let gold_silver = series.game("gold-silver")?;
+        let crystal = ids.len() - 1 > gold_silver.songs.len();
+        series.game(if crystal { "crystal" } else { "gold-silver" })
+    });
+    let mut songs = Vec::new();
+    // ID 0 is "no music".
+    for &id in ids.iter().skip(1) {
+        let def = game.and_then(|g| g.songs.iter().find(|s| s.id == id));
+        if def.is_some_and(|d| d.hidden) {
+            continue;
+        }
+        songs.push(Song::new(songs.len(), id, 0, def));
+    }
     Some(Driver {
         engine: Engine::Gen2 {
             play_music: pm as u16,
             update_sound: update_sound as u16,
         },
         probe,
-        game,
+        series: songdb::GEN2,
+        game_id: game_id(game),
+        game: String::new(),
         songs,
         home_bank: bank,
     })
+}
+
+fn game_id(game: Option<&Game>) -> String {
+    game.map_or_else(|| "unknown".to_string(), |g| g.id.clone())
 }
 
 #[cfg(test)]

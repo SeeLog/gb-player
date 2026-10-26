@@ -1,0 +1,43 @@
+# UI text. Keys missing from another language fall back to this file.
+# {name} is replaced by a value at run time.
+
+# Command line
+usage = """usage:
+  gb-player [rom]
+  gb-player [--lang <code>] --info <rom>
+  gb-player [--lang <code>] --wav <rom> <song#> <out.wav> [loops]"""
+info_loops = "intro {intro}s, loop {loop}s"
+info_ends = "ends at {at}s"
+info_unknown = "no loop found"
+info_error = "error: {error}"
+wav_no_loop = "loop not found; rendering 3 minutes"
+wav_written = "{title}: {secs}s written to {path}"
+err_song_number = "song# must be a number"
+err_song_start = "song# starts at 1"
+err_no_song = "no such song"
+err_loops = "loops must be a number"
+err_playback = "playback failed: {error}"
+
+# Window
+open_rom = "Open ROM…"
+song_count = "{n} songs"
+language = "Language"
+drop_hint = "Open a ROM file (.gb / .gbc) or drop it on the window."
+err_audio = "Cannot open the audio output: {error}"
+err_read = "Cannot read {path}: {error}"
+err_unsupported = "This ROM cannot be played: {error}"
+err_playback_ui = "Playback error: {error}"
+search = "Search"
+loop_label = "Loop:"
+loop_forever = "Loop forever"
+loop_playlist = "Fade out after {n} loops, then play the next song"
+loop_lap = "(loop {n})"
+volume = "Volume"
+channel_pulse1 = "Pulse 1"
+channel_pulse2 = "Pulse 2"
+channel_wave = "Wave"
+channel_noise = "Noise"
+analyzing = "Analyzing…"
+length_loops = "Intro {intro} / Loop {loop}"
+length_ends = "Ends at {at}"
+length_unknown = "Loop unknown"

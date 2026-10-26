@@ -1,0 +1,42 @@
+# UI の文言（日本語）。ここにないキーは en.toml の文言で表示されます。
+
+# コマンドライン
+usage = """使い方:
+  gb-player [rom]
+  gb-player [--lang <言語コード>] --info <rom>
+  gb-player [--lang <言語コード>] --wav <rom> <曲番号> <出力.wav> [ループ回数]"""
+info_loops = "イントロ {intro}秒, ループ {loop}秒"
+info_ends = "{at}秒で終了"
+info_unknown = "ループ不明"
+info_error = "エラー: {error}"
+wav_no_loop = "ループが見つからないため3分間書き出します"
+wav_written = "{title}: {secs}秒を {path} に書き出しました"
+err_song_number = "曲番号は数字で指定してください"
+err_song_start = "曲番号は1から始まります"
+err_no_song = "その番号の曲はありません"
+err_loops = "ループ回数は数字で指定してください"
+err_playback = "再生に失敗しました: {error}"
+
+# ウィンドウ
+open_rom = "ROMを開く…"
+song_count = "{n} 曲"
+language = "言語"
+drop_hint = "ROMファイル(.gb / .gbc)を開くか、ウィンドウにドロップしてください。"
+err_audio = "オーディオ出力を開けません: {error}"
+err_read = "{path} を読み込めません: {error}"
+err_unsupported = "このROMは再生できません: {error}"
+err_playback_ui = "再生エラー: {error}"
+search = "検索"
+loop_label = "ループ:"
+loop_forever = "無限ループ"
+loop_playlist = "{n}ループ後フェードアウトして次の曲へ"
+loop_lap = "({n} 周目)"
+volume = "音量"
+channel_pulse1 = "矩形波1"
+channel_pulse2 = "矩形波2"
+channel_wave = "波形メモリ"
+channel_noise = "ノイズ"
+analyzing = "解析中…"
+length_loops = "イントロ {intro} / ループ {loop}"
+length_ends = "{at} で終了"
+length_unknown = "ループ不明"

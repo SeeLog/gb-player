@@ -3,9 +3,9 @@
 //! update routine is called 59.7 times per second while the APU renders the result.
 
 pub mod driver;
-mod names;
 pub mod pattern;
 pub mod player;
+pub mod songdb;
 
 pub use driver::{Driver, Engine, Song};
 pub use player::{analyze, frames_to_secs, LoadError, PlayState, Player, SongLength, FRAME_RATE};
