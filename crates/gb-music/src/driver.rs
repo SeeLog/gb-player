@@ -7,8 +7,8 @@
 
 use gb_core::{CallError, Header, Machine};
 
+use crate::length::SongLength;
 use crate::pattern::{word, Pattern};
-use crate::player::SongLength;
 use crate::songdb::{self, Game, Localizer, SongDef};
 
 /// Upper bound for one call into the sound engine (about 10 frames of CPU time).

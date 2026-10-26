@@ -5,10 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{channel, Receiver};
 use std::sync::{Arc, Mutex};
 
-use gb_music::{analyze, Driver, Song, SongLength, FRAME_RATE};
-
-/// Ten minutes of music: long enough for any loop in the supported games.
-const ANALYZE_FRAMES: u32 = (FRAME_RATE * 600.0) as u32;
+use gb_music::{analyze, Driver, Song, SongLength, ANALYSIS_FRAMES};
 
 /// Finds song loop points in the background, current song first.
 pub struct Analyzer {
@@ -32,7 +29,7 @@ impl Analyzer {
             };
             let song: &Song = &driver.songs[index];
             let length =
-                analyze(&rom, &driver, song, ANALYZE_FRAMES).unwrap_or(SongLength::Unknown);
+                analyze(&rom, &driver, song, ANALYSIS_FRAMES).unwrap_or(SongLength::Unknown);
             if tx.send((index, length)).is_err() {
                 return;
             }

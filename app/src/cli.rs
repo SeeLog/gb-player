@@ -9,7 +9,7 @@
 use std::ffi::OsString;
 use std::io::Write;
 
-use gb_music::{analyze, frames_to_secs, PlayState, Player, SongLength, FRAME_RATE};
+use gb_music::{analyze, frames_to_secs, PlayState, Player, SongLength, ANALYSIS_FRAMES};
 
 use crate::i18n::Text;
 
@@ -65,7 +65,7 @@ fn info(t: &Text, path: &str) -> Result<(), String> {
     println!("engine: {:04X?}", player.driver().engine);
     let rom = player.rom();
     for song in player.songs() {
-        let length = analyze(&rom, player.driver(), song, (FRAME_RATE * 600.0) as u32);
+        let length = analyze(&rom, player.driver(), song, ANALYSIS_FRAMES);
         let desc = match length {
             Ok(SongLength::Loops { intro, period }) => t.fmt(
                 "info_loops",
@@ -99,13 +99,8 @@ fn wav(t: &Text, path: &str, song: &str, out: &str, loops: Option<&str>) -> Resu
         .get(index)
         .ok_or(t.get("err_no_song"))?
         .clone();
-    let length = analyze(
-        &player.rom(),
-        player.driver(),
-        &s,
-        (FRAME_RATE * 600.0) as u32,
-    )
-    .map_err(|e| e.to_string())?;
+    let length =
+        analyze(&player.rom(), player.driver(), &s, ANALYSIS_FRAMES).map_err(|e| e.to_string())?;
     player.play(index);
     player.loop_count = Some(
         loops

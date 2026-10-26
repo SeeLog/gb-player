@@ -18,7 +18,7 @@ use std::sync::OnceLock;
 
 use serde::Deserialize;
 
-use crate::player::{SongLength, FRAME_RATE};
+use crate::length::{SongLength, FRAME_RATE};
 
 pub const GEN1: &str = "pokemon-gen1";
 pub const GEN2: &str = "pokemon-gen2";
