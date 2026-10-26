@@ -61,3 +61,52 @@ pallet_town = "マサラタウン"
 
 - Windows: `%APPDATA%\gb-player\songdb\<シリーズ>\<言語コード>.toml`
 - Linux / macOS: `$XDG_CONFIG_HOME/gb-player/songdb/...`(未設定なら `~/.config/gb-player/songdb/...`)
+
+## 内蔵の検出器が無いゲーム(`[game.playback]`)
+
+ポケモン以外のゲームは、ゲームのサウンドドライバの「呼び方」を書けば鳴らせます。
+曲データの中身を書く必要はありません(ゲーム自身のドライバが読みます)。
+次のファイルを置くと、ヘッダタイトル(と `checksums`)が一致するROMを開いたときに使われます。
+
+- Windows: `%APPDATA%\gb-player\songdb\<シリーズ>\songs.toml`(Linux / macOS は上と同じ場所)
+- `<シリーズ>` は英小文字・数字・`-` だけの名前です。同じフォルダの `<言語コード>.toml` が曲名になります。
+
+```toml
+[[game]]
+id = "some-game"
+titles = ["SOME GAME"]
+songs = [{ id = 0x01, key = "title" }, { id = 0x02, key = "field", intro = 1.5, loop = 30.0 }]
+song_range = { first = 0x01, last = 0x30 }    # 任意: songs に無い番号も「Song $XX」として出す
+
+[game.playback]
+setup = [                                     # 任意: 曲ごとのリセット直後に1回
+  { write = 0xFF26, value = 0x80 },
+  { bank = 1, call = 0x4000 },                # ドライバの初期化
+  { frames = 30 },                            # update を30回空回し
+]
+start = [ { bank = 1, call = 0x4003, a = "song" } ]     # 曲を始める
+update = [ { bank = 1, call = 0x4006 } ]                # 毎フレーム(59.7Hz)
+
+[game.probe]                                  # 任意: 正確なループ検出用。無ければRAM全体で判定
+active  = { at = 0xC104, step = 0x32, mask = 0x01 }     # チャンネル c の値は at + c * step
+address = { at = 0xC107, step = 0x32, size = 2 }        # 次に読むコマンドのアドレス
+return  = { at = 0xC109, step = 0x32, size = 2 }        # サブルーチンの戻り先
+loop    = { at = 0xC119, step = 0x32 }                  # ループカウンタ
+flags   = { at = 0xC104, step = 0x32, mask = 0x06 }
+timer   = { at = 0xC116, step = 0x32 }                  # 今の音符の残りフレーム
+check   = { song_id = { at = 0xC101, step = 0x32, size = 2 }, all = false }
+```
+
+手順(ステップ)は次のどれか1つです。
+
+- `{ write = アドレス, value = 値 }`: 1バイト書く(RAM、I/O、バンク切替レジスタ)
+- `{ bank = 値 }`: $4000〜$7FFF のROMバンクを切り替える。`call` / `call_by` と組み合わせると呼ぶ直前に切り替える
+- `{ call = アドレス, a = 値, de = 値, ... }`: レジスタ(a b c d e h l bc de hl)を設定して呼ぶ
+- `{ call_by = アドレス, cases = [[値, 呼び先], ...], default = 呼び先 }`: RAMの値で呼び先を選ぶ
+- `{ frames = 回数 }`: update をその回数だけ実行する(setup / start のみ、合わせて300回まで)
+
+値は数値、`"song"`(曲番号)、`"song_bank"`(曲の `bank`)、`{ ram = アドレス }`(そのときのRAMの値)のどれかです。
+
+このファイルにできるのは、エミュレートしたマシンの中でバイトを書き、レジスタを設定し、アドレスを呼ぶことだけです。
+ファイルは1MiBまで、曲は512曲まで、手順は各64個まで、1回の呼び出しは約10フレーム分のCPU時間までに制限していて、
+外れたファイルやゲームは警告を出して読み飛ばします。

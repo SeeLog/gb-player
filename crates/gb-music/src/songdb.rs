@@ -20,6 +20,7 @@ use std::sync::OnceLock;
 
 use serde::Deserialize;
 
+use crate::config::{PlaybackDef, ProbeDef, MAX_SONGS};
 use crate::driver::Driver;
 use crate::length::{SongLength, FRAME_RATE};
 
@@ -81,7 +82,24 @@ pub struct Game {
     /// header title; when empty, the title alone decides.
     #[serde(default)]
     pub checksums: Vec<u16>,
+    #[serde(default)]
     pub songs: Vec<SongDef>,
+    /// Also list the IDs from `first` to `last` that `songs` leaves out, as "Song $XX".
+    #[serde(default)]
+    pub song_range: Option<SongRange>,
+    /// How to drive the sound engine, for games without a built-in detector.
+    #[serde(default)]
+    pub playback: Option<PlaybackDef>,
+    /// Where the engine keeps each channel's position, for exact loop points.
+    #[serde(default)]
+    pub probe: Option<ProbeDef>,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SongRange {
+    pub first: u16,
+    pub last: u16,
 }
 
 #[derive(Debug, Deserialize)]
@@ -100,6 +118,96 @@ pub struct SongDef {
     pub loop_secs: Option<f64>,
     /// Fixed length in seconds for a song that does not loop.
     pub end: Option<f64>,
+}
+
+/// Longest game ID, song key or header title accepted from the database.
+const MAX_NAME: usize = 64;
+
+impl Game {
+    /// Whether the game lists this header title and, if it lists any, this checksum.
+    pub fn matches(&self, title: &str, checksum: u16) -> bool {
+        self.titles.iter().any(|t| t == title)
+            && (self.checksums.is_empty() || self.checksums.contains(&checksum))
+    }
+
+    /// Check the limits that keep a user's database file from making the player work
+    /// without end; [`Game::playback`] and [`Game::probe`] are only valid after this.
+    pub fn validate(&self) -> Result<(), String> {
+        let name_ok = |s: &str| !s.is_empty() && s.len() <= MAX_NAME;
+        if !name_ok(&self.id) {
+            return Err(format!("game id must have 1 to {MAX_NAME} characters"));
+        }
+        if self.titles.len() > MAX_NAME || self.titles.iter().any(|t| t.len() > 16) {
+            return Err("titles: at most 64 titles of up to 16 characters".into());
+        }
+        if self.checksums.len() > MAX_NAME {
+            return Err("checksums: at most 64 checksums".into());
+        }
+        // The count of `songs` first: song_ids takes time quadratic in it.
+        if self.songs.len() > MAX_SONGS || self.song_ids().len() > MAX_SONGS {
+            return Err(format!("more than {MAX_SONGS} songs"));
+        }
+        for song in &self.songs {
+            if !name_ok(&song.key) {
+                return Err(format!("song key must have 1 to {MAX_NAME} characters"));
+            }
+            let secs = [song.intro, song.loop_secs, song.end];
+            if secs
+                .iter()
+                .flatten()
+                .any(|s| !(0.0..=MAX_SONG_SECS).contains(s))
+            {
+                return Err(format!(
+                    "{}: lengths must be between 0 and {MAX_SONG_SECS} seconds",
+                    song.key
+                ));
+            }
+        }
+        if let Some(r) = self.song_range {
+            if r.first > r.last || (r.last - r.first) as usize >= MAX_SONGS {
+                return Err(format!(
+                    "song_range must go up and have at most {MAX_SONGS} songs"
+                ));
+            }
+        }
+        match &self.playback {
+            Some(p) => {
+                p.build()?;
+                if let Some(probe) = &self.probe {
+                    probe.build()?;
+                }
+                if self.song_ids().is_empty() {
+                    return Err("a game with playback needs songs or a song_range".into());
+                }
+            }
+            None if self.probe.is_some() || self.song_range.is_some() => {
+                return Err("probe and song_range need playback".into());
+            }
+            None => {}
+        }
+        Ok(())
+    }
+
+    /// The song IDs of a game with its own playback: those of `song_range` (or of `songs`
+    /// without one) in order, then the listed songs outside the range; hidden ones left out.
+    pub fn song_ids(&self) -> Vec<u16> {
+        let range = self.song_range.map(|r| r.first..=r.last);
+        let mut ids: Vec<u16> = match &range {
+            Some(r) => r.clone().take(MAX_SONGS + 1).collect(),
+            None => Vec::new(),
+        };
+        for song in &self.songs {
+            if !range.as_ref().is_some_and(|r| r.contains(&song.id)) && !ids.contains(&song.id) {
+                ids.push(song.id);
+            }
+        }
+        ids.retain(|&id| !self.song(id).is_some_and(|s| s.hidden));
+        ids
+    }
+
+    pub fn song(&self, id: u16) -> Option<&SongDef> {
+        self.songs.iter().find(|s| s.id == id)
+    }
 }
 
 impl SongDef {
@@ -131,10 +239,7 @@ impl Series {
         checksum: u16,
         score: impl Fn(&Game) -> usize,
     ) -> Option<&Game> {
-        let listed = self.games.iter().find(|g| {
-            g.titles.iter().any(|t| t == title)
-                && (g.checksums.is_empty() || g.checksums.contains(&checksum))
-        });
+        let listed = self.games.iter().find(|g| g.matches(title, checksum));
         listed.or_else(|| {
             let mut best: Option<(&Game, usize)> = None;
             for g in &self.games {
@@ -192,6 +297,70 @@ pub fn series(series: &str) -> &'static Series {
         .get(series)
         .unwrap_or_else(|| panic!("unknown song series {series}"))
         .series
+}
+
+/// The built-in series, as (name, songs).
+pub fn builtin_series() -> impl Iterator<Item = (&'static str, &'static Series)> {
+    BUILTIN.iter().map(|b| (b.series, series(b.series)))
+}
+
+/// Most series folders of the user folder that are read.
+const MAX_USER_SERIES: usize = 64;
+/// Most games one user `songs.toml` may describe.
+const MAX_USER_GAMES: usize = 256;
+
+/// The series in the user folder, `<user_dir>/<series>/songs.toml`, as (name, songs). They
+/// describe games without a built-in detector; problems are returned as warnings and the
+/// broken file or game is skipped.
+pub fn user_series() -> (Vec<(String, Series)>, Vec<String>) {
+    let mut found = Vec::new();
+    let mut warnings = Vec::new();
+    let Some(entries) = user_dir().and_then(|d| std::fs::read_dir(d).ok()) else {
+        return (found, warnings);
+    };
+    let mut names: Vec<_> = entries
+        .take(4 * MAX_USER_SERIES)
+        .filter_map(|e| e.ok()?.file_name().into_string().ok())
+        .filter(|n| is_plain_name(n) && !builtin().contains_key(n.as_str()))
+        .collect();
+    names.sort();
+    names.truncate(MAX_USER_SERIES);
+    for name in names {
+        let Some(path) = user_dir().map(|d| d.join(&name).join("songs.toml")) else {
+            continue;
+        };
+        let text = match read_user_file(&path) {
+            Ok(Some(text)) => text,
+            Ok(None) => continue,
+            Err(e) => {
+                warnings.push(format!("{}: {e}", path.display()));
+                continue;
+            }
+        };
+        let mut series: Series = match toml::from_str(&text) {
+            Ok(s) => s,
+            Err(e) => {
+                warnings.push(format!("{}: {e}", path.display()));
+                continue;
+            }
+        };
+        if series.games.len() > MAX_USER_GAMES {
+            warnings.push(format!(
+                "{}: more than {MAX_USER_GAMES} games",
+                path.display()
+            ));
+            continue;
+        }
+        series.games.retain(|g| match g.validate() {
+            Ok(()) => true,
+            Err(e) => {
+                warnings.push(format!("{}: {}: {e}", path.display(), g.id));
+                false
+            }
+        });
+        found.push((name, series));
+    }
+    (found, warnings)
 }
 
 /// Where users can put their own `<series>/<lang>.toml` name files.
@@ -304,9 +473,12 @@ pub struct Names {
 
 impl Names {
     /// Look up the names of `driver`'s game and songs in `language`. Problems found in the
-    /// user's name files are returned as warnings; those files are then skipped.
+    /// user's song database and name files are returned as warnings; those files are then
+    /// skipped.
     pub fn new(driver: &Driver, language: &str) -> (Names, Vec<String>) {
-        let (names, warnings) = Localizer::new(driver.series, language);
+        let (names, name_warnings) = Localizer::new(&driver.series, language);
+        let mut warnings = driver.warnings.clone();
+        warnings.extend(name_warnings);
         let songs = driver
             .songs
             .iter()
@@ -411,6 +583,50 @@ mod tests {
         assert!(read_user_file(&big).is_err());
         assert!(read_user_file(&dir.join("missing.toml")).unwrap().is_none());
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn builtin_games_are_valid() {
+        for (name, series) in builtin_series() {
+            for game in &series.games {
+                game.validate()
+                    .unwrap_or_else(|e| panic!("{name}: {}: {e}", game.id));
+            }
+        }
+    }
+
+    #[test]
+    fn games_beyond_the_limits_are_refused() {
+        let game = |extra: &str| {
+            let text =
+                format!("[[game]]\nid = \"g\"\nsongs = [{{ id = 1, key = \"one\" }}]\n{extra}");
+            toml::from_str::<Series>(&text).unwrap().games.remove(0)
+        };
+        let playback =
+            "[game.playback]\nstart = [{ call = 0x4000 }]\nupdate = [{ call = 0x4100 }]\n";
+        assert!(game("").validate().is_ok());
+        assert!(game(playback).validate().is_ok());
+        assert!(game("song_range = { first = 1, last = 2 }")
+            .validate()
+            .is_err());
+        let probe = "[game.probe]\nactive = { at = 1, step = 1 }\naddress = { at = 1, step = 1 }\n\
+                     return = { at = 1, step = 1 }\nloop = { at = 1, step = 1 }\n\
+                     flags = { at = 1, step = 1 }\ntimer = { at = 1, step = 1 }\n";
+        assert!(game(probe).validate().is_err());
+        assert!(game(&format!("{playback}{probe}")).validate().is_ok());
+        let range = |last: u16| {
+            game(&format!(
+                "song_range = {{ first = 0, last = {last} }}\n{playback}"
+            ))
+            .validate()
+        };
+        assert!(range(MAX_SONGS as u16 - 1).is_ok());
+        assert!(range(MAX_SONGS as u16).is_err());
+        let mut long = game(playback);
+        long.songs[0].loop_secs = Some(MAX_SONG_SECS + 1.0);
+        assert!(long.validate().is_err());
+        long.songs[0].loop_secs = Some(f64::NAN);
+        assert!(long.validate().is_err());
     }
 
     #[test]

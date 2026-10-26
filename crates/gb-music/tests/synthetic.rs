@@ -1,7 +1,7 @@
 //! End-to-end tests on tiny hand-assembled ROMs that contain the same entry-point code shapes
 //! as the real games, with a toy sound engine behind them.
 
-use gb_music::{analyze, Driver, Engine, PlayState, Player, SongLength};
+use gb_music::{analyze, songdb, Driver, Engine, PlayState, Player, SongLength};
 
 struct Rom(Vec<u8>);
 
@@ -372,4 +372,88 @@ fn short_or_garbage_input_is_not_detected() {
     for len in [0, 1, 0x100, 0x3FFF, 0x4000, 0x7FFF] {
         assert!(Driver::detect(&vec![0xCD; len]).is_none(), "{len}");
     }
+}
+
+/// A ROM with a toy engine that no detector knows: song start at $4000 and update at $4100
+/// of bank 1.
+fn configured_rom() -> Vec<u8> {
+    let mut rom = Rom::new(0x01, 4);
+    // ld [$C000],a / ld a,1 / ld [$C002],a / ret
+    rom.put(
+        1,
+        0x4000,
+        &[0xEA, 0x00, 0xC0, 0x3E, 0x01, 0xEA, 0x02, 0xC0, 0xC9],
+    );
+    rom.put(1, 0x4100, &toy_update(0xC002, 0xC003));
+    rom.0
+}
+
+const CONFIGURED: &str = r#"
+[[game]]
+id = "toy"
+titles = ["SYNTHGB"]
+songs = [{ id = 3, key = "three" }, { id = 9, key = "nine", hidden = true }]
+song_range = { first = 1, last = 4 }
+
+[game.playback]
+setup = [
+    { write = 0xFF26, value = 0x80 },
+    { write = 0xFF24, value = 0x77 },
+    { write = 0xFF25, value = 0xFF },
+]
+start = [{ bank = 1, call = 0x4000, a = "song" }]
+update = [{ bank = 1, call = 0x4100 }]
+"#;
+
+#[test]
+fn a_song_database_entry_drives_an_unknown_engine() {
+    let rom = configured_rom();
+    assert!(Driver::detect(&rom).is_none());
+    let series: songdb::Series = toml::from_str(CONFIGURED).unwrap();
+    let game = &series.games[0];
+    game.validate().unwrap();
+    let driver = Driver::from_game("toy-series", game).unwrap();
+    assert_eq!(
+        driver.songs.iter().map(|s| s.id).collect::<Vec<_>>(),
+        [1, 2, 3, 4]
+    );
+    assert_eq!(driver.songs[2].key.as_deref(), Some("three"));
+    assert_eq!(driver.engine, Engine::Configured);
+
+    let mut player = Player::with_driver(rom.clone(), 48_000, driver.clone()).unwrap();
+    player.play(2);
+    assert!(peak(&mut player, 1.0) > 0.05);
+    assert_eq!(player.state(), PlayState::Playing);
+    let song = driver.songs[2].clone();
+    let len = analyze(&rom, &driver, &song, 2000).unwrap();
+    assert!(
+        matches!(len, SongLength::Loops { period: 256, .. }),
+        "{len:?}"
+    );
+}
+
+#[test]
+fn hostile_playbacks_stay_inside_their_budget() {
+    // Calls into an endless loop, through every kind of step.
+    let mut rom = Rom::new(0x01, 4);
+    rom.put(1, 0x4000, &[0x18, 0xFE]); // jr -2
+    let series: songdb::Series = toml::from_str(
+        r#"
+        [[game]]
+        id = "loop"
+        titles = ["SYNTHGB"]
+        song_range = { first = 0, last = 0 }
+        [game.playback]
+        setup = [{ frames = 300 }]
+        start = [{ bank = 1, call = 0x4000 }]
+        update = [{ bank = 1, call = 0x4000 }, { bank = 1, call = 0x4000 }]
+        "#,
+    )
+    .unwrap();
+    let driver = Driver::from_game("loop", &series.games[0]).unwrap();
+    let mut player = Player::with_driver(rom.0.clone(), 48_000, driver.clone()).unwrap();
+    player.play(0);
+    assert!(matches!(player.state(), PlayState::Failed(_)));
+    let song = driver.songs[0].clone();
+    assert!(analyze(&rom.0, &driver, &song, 100).is_err());
 }

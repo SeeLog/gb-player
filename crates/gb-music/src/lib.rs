@@ -3,6 +3,7 @@
 //! update routine is called 59.7 times per second while the APU renders the result.
 
 pub mod analysis;
+pub mod config;
 pub mod driver;
 pub mod length;
 pub mod pattern;

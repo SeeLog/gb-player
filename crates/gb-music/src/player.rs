@@ -66,6 +66,16 @@ impl Player {
         let driver = Driver::detect(&rom).ok_or_else(|| LoadError::UnsupportedGame {
             title: machine.mem.cart.header.title.clone(),
         })?;
+        Player::with_driver(rom, sample_rate, driver)
+    }
+
+    /// Play `rom` with a driver found or built elsewhere.
+    pub fn with_driver(
+        rom: Vec<u8>,
+        sample_rate: u32,
+        driver: Driver,
+    ) -> Result<Player, LoadError> {
+        let machine = Machine::new(rom.clone(), sample_rate)?;
         Ok(Player {
             rom: rom.into(),
             machine,

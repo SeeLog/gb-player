@@ -58,6 +58,8 @@ pub enum Engine {
     },
     /// Pokémon Gold / Silver / Crystal.
     Gen2 { play_music: u16, update_sound: u16 },
+    /// No built-in detector: driven by the playback of the game's song database entry.
+    Configured,
 }
 
 #[derive(Debug, Clone)]
@@ -65,11 +67,13 @@ pub struct Driver {
     pub engine: Engine,
     pub probe: Option<ChannelProbe>,
     /// Song database series and game the ROM was matched to.
-    pub series: &'static str,
+    pub series: String,
     pub game_id: String,
     pub songs: Vec<Song>,
     /// How to start songs and advance the engine.
     pub playback: Playback,
+    /// Problems found in the user's song database files, which were skipped.
+    pub warnings: Vec<String>,
 }
 
 fn bank_slice(rom: &[u8], bank: u8) -> &[u8] {
@@ -96,7 +100,52 @@ impl Driver {
         let (title, checksum) = Header::parse(rom)
             .map(|h| (h.title, h.global_checksum))
             .unwrap_or_default();
-        detect_gen2(rom, &title, checksum).or_else(|| detect_gen1(rom, &title, checksum))
+        // A song database entry with its own playback comes first: it was written for this
+        // very release.
+        let (user, warnings) = songdb::user_series();
+        let mut all: Vec<(&str, &songdb::Series)> = songdb::builtin_series().collect();
+        all.extend(user.iter().map(|(name, series)| (name.as_str(), series)));
+        let configured = all.into_iter().find_map(|(name, series)| {
+            let game = series
+                .games
+                .iter()
+                .find(|g| g.playback.is_some() && g.matches(&title, checksum))?;
+            Some((name, game))
+        });
+        let mut driver = match configured {
+            Some((series, game)) => Driver::from_game(series, game)?,
+            None => {
+                detect_gen2(rom, &title, checksum).or_else(|| detect_gen1(rom, &title, checksum))?
+            }
+        };
+        driver.warnings = warnings;
+        Some(driver)
+    }
+
+    /// The driver a song database entry with a playback describes; `None` if it has none or
+    /// breaks the limits of [`Game::validate`].
+    pub fn from_game(series: &str, game: &Game) -> Option<Driver> {
+        game.validate().ok()?;
+        let playback = game.playback.as_ref()?.build().ok()?;
+        let probe = game.probe.as_ref().map(|p| p.build()).transpose().ok()?;
+        let songs = game
+            .song_ids()
+            .into_iter()
+            .enumerate()
+            .map(|(index, id)| {
+                let def = game.song(id);
+                Song::new(index, id, def.and_then(|d| d.bank).unwrap_or(0), def)
+            })
+            .collect();
+        Some(Driver {
+            engine: Engine::Configured,
+            probe,
+            series: series.to_string(),
+            game_id: game.id.clone(),
+            songs,
+            playback,
+            warnings: Vec::new(),
+        })
     }
 
     /// Reset the sound engine and start `song`.
@@ -195,6 +244,8 @@ impl Engine {
                 ],
                 vec![call(update_sound, &[])],
             ),
+            // Described by data instead; see Driver::from_game.
+            Engine::Configured => (Vec::new(), Vec::new()),
         };
         Playback {
             rate: Rate::VBlank,
@@ -349,7 +400,8 @@ fn detect_gen1(rom: &[u8], title: &str, checksum: u16) -> Option<Driver> {
         playback: engine.playback(home_bank),
         engine,
         probe,
-        series: songdb::GEN1,
+        series: songdb::GEN1.to_string(),
+        warnings: Vec::new(),
         game_id: game_id(game),
         songs,
     })
@@ -551,7 +603,8 @@ fn detect_gen2(rom: &[u8], title: &str, checksum: u16) -> Option<Driver> {
         playback: engine.playback(bank),
         engine,
         probe,
-        series: songdb::GEN2,
+        series: songdb::GEN2.to_string(),
+        warnings: Vec::new(),
         game_id: game_id(game),
         songs,
     })
