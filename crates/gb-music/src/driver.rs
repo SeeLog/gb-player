@@ -154,7 +154,7 @@ impl Driver {
     }
 
     /// Play one video frame of music; see [`Playback::run_frame`].
-    pub fn run_frame(&self, m: &mut Machine, phase: &mut u32) -> Result<(), CallError> {
+    pub fn run_frame(&self, m: &mut Machine, phase: &mut u32) -> Result<u32, CallError> {
         self.playback.run_frame(m, phase)
     }
 }

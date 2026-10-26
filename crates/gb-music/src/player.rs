@@ -6,11 +6,13 @@ use std::sync::Arc;
 use gb_core::{CallError, CartridgeError, Machine};
 
 use crate::driver::{Driver, Song};
+use crate::gbs::{self, is_gbs, GbsError};
 use crate::length::{SongLength, FRAME_RATE};
 
 #[derive(Debug)]
 pub enum LoadError {
     Cartridge(CartridgeError),
+    Gbs(GbsError),
     UnsupportedGame { title: String },
 }
 
@@ -18,6 +20,7 @@ impl fmt::Display for LoadError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             LoadError::Cartridge(e) => write!(f, "{e}"),
+            LoadError::Gbs(e) => write!(f, "{e}"),
             LoadError::UnsupportedGame { title } => {
                 write!(f, "no supported sound engine found in \"{title}\"")
             }
@@ -63,7 +66,12 @@ pub struct Player {
 }
 
 impl Player {
+    /// Play a ROM, or a GBS file.
     pub fn new(rom: Vec<u8>, sample_rate: u32) -> Result<Player, LoadError> {
+        if is_gbs(&rom) {
+            let (image, driver) = gbs::load(&rom).map_err(LoadError::Gbs)?;
+            return Player::with_driver(image, sample_rate, driver);
+        }
         let machine = Machine::new(rom.clone(), sample_rate)?;
         let driver = Driver::detect(&rom).ok_or_else(|| LoadError::UnsupportedGame {
             title: machine.mem.cart.header.title.clone(),

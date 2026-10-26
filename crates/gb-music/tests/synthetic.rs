@@ -457,3 +457,53 @@ fn hostile_playbacks_stay_inside_their_budget() {
     let song = driver.songs[0].clone();
     assert!(analyze(&rom.0, &driver, &song, 100).is_err());
 }
+
+/// A GBS file of the toy engine: init at $0400 (song number in A), play at $0410.
+fn toy_gbs(tma: u8, tac: u8) -> Vec<u8> {
+    let mut gbs = vec![0u8; 0x70];
+    gbs[0..4].copy_from_slice(b"GBS\x01");
+    gbs[4] = 2;
+    gbs[5] = 1;
+    for (pos, v) in [(6, 0x0400u16), (8, 0x0400), (10, 0x0410), (12, 0xDFFF)] {
+        gbs[pos..pos + 2].copy_from_slice(&v.to_le_bytes());
+    }
+    gbs[0x0E] = tma;
+    gbs[0x0F] = tac;
+    gbs[0x10..0x18].copy_from_slice(b"Toy Tune");
+    let mut code = vec![0xEA, 0x00, 0xC0, 0x3E, 0x01, 0xEA, 0x02, 0xC0, 0xC9];
+    code.resize(0x10, 0);
+    code.extend(toy_update(0xC002, 0xC003));
+    gbs.extend(code);
+    gbs
+}
+
+#[test]
+fn gbs_files_play_and_loop() {
+    for (tma, tac, period) in [(0, 0, 256), (0xBB, 0x04, 256)] {
+        let gbs = toy_gbs(tma, tac);
+        let mut player = Player::new(gbs, 48_000).expect("GBS loaded");
+        assert_eq!(player.songs().len(), 2);
+        assert_eq!(player.driver().game_id, "Toy Tune");
+        player.play(1);
+        assert!(peak(&mut player, 1.0) > 0.05);
+        assert_eq!(player.state(), PlayState::Playing);
+        let song = player.songs()[1].clone();
+        let len = analyze(&player.rom(), player.driver(), &song, 4000).unwrap();
+        // 4096 Hz / (256 - $BB) is about 59.4 Hz, so with the timer the toy engine's
+        // 256-update loop takes a little longer than 256 frames.
+        match len {
+            SongLength::Loops { period: p, .. } => {
+                assert!((period..period + 4).contains(&p), "{p}")
+            }
+            other => panic!("TAC {tac:02X}: {other:?}"),
+        }
+    }
+}
+
+#[test]
+fn broken_gbs_files_are_refused() {
+    let mut gbs = toy_gbs(0, 0);
+    gbs[6..8].copy_from_slice(&0x0100u16.to_le_bytes());
+    assert!(Player::new(gbs, 48_000).is_err());
+    assert!(Player::new(b"GBS".to_vec(), 48_000).is_err());
+}

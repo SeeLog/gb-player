@@ -30,7 +30,10 @@ pub async fn pick_rom(handle: AppHandle) {
     let picked = handle
         .dialog()
         .file()
-        .add_filter("Game Boy ROM", &["gb", "gbc", "GB", "GBC"])
+        .add_filter(
+            "Game Boy ROM / GBS",
+            &["gb", "gbc", "gbs", "GB", "GBC", "GBS"],
+        )
         .blocking_pick_file();
     let Some(Ok(path)) = picked.map(|f| f.into_path()) else {
         return;

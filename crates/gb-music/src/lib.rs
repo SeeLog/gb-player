@@ -5,6 +5,7 @@
 pub mod analysis;
 pub mod config;
 pub mod driver;
+pub mod gbs;
 pub mod length;
 pub mod pattern;
 pub mod playback;

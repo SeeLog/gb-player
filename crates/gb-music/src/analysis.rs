@@ -130,14 +130,24 @@ fn analyze_score(
 }
 
 fn analyze_ram(m: &mut Machine, driver: &Driver, max_frames: u32) -> Result<SongLength, CallError> {
-    // With a timer-driven engine the time to the next update is part of the state too.
-    let mut seen: HashMap<(u64, u32), u32> = HashMap::new();
+    // A timer-driven engine may skip a frame or run several updates in one, so only frames
+    // that ran an update are compared, and the song ends when the state stays the same from
+    // one such frame to the next. The time to the next update is left out on purpose: it
+    // rarely comes back to the same value at a frame boundary, and the RAM alone already pins
+    // the loop down to within one update.
+    let mut seen: HashMap<u64, u32> = HashMap::new();
     let mut phase = 0;
+    let mut updates = 1;
+    let mut last = None;
     for frame in 0..max_frames {
-        let hash = (m.state_hash(), phase);
+        if updates == 0 {
+            updates = driver.run_frame(m, &mut phase)?;
+            continue;
+        }
+        let hash = m.state_hash();
         if let Some(&first) = seen.get(&hash) {
             let period = frame - first;
-            return Ok(if period == 1 {
+            return Ok(if last == Some(first) {
                 SongLength::Ends { at: first }
             } else {
                 SongLength::Loops {
@@ -147,7 +157,8 @@ fn analyze_ram(m: &mut Machine, driver: &Driver, max_frames: u32) -> Result<Song
             });
         }
         seen.insert(hash, frame);
-        driver.run_frame(m, &mut phase)?;
+        last = Some(frame);
+        updates = driver.run_frame(m, &mut phase)?;
     }
     Ok(SongLength::Unknown)
 }

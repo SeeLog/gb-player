@@ -177,16 +177,19 @@ impl Playback {
     /// between them pass. `phase` carries the T-cycles since the last update from frame to
     /// frame; it starts at 0 with a new song, so a timer fires its first update a full period in,
     /// like a real one counting up to overflow. All updates of a frame share one budget.
-    pub fn run_frame(&self, m: &mut Machine, phase: &mut u32) -> Result<(), CallError> {
+    /// Returns how many updates ran.
+    pub fn run_frame(&self, m: &mut Machine, phase: &mut u32) -> Result<u32, CallError> {
+        let mut updates = 0;
         match self.rate {
             Rate::VBlank => {
                 let spent = self.update(m)?;
                 m.idle(CYCLES_PER_FRAME.saturating_sub(spent));
+                updates = 1;
             }
             Rate::Timer { period } => {
                 let mut left = CYCLES_PER_FRAME;
                 let mut budget = UPDATE_BUDGET;
-                for _ in 0..MAX_UPDATES_PER_FRAME {
+                while updates < MAX_UPDATES_PER_FRAME {
                     let wait = period.saturating_sub(*phase);
                     if wait >= left {
                         break;
@@ -197,12 +200,13 @@ impl Playback {
                     budget = budget.saturating_sub(spent);
                     *phase = spent;
                     left = left.saturating_sub(spent);
+                    updates += 1;
                 }
                 m.idle(left);
                 *phase = phase.saturating_add(left);
             }
         }
-        Ok(())
+        Ok(updates)
     }
 
     fn run(

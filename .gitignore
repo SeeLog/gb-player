@@ -1,6 +1,7 @@
 /target
 *.gb
 *.gbc
+*.gbs
 *.sav
 *.wav
 /rom/
