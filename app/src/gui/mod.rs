@@ -7,7 +7,7 @@ mod session;
 mod views;
 
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
 use tauri::{AppHandle, Emitter, Manager, RunEvent};
@@ -27,7 +27,7 @@ struct App {
 
 impl App {
     fn lock(&self) -> MutexGuard<'_, Session> {
-        self.session.lock().unwrap()
+        self.session.lock().unwrap_or_else(PoisonError::into_inner)
     }
 }
 

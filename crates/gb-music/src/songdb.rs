@@ -13,7 +13,9 @@
 //! language, built-in file for the chosen language, built-in English, the song key.
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::fs::File;
+use std::io::Read;
+use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 use serde::Deserialize;
@@ -26,6 +28,12 @@ pub const GEN2: &str = "pokemon-gen2";
 
 /// Language used when a name is missing in the chosen one.
 pub const FALLBACK_LANGUAGE: &str = "en";
+
+/// Longest fixed song length accepted from the database, in seconds.
+pub const MAX_SONG_SECS: f64 = 3600.0;
+
+/// Largest user file that is read; anything bigger is reported and skipped.
+pub const MAX_USER_FILE: u64 = 1 << 20;
 
 struct Builtin {
     series: &'static str,
@@ -92,7 +100,8 @@ pub struct SongDef {
 
 impl SongDef {
     pub fn length(&self) -> Option<SongLength> {
-        let frames = |s: f64| (s * FRAME_RATE).round() as u32;
+        // Clamped so that a mistyped value cannot overflow frame arithmetic later on.
+        let frames = |s: f64| (s.clamp(0.0, MAX_SONG_SECS) * FRAME_RATE).round() as u32;
         match (self.loop_secs, self.end) {
             (Some(period), _) => Some(SongLength::Loops {
                 intro: frames(self.intro.unwrap_or(0.0)),
@@ -183,6 +192,33 @@ pub fn language_code(tag: &str) -> String {
         .to_ascii_lowercase()
 }
 
+/// Whether `name` is safe to use as one component of a path: lowercase letters, digits and
+/// hyphens only, like the series names and language codes.
+pub fn is_plain_name(name: &str) -> bool {
+    (1..=32).contains(&name.len())
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+}
+
+/// Read a user file of at most [`MAX_USER_FILE`] bytes; `None` if it does not exist.
+pub fn read_user_file(path: &Path) -> std::io::Result<Option<String>> {
+    let file = match File::open(path) {
+        Ok(f) => f,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(e),
+    };
+    let mut text = String::new();
+    file.take(MAX_USER_FILE + 1).read_to_string(&mut text)?;
+    if text.len() as u64 > MAX_USER_FILE {
+        return Err(std::io::Error::other(format!(
+            "larger than {} KiB",
+            MAX_USER_FILE / 1024
+        )));
+    }
+    Ok(Some(text))
+}
+
 /// Name lookup for one series in one language.
 pub struct Localizer {
     layers: Vec<NameTable>,
@@ -195,13 +231,18 @@ impl Localizer {
     pub fn new(series: &str, language: &str) -> (Localizer, Vec<String>) {
         let mut warnings = Vec::new();
         let mut layers = Vec::new();
-        if let Some(path) = user_dir().map(|d| d.join(series).join(format!("{language}.toml"))) {
-            match std::fs::read_to_string(&path) {
-                Ok(text) => match toml::from_str(&text) {
+        // Both names become part of a path, so anything but a plain code is not looked up.
+        let path = (is_plain_name(series) && is_plain_name(language))
+            .then(user_dir)
+            .flatten()
+            .map(|d| d.join(series).join(format!("{language}.toml")));
+        if let Some(path) = path {
+            match read_user_file(&path) {
+                Ok(Some(text)) => match toml::from_str(&text) {
                     Ok(names) => layers.push(names),
                     Err(e) => warnings.push(format!("{}: {e}", path.display())),
                 },
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Ok(None) => {}
                 Err(e) => warnings.push(format!("{}: {e}", path.display())),
             }
         }
@@ -309,5 +350,65 @@ mod tests {
     fn locale_tags() {
         assert_eq!(language_code("ja-JP"), "ja");
         assert_eq!(language_code("en_US.UTF-8"), "en");
+    }
+
+    #[test]
+    fn only_plain_names_become_paths() {
+        assert!(is_plain_name("ja"));
+        assert!(is_plain_name(GEN1));
+        for bad in [
+            "",
+            "../ja",
+            "ja/..",
+            "..",
+            "a\\b",
+            "JA",
+            "ja.toml",
+            &"a".repeat(33),
+        ] {
+            assert!(!is_plain_name(bad), "{bad}");
+        }
+        // A language code that would escape the user folder still gets the built-in names.
+        let (names, warnings) = Localizer::new(GEN1, "../../../ja");
+        assert!(warnings.is_empty());
+        assert_eq!(names.song("pallet_town"), "Pallet Town");
+    }
+
+    #[test]
+    fn oversized_user_files_are_refused() {
+        let dir = std::env::temp_dir().join(format!("gb-music-songdb-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let small = dir.join("small.toml");
+        let big = dir.join("big.toml");
+        std::fs::write(&small, "[songs]\n").unwrap();
+        std::fs::write(&big, vec![b'#'; MAX_USER_FILE as usize + 1]).unwrap();
+        assert_eq!(
+            read_user_file(&small).unwrap().as_deref(),
+            Some("[songs]\n")
+        );
+        assert!(read_user_file(&big).is_err());
+        assert!(read_user_file(&dir.join("missing.toml")).unwrap().is_none());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn fixed_lengths_are_clamped() {
+        let def = SongDef {
+            bank: None,
+            id: 1,
+            key: "x".into(),
+            hidden: false,
+            intro: Some(f64::INFINITY),
+            loop_secs: Some(1e30),
+            end: None,
+        };
+        let max = (MAX_SONG_SECS * FRAME_RATE).round() as u32;
+        assert_eq!(
+            def.length(),
+            Some(SongLength::Loops {
+                intro: max,
+                period: max
+            })
+        );
     }
 }

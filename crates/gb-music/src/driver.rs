@@ -92,23 +92,23 @@ impl ChannelProbe {
                 } => {
                     // wChannelSoundIDs, wChannelFlags1 and wChannelLoopCounters follow the
                     // command pointers and return addresses as arrays of eight bytes.
-                    let arrays = p + 32;
-                    (m.read(arrays + c16) != 0).then(|| ChannelKey {
-                        address: m.read16(p + 2 * c16),
-                        return_address: m.read16(p + 16 + 2 * c16),
-                        loop_count: m.read(arrays + 8 * 19 + c16),
+                    let at = |offset: u16| p.wrapping_add(offset);
+                    (m.read(at(32 + c16)) != 0).then(|| ChannelKey {
+                        address: m.read16(at(2 * c16)),
+                        return_address: m.read16(at(16 + 2 * c16)),
+                        loop_count: m.read(at(32 + 8 * 19 + c16)),
                         // Only the "inside sound_call" bit; the others change mid-note.
-                        flags: m.read(arrays + 8 + c16) & 0x02,
+                        flags: m.read(at(32 + 8 + c16)) & 0x02,
                     })
                 }
                 ChannelProbe::Gen2 { channel1 } => {
                     // channel_struct: MusicAddress +$06, LastMusicAddress +$08, LoopCount +$18.
-                    let base = channel1 + 0x32 * c16;
-                    let flags = m.read(base + 3);
+                    let at = |offset: u16| channel1.wrapping_add(0x32 * c16 + offset);
+                    let flags = m.read(at(3));
                     (flags & 1 != 0).then(|| ChannelKey {
-                        address: m.read16(base + 6),
-                        return_address: m.read16(base + 8),
-                        loop_count: m.read(base + 0x18),
+                        address: m.read16(at(6)),
+                        return_address: m.read16(at(8)),
+                        loop_count: m.read(at(0x18)),
                         flags: flags & 0x06,
                     })
                 }
@@ -128,9 +128,9 @@ impl ChannelProbe {
                 // wChannelNoteDelayCounters
                 ChannelProbe::Gen1 {
                     command_pointers: p,
-                } => m.read(p + 32 + 8 * 18 + c16),
+                } => m.read(p.wrapping_add(32 + 8 * 18 + c16)),
                 // channel_struct NoteDuration
-                ChannelProbe::Gen2 { channel1 } => m.read(channel1 + 0x32 * c16 + 0x15),
+                ChannelProbe::Gen2 { channel1 } => m.read(channel1.wrapping_add(0x32 * c16 + 0x15)),
             };
         }
         timers
@@ -142,12 +142,12 @@ impl ChannelProbe {
             ChannelProbe::Gen1 {
                 command_pointers: p,
             } => {
-                let ids: Vec<u8> = (0..4).map(|c| m.read(p + 32 + c)).collect();
+                let ids: Vec<u8> = (0..4).map(|c| m.read(p.wrapping_add(32 + c))).collect();
                 ids.contains(&(song.id as u8)) && ids.iter().all(|&i| i == 0 || i == song.id as u8)
             }
             ChannelProbe::Gen2 { channel1 } => (0..4).any(|c| {
-                let base = channel1 + 0x32 * c;
-                m.read(base + 3) & 1 != 0 && m.read16(base) == song.id
+                let base = channel1.wrapping_add(0x32 * c);
+                m.read(base.wrapping_add(3)) & 1 != 0 && m.read16(base) == song.id
             }),
         }
     }
@@ -183,6 +183,9 @@ fn rom_at(rom: &[u8], bank: u8, addr: u16) -> Option<&[u8]> {
 impl Driver {
     /// Find the sound engine of `rom` and the song database entries of its songs.
     pub fn detect(rom: &[u8]) -> Option<Driver> {
+        if rom.len() < 0x8000 {
+            return None;
+        }
         let title = Header::parse(rom).map(|h| h.title).unwrap_or_default();
         detect_gen2(rom, &title).or_else(|| detect_gen1(rom, &title))
     }
@@ -294,8 +297,12 @@ fn gen1_header_table(bank: &[u8]) -> Option<&[u8]> {
     let lookup = Pattern::new(GEN1_HEADER_LOOKUP);
     for pos in lookup.find_all(bank) {
         let base = word(bank, pos + 8);
-        if (0x4000..0x8000).contains(&base) {
-            return Some(&bank[base as usize - 0x4000..]);
+        if let Some(table) = (0x4000..0x8000)
+            .contains(&base)
+            .then(|| bank.get(base as usize - 0x4000..))
+            .flatten()
+        {
+            return Some(table);
         }
     }
     (bank.get(0..3) == Some(&[0xFF, 0xFF, 0xFF][..])).then_some(bank)
@@ -395,9 +402,10 @@ fn detect_gen1(rom: &[u8], title: &str) -> Option<Driver> {
     // In the Gen 1 audio RAM layout wNewSoundID directly precedes wAudioROMBank, and the
     // channel arrays end 233 bytes earlier. Only trust that layout if the first part holds.
     let new_sound_id = word(home, pm + 2);
-    let probe = (new_sound_id + 1 == audio_rom_bank).then(|| ChannelProbe::Gen1 {
-        command_pointers: audio_rom_bank - 233,
-    });
+    let probe = audio_rom_bank
+        .checked_sub(233)
+        .filter(|_| new_sound_id.wrapping_add(1) == audio_rom_bank)
+        .map(|command_pointers| ChannelProbe::Gen1 { command_pointers });
     Some(Driver {
         engine,
         probe,
@@ -416,21 +424,24 @@ fn find_rb_dispatch(home: &[u8], audio_rom_bank: u16) -> Option<Gen1Builder> {
         let b1 = home[pos + 1];
         let u1 = word(home, pos + 5);
         let b2 = home[pos + 10];
-        let skip = home[pos + 12] as usize;
+        let Some(&skip) = home.get(pos + 12) else {
+            continue;
+        };
+        let skip = skip as usize;
         let mut p = pos + 13;
         // Engine 2 may first call Music_DoLowHealthAlarm.
         let calls_after = if skip == 8 { 2 } else { 1 };
         let mut last_call = 0;
         let mut ok = true;
         for _ in 0..calls_after {
-            if home.get(p) != Some(&0xCD) {
+            if home.get(p) != Some(&0xCD) || home.len() < p + 3 {
                 ok = false;
                 break;
             }
             last_call = word(home, p + 1);
             p += 3;
         }
-        if !ok || home.get(p..p + 3) != Some(&[0x18, 0x03, 0xCD][..]) {
+        if !ok || home.get(p..p + 3) != Some(&[0x18, 0x03, 0xCD][..]) || home.len() < p + 5 {
             continue;
         }
         let u2 = last_call;

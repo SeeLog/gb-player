@@ -177,7 +177,9 @@ impl Player {
     /// The frame at which the fade-out starts, if the song will end.
     fn fade_start(&self) -> Option<u32> {
         match (self.length, self.loop_count) {
-            (SongLength::Loops { intro, period }, Some(n)) => Some(intro + period * n.max(1)),
+            (SongLength::Loops { intro, period }, Some(n)) => {
+                Some(intro.saturating_add(period.saturating_mul(n.max(1))))
+            }
             _ => None,
         }
     }
@@ -205,7 +207,10 @@ impl Player {
         };
         self.machine.idle(CYCLES_PER_FRAME.saturating_sub(spent));
         let samples = self.machine.mem.apu.take_samples();
-        let (g0, g1) = (self.gain_at(self.frame), self.gain_at(self.frame + 1));
+        let (g0, g1) = (
+            self.gain_at(self.frame),
+            self.gain_at(self.frame.saturating_add(1)),
+        );
         let n = (samples.len() / 2).max(1) as f32;
         self.buf.clear();
         self.buf_pos = 0;
@@ -217,13 +222,13 @@ impl Player {
         for (a, b) in self.levels.iter_mut().zip(lv) {
             *a = a.max(b);
         }
-        self.frame += 1;
+        self.frame = self.frame.saturating_add(1);
 
         let finished = match (self.fade_start(), self.length) {
-            (Some(start), _) => self.frame >= start + self.fade_frames(),
+            (Some(start), _) => self.frame >= start.saturating_add(self.fade_frames()),
             // Let a jingle's last note ring out for a second.
             (_, SongLength::Ends { at }) => {
-                self.loop_count.is_some() && self.frame >= at + FRAME_RATE as u32
+                self.loop_count.is_some() && self.frame >= at.saturating_add(FRAME_RATE as u32)
             }
             _ => false,
         };

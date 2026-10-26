@@ -1,6 +1,9 @@
 //! ROM header parsing and memory bank controllers.
 
 use std::fmt;
+use std::fs::File;
+use std::io::Read;
+use std::path::Path;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MbcKind {
@@ -14,6 +17,7 @@ pub enum MbcKind {
 #[derive(Debug)]
 pub enum CartridgeError {
     TooSmall(usize),
+    TooLarge(usize),
     UnsupportedMbc(u8),
 }
 
@@ -21,12 +25,26 @@ impl fmt::Display for CartridgeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             CartridgeError::TooSmall(n) => write!(f, "ROM is too small ({n} bytes)"),
+            CartridgeError::TooLarge(n) => write!(f, "ROM is too large ({n} bytes)"),
             CartridgeError::UnsupportedMbc(t) => write!(f, "unsupported cartridge type ${t:02X}"),
         }
     }
 }
 
 impl std::error::Error for CartridgeError {}
+
+/// The largest ROM a cartridge can have (512 banks of 16 KiB, the MBC5 maximum).
+pub const MAX_ROM_SIZE: usize = 512 * 0x4000;
+
+/// Read a ROM file without reading more than [`MAX_ROM_SIZE`] bytes of it; a bigger file
+/// comes back one byte too long, which [`Cartridge::new`] then rejects.
+pub fn read_rom(path: &Path) -> std::io::Result<Vec<u8>> {
+    let mut rom = Vec::new();
+    File::open(path)?
+        .take(MAX_ROM_SIZE as u64 + 1)
+        .read_to_end(&mut rom)?;
+    Ok(rom)
+}
 
 /// Information read from the cartridge header ($0100-$014F).
 #[derive(Debug, Clone)]
@@ -91,6 +109,9 @@ pub struct Cartridge {
 
 impl Cartridge {
     pub fn new(rom: Vec<u8>) -> Result<Cartridge, CartridgeError> {
+        if rom.len() > MAX_ROM_SIZE {
+            return Err(CartridgeError::TooLarge(rom.len()));
+        }
         let header = Header::parse(&rom)?;
         let rom_bank_count = rom.len().div_ceil(0x4000).max(2);
         Ok(Cartridge {
@@ -233,6 +254,16 @@ mod tests {
         let cart = Cartridge::new(rom_with_type(0x13, 4)).unwrap();
         assert_eq!(cart.header.title, "TESTGB");
         assert_eq!(cart.header.mbc, MbcKind::Mbc3);
+    }
+
+    #[test]
+    fn rejects_oversized_rom() {
+        let rom = rom_with_type(0x19, 513);
+        assert!(matches!(
+            Cartridge::new(rom),
+            Err(CartridgeError::TooLarge(_))
+        ));
+        assert!(Cartridge::new(rom_with_type(0x19, 512)).is_ok());
     }
 
     #[test]

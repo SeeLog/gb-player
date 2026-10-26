@@ -381,6 +381,7 @@ impl Apu {
     }
 
     pub fn set_sample_rate(&mut self, rate: u32) {
+        let rate = rate.max(1);
         self.sample_rate = rate;
         self.cycles_per_sample = ((CPU_CLOCK as u64) << 16) / rate as u64;
         self.hp_factor = 0.999958f32.powf(CPU_CLOCK as f32 / rate as f32);

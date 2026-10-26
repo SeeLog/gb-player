@@ -1,7 +1,8 @@
 //! End-to-end tests on tiny hand-assembled ROMs that contain the same entry-point code shapes
 //! as the real games, with a toy sound engine behind them.
 
-use gb_music::{analyze, Engine, PlayState, Player, SongLength};
+use gb_music::driver::ChannelProbe;
+use gb_music::{analyze, Driver, Engine, PlayState, Player, SongLength};
 
 struct Rom(Vec<u8>);
 
@@ -346,4 +347,44 @@ fn loop_count_fades_and_finishes() {
 fn rejects_unknown_rom() {
     let rom = Rom::new(0x00, 2).0;
     assert!(Player::new(rom, 48_000).is_err());
+}
+
+#[test]
+fn huge_lengths_do_not_overflow() {
+    let mut player = Player::new(gen2_rom(), 48_000).unwrap();
+    player.play(0);
+    player.loop_count = Some(u32::MAX);
+    player.set_length(
+        0,
+        SongLength::Loops {
+            intro: u32::MAX,
+            period: u32::MAX,
+        },
+    );
+    peak(&mut player, 0.2);
+    player.play(0);
+    player.set_length(0, SongLength::Ends { at: u32::MAX });
+    peak(&mut player, 0.2);
+    assert_eq!(player.state(), PlayState::Playing);
+}
+
+#[test]
+fn short_or_garbage_input_is_not_detected() {
+    for len in [0, 1, 0x100, 0x3FFF, 0x4000, 0x7FFF] {
+        assert!(Driver::detect(&vec![0xCD; len]).is_none(), "{len}");
+    }
+}
+
+#[test]
+fn probes_near_the_top_of_memory_wrap() {
+    let mut m = gb_core::Machine::new(Rom::new(0x00, 2).0, 48_000).unwrap();
+    for probe in [
+        ChannelProbe::Gen1 {
+            command_pointers: 0xFFF0,
+        },
+        ChannelProbe::Gen2 { channel1: 0xFFF0 },
+    ] {
+        probe.read(&mut m);
+        probe.note_timers(&mut m);
+    }
 }

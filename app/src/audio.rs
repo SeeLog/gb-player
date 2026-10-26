@@ -1,7 +1,8 @@
 //! Audio output: a cpal stream that pulls samples from the shared [`Player`].
 
 use std::collections::VecDeque;
-use std::sync::{Arc, Mutex};
+use std::panic::{self, AssertUnwindSafe};
+use std::sync::{Arc, Mutex, PoisonError};
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{FromSample, SampleFormat, SizedSample, Stream, StreamConfig};
@@ -62,10 +63,21 @@ where
             move |data: &mut [T], _: &cpal::OutputCallbackInfo| {
                 let frames = data.len() / channels;
                 stereo.resize(frames * 2, 0.0);
-                match player.lock().ok().as_deref_mut().and_then(|p| p.as_mut()) {
-                    Some(p) => p.render(&mut stereo),
+                let mut guard = player.lock().unwrap_or_else(PoisonError::into_inner);
+                match guard.as_mut() {
+                    Some(p) => {
+                        // A bug in the emulation must not take the audio thread (and with it
+                        // the player lock) down; stop the song and play silence instead.
+                        let rendered =
+                            panic::catch_unwind(AssertUnwindSafe(|| p.render(&mut stereo)));
+                        if rendered.is_err() {
+                            p.stop();
+                            stereo.fill(0.0);
+                        }
+                    }
                     None => stereo.fill(0.0),
                 }
+                drop(guard);
                 // Never make the audio thread wait for the UI.
                 if let Ok(mut s) = scope.try_lock() {
                     s.extend(stereo.chunks(2).map(|f| (f[0] + f[1]) * 0.5));

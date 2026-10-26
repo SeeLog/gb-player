@@ -8,9 +8,10 @@
 
 use std::ffi::OsString;
 use std::io::Write;
+use std::path::Path;
 
 use gb_music::songdb::Names;
-use gb_music::{analyze, frames_to_secs, PlayState, Player, SongLength, ANALYSIS_FRAMES};
+use gb_music::{analyze, frames_to_secs, read_rom, PlayState, Player, SongLength, ANALYSIS_FRAMES};
 
 use crate::i18n::Text;
 
@@ -38,7 +39,7 @@ pub fn run(args: &[OsString], language: &str) -> i32 {
 
 /// Load `path` and look up its names in the output language.
 fn load(t: &Text, path: &str) -> Result<(Player, Names), String> {
-    let rom = std::fs::read(path).map_err(|e| format!("{path}: {e}"))?;
+    let rom = read_rom(Path::new(path)).map_err(|e| format!("{path}: {e}"))?;
     let player = Player::new(rom, RATE).map_err(|e| e.to_string())?;
     let (names, warnings) = Names::new(player.driver(), t.language());
     for warning in warnings {

@@ -3,9 +3,10 @@
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
+use std::sync::PoisonError;
 
 use gb_music::songdb::{Names, LANGUAGES};
-use gb_music::{frames_to_secs, PlayState, Player, Song, SongLength};
+use gb_music::{frames_to_secs, read_rom, PlayState, Player, Song, SongLength};
 
 use super::views::{LanguageView, LengthView, LibraryView, SongView, TickView};
 use crate::analyzer::Analyzer;
@@ -104,11 +105,15 @@ impl Session {
     }
 
     fn with_player<R>(&self, f: impl FnOnce(&mut Player) -> R) -> Option<R> {
-        self.player.lock().unwrap().as_mut().map(f)
+        self.player
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .as_mut()
+            .map(f)
     }
 
     pub fn load_rom(&mut self, path: &Path) {
-        let rom = match std::fs::read(path) {
+        let rom = match read_rom(path) {
             Ok(r) => r,
             Err(e) => {
                 self.error = Some(
@@ -124,7 +129,7 @@ impl Session {
                 self.lengths.clear();
                 self.analyzer = Some(Analyzer::start(p.rom(), p.driver().clone()));
                 self.rom_path = Some(path.to_path_buf());
-                *self.player.lock().unwrap() = Some(p);
+                *self.player.lock().unwrap_or_else(PoisonError::into_inner) = Some(p);
                 self.refresh_names();
             }
             Err(e) => self.error = Some(self.text.fmt("err_unsupported", &[("error", &e)])),
@@ -334,7 +339,7 @@ impl Session {
             )
         });
         let scope = {
-            let samples = self.scope.lock().unwrap();
+            let samples = self.scope.lock().unwrap_or_else(PoisonError::into_inner);
             let skip = samples.len().saturating_sub(SCOPE_POINTS);
             samples.iter().skip(skip).copied().collect()
         };
