@@ -1,5 +1,4 @@
 /target
-# ROMイメージは絶対にコミットしない
 *.gb
 *.gbc
 *.sav
