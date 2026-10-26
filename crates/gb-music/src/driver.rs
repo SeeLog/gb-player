@@ -93,8 +93,10 @@ impl Driver {
         if rom.len() < 0x8000 {
             return None;
         }
-        let title = Header::parse(rom).map(|h| h.title).unwrap_or_default();
-        detect_gen2(rom, &title).or_else(|| detect_gen1(rom, &title))
+        let (title, checksum) = Header::parse(rom)
+            .map(|h| (h.title, h.global_checksum))
+            .unwrap_or_default();
+        detect_gen2(rom, &title, checksum).or_else(|| detect_gen1(rom, &title, checksum))
     }
 
     /// Reset the sound engine and start `song`.
@@ -280,7 +282,7 @@ fn gen1_header_groups(table: &[u8]) -> Vec<HeaderGroup> {
     groups
 }
 
-fn detect_gen1(rom: &[u8], title: &str) -> Option<Driver> {
+fn detect_gen1(rom: &[u8], title: &str, checksum: u16) -> Option<Driver> {
     let home = &rom[..0x4000];
     let pm_pat = Pattern::new(GEN1_PLAY_MUSIC);
     let pm = pm_pat.find_all(home).next()?;
@@ -305,30 +307,30 @@ fn detect_gen1(rom: &[u8], title: &str) -> Option<Driver> {
     } else {
         find_yellow_dispatch(home, pm as u16)?
     };
-    // Pick the song mapping by header title, or by engine for unknown titles.
-    let series = songdb::series(songdb::GEN1);
-    let game = series.game_for_title(title).or_else(|| {
-        let yellow = matches!(engine, Engine::Gen1Yellow { .. });
-        series.game(if yellow { "yellow" } else { "red-green-blue" })
+    // The music IDs of each audio bank, with the bank's ordinal as the song database uses it.
+    let music: Vec<(u8, u8, Vec<u8>)> = audio_banks
+        .iter()
+        .enumerate()
+        .map(|(i, (bank, groups))| {
+            let ids = groups.iter().filter(|g| g.2 < 4).map(|g| g.0).collect();
+            (*bank, i as u8 + 1, ids)
+        })
+        .collect();
+    let game = songdb::series(songdb::GEN1).identify(title, checksum, |g| {
+        music
+            .iter()
+            .map(|(_, ordinal, ids)| {
+                (0..ids.len())
+                    .filter(|&n| gen1_song_def(g, *ordinal, ids, n).is_some())
+                    .count()
+            })
+            .sum()
     });
 
     let mut songs = Vec::new();
-    for (ordinal, (bank, groups)) in audio_banks.iter().enumerate() {
-        let ordinal = ordinal as u8 + 1;
-        let music: Vec<u8> = groups.iter().filter(|g| g.2 < 4).map(|g| g.0).collect();
-        let known: Vec<&SongDef> = game
-            .iter()
-            .flat_map(|g| &g.songs)
-            .filter(|s| s.bank == Some(ordinal))
-            .collect();
-        for (n, &id) in music.iter().enumerate() {
-            // Match songs by sound ID; if a release shifted IDs but kept the song order,
-            // fall back to the position within the bank.
-            let def = known
-                .iter()
-                .find(|k| k.id == id as u16)
-                .or_else(|| (known.len() == music.len()).then(|| &known[n]))
-                .copied();
+    for (bank, ordinal, ids) in &music {
+        for (n, &id) in ids.iter().enumerate() {
+            let def = game.and_then(|g| gen1_song_def(g, *ordinal, ids, n));
             if def.is_some_and(|d| d.hidden) {
                 continue;
             }
@@ -351,6 +353,22 @@ fn detect_gen1(rom: &[u8], title: &str) -> Option<Driver> {
         game_id: game_id(game),
         songs,
     })
+}
+
+/// The song database entry of the `n`th music ID in `ids`, the music of the audio bank with
+/// this ordinal. Songs are matched by sound ID; if a release shifted the IDs but kept the song
+/// order, by their position within the bank.
+fn gen1_song_def<'a>(game: &'a Game, ordinal: u8, ids: &[u8], n: usize) -> Option<&'a SongDef> {
+    let known: Vec<&SongDef> = game
+        .songs
+        .iter()
+        .filter(|s| s.bank == Some(ordinal))
+        .collect();
+    known
+        .iter()
+        .find(|k| k.id == ids[n] as u16)
+        .or_else(|| (known.len() == ids.len()).then(|| &known[n]))
+        .copied()
 }
 
 /// The channel state of the Gen 1 engine: parallel arrays starting at
@@ -467,7 +485,7 @@ const GEN2_WRAPPER: &str =
 /// ld [hl],d / ld hl,Music
 const GEN2_PLAY_MUSIC_BODY: &str = "CD ?? ?? 21 ?? ?? 73 23 72 21 ?? ??";
 
-fn detect_gen2(rom: &[u8], title: &str) -> Option<Driver> {
+fn detect_gen2(rom: &[u8], title: &str, checksum: u16) -> Option<Driver> {
     let home = &rom[..0x4000];
     let pm = Pattern::new(GEN2_PLAY_MUSIC).find_all(home).next()?;
     let bank = home[pm + 8];
@@ -510,18 +528,16 @@ fn detect_gen2(rom: &[u8], title: &str) -> Option<Driver> {
         return None;
     }
 
-    // Pick the song mapping by header title; for unknown titles Crystal is told apart from
-    // Gold / Silver by its longer song table.
-    let series = songdb::series(songdb::GEN2);
-    let game = series.game_for_title(title).or_else(|| {
-        let gold_silver = series.game("gold-silver")?;
-        let crystal = ids.len() - 1 > gold_silver.songs.len();
-        series.game(if crystal { "crystal" } else { "gold-silver" })
+    // ID 0 is "no music".
+    let ids = &ids[1..];
+    let game = songdb::series(songdb::GEN2).identify(title, checksum, |g| {
+        ids.iter()
+            .filter(|&&id| gen2_song_def(g, id).is_some())
+            .count()
     });
     let mut songs = Vec::new();
-    // ID 0 is "no music".
-    for &id in ids.iter().skip(1) {
-        let def = game.and_then(|g| g.songs.iter().find(|s| s.id == id));
+    for &id in ids {
+        let def = game.and_then(|g| gen2_song_def(g, id));
         if def.is_some_and(|d| d.hidden) {
             continue;
         }
@@ -539,6 +555,10 @@ fn detect_gen2(rom: &[u8], title: &str) -> Option<Driver> {
         game_id: game_id(game),
         songs,
     })
+}
+
+fn gen2_song_def(game: &Game, id: u16) -> Option<&SongDef> {
+    game.songs.iter().find(|s| s.id == id)
 }
 
 /// The channel state of the Gen 2 engine: one $32-byte `channel_struct` per channel starting

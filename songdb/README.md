@@ -22,6 +22,7 @@ songdb/
 [[game]]
 id = "red-green-blue"                                # 言語ファイルの [games] で名前を付けるID
 titles = ["POKEMON RED", "POKEMON GREEN", "POKEMON BLUE"]  # カートリッジヘッダのタイトル($0134〜)
+checksums = [0x91E6]                                # 任意: グローバルチェックサム($014E〜)。同じタイトルの版を分けたいときだけ
 songs = [
     { bank = 1, id = 0xBA, key = "pallet_town" },   # 第1世代: オーディオバンクの順番(1〜)とサウンドID
     { bank = 1, id = 0xBD, key = "pokecenter", intro = 1.82, loop = 28.93 },
@@ -32,6 +33,7 @@ songs = [
 - 第2世代は `bank` を書かず `{ id = 0x1C, key = "pallet_town" }` のように曲番号だけです。
 - `intro` / `loop`(秒)や `end`(ループしない曲の長さ、秒)を書くと、自動解析の代わりにその値を使います。
 - `hidden = true` の曲は一覧に出ません(効果音を曲と誤認する場合など)。
+- タイトル(とチェックサム)がどのゲームにも一致しないROMは、見つかった曲のうち `songs` で名前が付く曲がいちばん多いゲームとして扱います。
 - 曲キーはシリーズ内で共通の、言語に依存しない名前です。pret のラベルから作っています(`Music_PalletTown` → `pallet_town`)。
 
 `songs.toml` と `en.toml` は `tools/gen_song_names.py` で pret の逆アセンブルから生成できます。

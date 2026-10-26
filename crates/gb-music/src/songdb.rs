@@ -77,6 +77,10 @@ pub struct Game {
     /// Cartridge header titles of the releases that use this mapping.
     #[serde(default)]
     pub titles: Vec<String>,
+    /// Global checksums ($014E-$014F) of the releases, to tell apart releases that share a
+    /// header title; when empty, the title alone decides.
+    #[serde(default)]
+    pub checksums: Vec<u16>,
     pub songs: Vec<SongDef>,
 }
 
@@ -118,11 +122,29 @@ impl Series {
         self.games.iter().find(|g| g.id == id)
     }
 
-    /// The game whose header titles include `title`.
-    pub fn game_for_title(&self, title: &str) -> Option<&Game> {
-        self.games
-            .iter()
-            .find(|g| g.titles.iter().any(|t| t == title))
+    /// The game of a ROM: the one that lists its header title (and checksum, if the game
+    /// lists any), otherwise the one for which `score` (the number of the ROM's songs that
+    /// the game's song list names) is highest; the first game on a tie.
+    pub fn identify(
+        &self,
+        title: &str,
+        checksum: u16,
+        score: impl Fn(&Game) -> usize,
+    ) -> Option<&Game> {
+        let listed = self.games.iter().find(|g| {
+            g.titles.iter().any(|t| t == title)
+                && (g.checksums.is_empty() || g.checksums.contains(&checksum))
+        });
+        listed.or_else(|| {
+            let mut best: Option<(&Game, usize)> = None;
+            for g in &self.games {
+                let s = score(g);
+                if best.is_none_or(|(_, b)| s > b) {
+                    best = Some((g, s));
+                }
+            }
+            best.map(|(g, _)| g)
+        })
     }
 }
 
@@ -389,6 +411,40 @@ mod tests {
         assert!(read_user_file(&big).is_err());
         assert!(read_user_file(&dir.join("missing.toml")).unwrap().is_none());
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn games_are_identified_by_title_checksum_then_songs() {
+        let series: Series = toml::from_str(
+            r#"
+            [[game]]
+            id = "a"
+            titles = ["GAME"]
+            checksums = [0x1234]
+            songs = [{ id = 1, key = "one" }]
+            [[game]]
+            id = "b"
+            titles = ["GAME"]
+            songs = [{ id = 1, key = "one" }, { id = 2, key = "two" }]
+            "#,
+        )
+        .unwrap();
+        let named = |g: &Game, ids: &[u16]| {
+            ids.iter()
+                .filter(|&&id| g.songs.iter().any(|s| s.id == id))
+                .count()
+        };
+        let id = |title, checksum, ids: &[u16]| {
+            series
+                .identify(title, checksum, |g| named(g, ids))
+                .map(|g| g.id.clone())
+        };
+        assert_eq!(id("GAME", 0x1234, &[]).as_deref(), Some("a"));
+        assert_eq!(id("GAME", 0x9999, &[]).as_deref(), Some("b"));
+        // Unknown title: the game that names most songs, the first one on a tie.
+        assert_eq!(id("OTHER", 0, &[1, 2]).as_deref(), Some("b"));
+        assert_eq!(id("OTHER", 0, &[1]).as_deref(), Some("a"));
+        assert_eq!(id("OTHER", 0, &[]).as_deref(), Some("a"));
     }
 
     #[test]
