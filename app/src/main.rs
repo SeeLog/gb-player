@@ -14,13 +14,19 @@ use std::path::PathBuf;
 use eframe::egui;
 
 fn main() -> eframe::Result {
-    let args: Vec<std::ffi::OsString> = std::env::args_os().skip(1).collect();
+    let mut args: Vec<std::ffi::OsString> = std::env::args_os().skip(1).collect();
+    // `--lang <code>` applies to both the GUI and the CLI commands.
+    let mut language = i18n::system_language();
+    if args.first().is_some_and(|a| a == "--lang") && args.len() >= 2 {
+        language = args[1].to_string_lossy().into_owned();
+        args.drain(..2);
+    }
     if args
         .first()
         .is_some_and(|a| a.to_string_lossy().starts_with("--"))
     {
         console::attach_console();
-        std::process::exit(cli::run(&args));
+        std::process::exit(cli::run(&args, &language));
     }
     let initial_rom = args.first().map(PathBuf::from);
     let options = eframe::NativeOptions {
@@ -33,6 +39,6 @@ fn main() -> eframe::Result {
     eframe::run_native(
         "GB Player",
         options,
-        Box::new(|_cc| Ok(Box::new(gui::GbPlayerApp::new(initial_rom)))),
+        Box::new(|_cc| Ok(Box::new(gui::GbPlayerApp::new(initial_rom, &language)))),
     )
 }

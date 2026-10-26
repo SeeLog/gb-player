@@ -18,7 +18,7 @@ impl GbPlayerApp {
             )
         });
         let Some((current, state, paused, pos, length)) = info else {
-            ui.label("ROMファイル(.gb / .gbc)を開くか、ウィンドウにドロップしてください。");
+            ui.label(self.text.get("drop_hint"));
             return;
         };
         ui.horizontal(|ui| {
@@ -49,21 +49,24 @@ impl GbPlayerApp {
                 ui.label(fmt_time(pos));
                 if let SongLength::Loops { intro, period } = length {
                     let loops = pos.saturating_sub(intro) / period;
-                    ui.label(format!("({} 周目)", loops + 1));
+                    ui.label(self.text.fmt("loop_lap", &[("n", &(loops + 1))]));
                 }
             }
             if let PlayState::Failed(e) = state {
-                ui.colored_label(egui::Color32::RED, format!("再生エラー: {e}"));
+                ui.colored_label(
+                    egui::Color32::RED,
+                    self.text.fmt("err_playback_ui", &[("error", &e)]),
+                );
             }
         });
         if let Some(c) = current {
-            ui.label(describe(self.lengths.get(&c)));
+            ui.label(describe(&self.text, self.lengths.get(&c)));
         }
         ui.horizontal(|ui| {
-            ui.label("ループ:");
+            ui.label(self.text.get("loop_label"));
             let before = self.loop_mode;
             egui::ComboBox::from_id_salt("loop_mode")
-                .selected_text(self.loop_mode.label())
+                .selected_text(self.loop_mode.label(&self.text))
                 .show_ui(ui, |ui| {
                     for m in [
                         LoopMode::Forever,
@@ -71,7 +74,7 @@ impl GbPlayerApp {
                         LoopMode::Playlist(2),
                         LoopMode::Playlist(3),
                     ] {
-                        ui.selectable_value(&mut self.loop_mode, m, m.label());
+                        ui.selectable_value(&mut self.loop_mode, m, m.label(&self.text));
                     }
                 });
             if before != self.loop_mode {
@@ -79,7 +82,7 @@ impl GbPlayerApp {
                 self.with_player(|p| p.loop_count = mode.loop_count());
             }
             ui.separator();
-            ui.label("音量");
+            ui.label(self.text.get("volume"));
             if ui
                 .add(egui::Slider::new(&mut self.volume, 0.0..=1.0).show_value(false))
                 .changed()
@@ -89,10 +92,15 @@ impl GbPlayerApp {
             }
         });
         ui.horizontal(|ui| {
-            const NAMES: [&str; 4] = ["矩形波1", "矩形波2", "波形メモリ", "ノイズ"];
+            const NAMES: [&str; 4] = [
+                "channel_pulse1",
+                "channel_pulse2",
+                "channel_wave",
+                "channel_noise",
+            ];
             for (ch, name) in NAMES.iter().enumerate() {
                 let mut on = !self.with_player(|p| p.muted(ch)).unwrap_or(false);
-                if ui.checkbox(&mut on, *name).changed() {
+                if ui.checkbox(&mut on, self.text.get(name)).changed() {
                     self.with_player(|p| p.set_muted(ch, !on));
                 }
                 ui.add(egui::ProgressBar::new(self.levels[ch]).desired_width(60.0));

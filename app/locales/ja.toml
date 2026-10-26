@@ -2,7 +2,7 @@
 
 # コマンドライン
 usage = """使い方:
-  gb-player [rom]
+  gb-player [--lang <言語コード>] [rom]
   gb-player [--lang <言語コード>] --info <rom>
   gb-player [--lang <言語コード>] --wav <rom> <曲番号> <出力.wav> [ループ回数]"""
 info_loops = "イントロ {intro}秒, ループ {loop}秒"
@@ -39,4 +39,6 @@ channel_noise = "ノイズ"
 analyzing = "解析中…"
 length_loops = "イントロ {intro} / ループ {loop}"
 length_ends = "{at} で終了"
+err_no_device = "出力デバイスが見つかりません"
+err_sample_format = "未対応のサンプル形式です: {format}"
 length_unknown = "ループ不明"

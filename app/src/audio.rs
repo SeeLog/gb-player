@@ -6,6 +6,8 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{FromSample, SampleFormat, SizedSample, Stream, StreamConfig};
 use gb_music::Player;
 
+use crate::i18n::Text;
+
 pub type SharedPlayer = Arc<Mutex<Option<Player>>>;
 
 pub struct AudioOut {
@@ -14,11 +16,9 @@ pub struct AudioOut {
 }
 
 impl AudioOut {
-    pub fn start(player: SharedPlayer) -> Result<AudioOut, String> {
+    pub fn start(player: SharedPlayer, t: &Text) -> Result<AudioOut, String> {
         let host = cpal::default_host();
-        let device = host
-            .default_output_device()
-            .ok_or("出力デバイスが見つかりません")?;
+        let device = host.default_output_device().ok_or(t.get("err_no_device"))?;
         let supported = device.default_output_config().map_err(|e| e.to_string())?;
         let format = supported.sample_format();
         let config: StreamConfig = supported.into();
@@ -28,7 +28,7 @@ impl AudioOut {
             SampleFormat::I16 => build::<i16>(&device, config, player),
             SampleFormat::I32 => build::<i32>(&device, config, player),
             SampleFormat::U16 => build::<u16>(&device, config, player),
-            f => return Err(format!("未対応のサンプル形式です: {f:?}")),
+            f => return Err(t.fmt("err_sample_format", &[("format", &format!("{f:?}"))])),
         }?;
         stream.play().map_err(|e| e.to_string())?;
         Ok(AudioOut {

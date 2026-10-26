@@ -10,10 +10,12 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use eframe::egui;
+use gb_music::songdb::LANGUAGES;
 use gb_music::{PlayState, Player, Song, SongLength};
 
 use crate::analyzer::Analyzer;
 use crate::audio::{AudioOut, SharedPlayer};
+use crate::i18n::Text;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum LoopMode {
@@ -24,10 +26,10 @@ enum LoopMode {
 }
 
 impl LoopMode {
-    fn label(self) -> String {
+    fn label(self, t: &Text) -> String {
         match self {
-            LoopMode::Forever => "無限ループ".into(),
-            LoopMode::Playlist(n) => format!("{n}ループ後フェードアウトして次の曲へ"),
+            LoopMode::Forever => t.get("loop_forever").to_string(),
+            LoopMode::Playlist(n) => t.fmt("loop_playlist", &[("n", &n)]),
         }
     }
 
@@ -41,6 +43,8 @@ impl LoopMode {
 }
 
 pub struct GbPlayerApp {
+    /// UI text in the chosen language; song names follow the same language.
+    text: Text,
     player: SharedPlayer,
     audio: Option<AudioOut>,
     error: Option<String>,
@@ -56,13 +60,15 @@ pub struct GbPlayerApp {
 }
 
 impl GbPlayerApp {
-    pub fn new(initial_rom: Option<PathBuf>) -> GbPlayerApp {
+    pub fn new(initial_rom: Option<PathBuf>, language: &str) -> GbPlayerApp {
+        let text = Text::new(language);
         let player: SharedPlayer = Arc::new(Mutex::new(None));
-        let (audio, error) = match AudioOut::start(player.clone()) {
+        let (audio, error) = match AudioOut::start(player.clone(), &text) {
             Ok(a) => (Some(a), None),
-            Err(e) => (None, Some(format!("オーディオ出力を開けません: {e}"))),
+            Err(e) => (None, Some(text.fmt("err_audio", &[("error", &e)]))),
         };
         let mut app = GbPlayerApp {
+            text,
             player,
             audio,
             error,
@@ -90,22 +96,65 @@ impl GbPlayerApp {
         let rom = match std::fs::read(path) {
             Ok(r) => r,
             Err(e) => {
-                self.error = Some(format!("{} を読み込めません: {e}", path.display()));
+                self.error = Some(
+                    self.text
+                        .fmt("err_read", &[("path", &path.display()), ("error", &e)]),
+                );
                 return;
             }
         };
         match Player::new(rom, self.sample_rate()) {
             Ok(mut p) => {
                 p.volume = self.volume;
-                self.songs = p.songs().to_vec();
-                self.game = format!("{} ({})", p.game(), p.title());
+                let warnings = p.set_language(self.text.language());
                 self.lengths.clear();
                 self.analyzer = Some(Analyzer::start(p.rom(), p.driver().clone()));
                 self.rom_path = Some(path.to_path_buf());
-                self.error = None;
                 *self.player.lock().unwrap() = Some(p);
+                self.refresh_names(warnings);
             }
-            Err(e) => self.error = Some(format!("このROMは再生できません: {e}")),
+            Err(e) => self.error = Some(self.text.fmt("err_unsupported", &[("error", &e)])),
+        }
+    }
+
+    /// Switch the UI text and the game and song names to `language`.
+    fn set_language(&mut self, language: &str) {
+        self.text = Text::new(language);
+        if let Some(warnings) = self.with_player(|p| p.set_language(language)) {
+            self.refresh_names(warnings);
+        }
+    }
+
+    /// Copy the names from the player after loading a ROM or switching languages.
+    fn refresh_names(&mut self, warnings: Vec<String>) {
+        if let Some((songs, game)) =
+            self.with_player(|p| (p.songs().to_vec(), format!("{} ({})", p.game(), p.title())))
+        {
+            self.songs = songs;
+            self.game = game;
+        }
+        self.error = (!warnings.is_empty()).then(|| warnings.join("\n"));
+    }
+
+    fn language_selector(&mut self, ui: &mut egui::Ui) {
+        let current = self.text.language().to_string();
+        let name = |code: &str| {
+            LANGUAGES
+                .iter()
+                .find(|(c, _)| *c == code)
+                .map_or(code.to_string(), |(_, n)| n.to_string())
+        };
+        let mut selected = current.clone();
+        egui::ComboBox::from_id_salt("language")
+            .selected_text(name(&current))
+            .show_ui(ui, |ui| {
+                for (code, label) in LANGUAGES {
+                    ui.selectable_value(&mut selected, code.to_string(), *label);
+                }
+            });
+        ui.label(self.text.get("language"));
+        if selected != current {
+            self.set_language(&selected);
         }
     }
 
@@ -166,7 +215,7 @@ impl eframe::App for GbPlayerApp {
 
         egui::Panel::top("top").show(ui, |ui| {
             ui.horizontal(|ui| {
-                if ui.button("ROMを開く…").clicked() {
+                if ui.button(self.text.get("open_rom")).clicked() {
                     if let Some(path) = rfd::FileDialog::new()
                         .add_filter("Game Boy ROM", &["gb", "gbc", "GB", "GBC"])
                         .pick_file()
@@ -176,8 +225,11 @@ impl eframe::App for GbPlayerApp {
                 }
                 if !self.game.is_empty() {
                     ui.label(&self.game);
-                    ui.weak(format!("{} 曲", self.songs.len()));
+                    ui.weak(self.text.fmt("song_count", &[("n", &self.songs.len())]));
                 }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    self.language_selector(ui);
+                });
             });
             if let Some(e) = &self.error {
                 ui.colored_label(egui::Color32::from_rgb(220, 80, 80), e);

@@ -3,29 +3,24 @@
 //!   gb-player --info <rom>                      list detected songs and their loop points
 //!   gb-player --wav <rom> <song#> <out.wav> [loops]   render a song to a WAV file
 //!
-//! `--lang <code>` before the command picks the language of the output and the song names;
-//! the default is the OS language.
+//! `--lang <code>` before the command (handled in main.rs) picks the language of the output
+//! and the song names; the default is the OS language.
 
 use std::ffi::OsString;
 use std::io::Write;
 
 use gb_music::{analyze, frames_to_secs, PlayState, Player, SongLength, FRAME_RATE};
 
-use crate::i18n::{system_language, Text};
+use crate::i18n::Text;
 
 const RATE: u32 = 44_100;
 
-pub fn run(args: &[OsString]) -> i32 {
-    let mut a: Vec<String> = args
+pub fn run(args: &[OsString], language: &str) -> i32 {
+    let a: Vec<String> = args
         .iter()
         .map(|s| s.to_string_lossy().into_owned())
         .collect();
-    let mut language = system_language();
-    if a.first().map(String::as_str) == Some("--lang") && a.len() >= 2 {
-        language = a[1].clone();
-        a.drain(..2);
-    }
-    let t = Text::new(&language);
+    let t = Text::new(language);
     let result = match a.first().map(String::as_str) {
         Some("--info") if a.len() == 2 => info(&t, &a[1]),
         Some("--wav") if a.len() >= 4 => wav(&t, &a[1], &a[2], &a[3], a.get(4).map(String::as_str)),

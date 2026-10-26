@@ -9,7 +9,7 @@ impl GbPlayerApp {
     pub(super) fn song_list(&mut self, ui: &mut egui::Ui) {
         let current = self.with_player(|p| p.current()).flatten();
         ui.horizontal(|ui| {
-            ui.label("検索");
+            ui.label(self.text.get("search"));
             ui.text_edit_singleline(&mut self.filter);
         });
         ui.separator();
@@ -31,7 +31,7 @@ impl GbPlayerApp {
                             clicked = Some(song.index);
                         }
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            ui.weak(describe(self.lengths.get(&song.index)));
+                            ui.weak(describe(&self.text, self.lengths.get(&song.index)));
                         });
                     });
                 }

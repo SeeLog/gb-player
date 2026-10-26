@@ -3,7 +3,7 @@
 
 # Command line
 usage = """usage:
-  gb-player [rom]
+  gb-player [--lang <code>] [rom]
   gb-player [--lang <code>] --info <rom>
   gb-player [--lang <code>] --wav <rom> <song#> <out.wav> [loops]"""
 info_loops = "intro {intro}s, loop {loop}s"
@@ -40,4 +40,6 @@ channel_noise = "Noise"
 analyzing = "Analyzing…"
 length_loops = "Intro {intro} / Loop {loop}"
 length_ends = "Ends at {at}"
+err_no_device = "No audio output device found"
+err_sample_format = "Unsupported sample format: {format}"
 length_unknown = "Loop unknown"

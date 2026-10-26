@@ -28,7 +28,7 @@ cargo run --release                      # GUIを起動(ROMは「ROMを開く…
 cargo run --release -- pokemon.gb        # ROMを指定して起動
 cargo run --release -- --info pokemon.gb # 検出結果と全曲のループ長を表示
 cargo run --release -- --wav pokemon.gb 1 out.wav 2   # 1曲目を2ループ+フェードでWAV出力
-cargo run --release -- --lang en --info pokemon.gb     # 言語を指定(既定はOSの言語)
+cargo run --release -- --lang en pokemon.gb           # 言語を指定して起動(既定はOSの言語。GUIの右上でも切り替え可)
 ```
 
 ## 曲名
