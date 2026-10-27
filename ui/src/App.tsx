@@ -7,6 +7,7 @@ import ContextMenu, { type MenuState } from "./lib/ContextMenu";
 import Icon from "./lib/Icon";
 import { menuFor, wantsNativeMenu, type MenuActions } from "./lib/menus";
 import PlaylistView from "./lib/PlaylistView";
+import Select from "./lib/Select";
 import Sidebar, { type View } from "./lib/Sidebar";
 import SongList from "./lib/SongList";
 import NowPlaying from "./lib/NowPlaying";
@@ -166,6 +167,10 @@ export default function App() {
     const onKey = (e: KeyboardEvent) => {
       const typing =
         e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement;
+      // Menus and drop-down lists take their own keys (arrows, Space, Escape).
+      const inPopup =
+        e.target instanceof Element &&
+        !!e.target.closest('[data-base-ui-focusable], [role="combobox"]');
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "o") {
         e.preventDefault();
         pickRom();
@@ -174,6 +179,8 @@ export default function App() {
         search.current?.focus();
       } else if (typing) {
         if (e.key === "Escape") (e.target as HTMLElement).blur();
+      } else if (inPopup) {
+        return;
       } else if (e.key === " ") {
         e.preventDefault();
         api.toggle();
@@ -244,22 +251,15 @@ export default function App() {
           </button>
           {library && (
             <>
-              <label className={headerButton} title={t("theme")}>
-                <Icon name="palette" size={18} />
-                <select
-                  value={library.theme}
-                  onChange={(e) => api.setTheme(e.currentTarget.value)}
-                  disabled={!!draft}
-                  aria-label={t("theme")}
-                  className="cursor-pointer bg-transparent outline-none"
-                >
-                  {library.themes.map((th) => (
-                    <option key={th.id} value={th.id}>
-                      {th.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <Select
+                className={headerButton}
+                label={t("theme")}
+                icon={<Icon name="palette" size={18} />}
+                value={library.theme}
+                options={library.themes.map((th) => ({ value: th.id, label: th.name }))}
+                onChange={(id) => api.setTheme(id)}
+                disabled={!!draft}
+              />
               <button
                 className={`${headerControl} w-[30px] justify-center`}
                 onClick={editTheme}
@@ -268,20 +268,14 @@ export default function App() {
               >
                 <Icon name="edit" size={18} />
               </button>
-              <label className={headerButton} title={t("language")}>
-                <Icon name="globe" size={18} />
-                <select
-                  value={library.language}
-                  onChange={(e) => api.setLanguage(e.currentTarget.value)}
-                  className="cursor-pointer bg-transparent outline-none"
-                >
-                  {library.languages.map((l) => (
-                    <option key={l.code} value={l.code}>
-                      {l.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <Select
+                className={headerButton}
+                label={t("language")}
+                icon={<Icon name="globe" size={18} />}
+                value={library.language}
+                options={library.languages.map((l) => ({ value: l.code, label: l.name }))}
+                onChange={(code) => api.setLanguage(code)}
+              />
             </>
           )}
           <WindowControls t={t} />
@@ -355,7 +349,7 @@ export default function App() {
           />
         )}
 
-        {menu && <ContextMenu menu={menu} onClose={closeMenu} />}
+        <ContextMenu menu={menu} onClose={closeMenu} />
 
         {dragging && (
           <div className="pointer-events-none fixed inset-0 grid place-items-center bg-[color-mix(in_srgb,var(--backdrop)_75%,transparent)]">
