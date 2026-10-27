@@ -142,10 +142,12 @@ impl Session {
         player: SharedPlayer,
         scope: Scope,
         text: Text,
-        settings: Settings,
+        mut settings: Settings,
         sample_rate: u32,
         error: Option<String>,
     ) -> Session {
+        // A built-in theme chosen before it was renamed.
+        settings.theme = themes::current_id(&settings.theme).to_string();
         Session {
             player,
             scope,

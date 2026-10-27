@@ -155,13 +155,13 @@
   --knob: #e8e9f5;
 }
 
-/* Clear plastic: cool greys, white knobs, a silver LCD, and a pearly, iridescent sheen on what
+/* Prism: cool greys, white knobs, a silver LCD, and a pearly, iridescent sheen on what
    the accent fills (BASE_SHEENS in lib/theme.ts). Text in the accent is a deep sapphire, which
    reads on the panels; everything else the accent marks (edges, meters, rows, the app's mark) is
    in accent-2, a fresh emerald, as on a holo card, since the theme has a sheen (see applyTheme);
    kept light, at about 2.4:1 to 2.7:1 against the panels, with the meters' peak marks and the
    switch's track giving those their shape. */
-[data-palette="clear"] {
+[data-palette="prism"] {
   color-scheme: light;
   --backdrop: #ffffff;
   --bg: #e9edf199;
@@ -227,7 +227,7 @@
   --knob: #1f241c;
 }
 
-/* A theme may lay a sheen over what the accent fills (Clear's pearly one; applyTheme in
+/* A theme may lay a sheen over what the accent fills (Prism's pearly one; applyTheme in
    lib/theme.ts sets it): buttons, the chosen loop and shuffle, switches, slider fills. Text and
    outlines in the accent stay plain. */
 :is(.bg-accent, .data-checked\:bg-accent[data-checked]) {

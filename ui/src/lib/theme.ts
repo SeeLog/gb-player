@@ -35,7 +35,7 @@ export const TOKENS = [
 /** The sheens of the built-in palettes that have one (the others have none). */
 export const BASE_SHEENS: Record<string, Sheen> = {
   // Pearly and iridescent: mint, aqua, lavender, pink and a little cream.
-  clear: { colors: ["#bdf3e4", "#b2e4f7", "#d2c8fb", "#f8cbe4", "#fbe7c6"], angle: 115 },
+  prism: { colors: ["#bdf3e4", "#b2e4f7", "#d2c8fb", "#f8cbe4", "#fbe7c6"], angle: 115 },
 };
 
 /** The sheen a theme shows: its own, or else its base's. */
@@ -127,7 +127,7 @@ export function applyTheme(base: string, colors: Record<string, string>, sheen: 
   // With a sheen, the accent's fills take it (see app.css), the switch's knob is the knob colour
   // rather than the dark accent-ink, and the mini player's logo is drawn in it. The accent then
   // only writes text: what else it marks (edges, the app's mark, rows under the pointer and
-  // playing) is in accent-2, lighter washes for the rows (about 1.17:1 and 1.31:1 in Clear), and
+  // playing) is in accent-2, lighter washes for the rows (about 1.17:1 and 1.31:1 in Prism), and
   // the name on a playing or chosen row is in the plain text colour, which goes with the green.
   const shown = sheenOf(base, sheen);
   const withSheen: Record<string, string> = {

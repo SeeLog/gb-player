@@ -14,9 +14,21 @@ pub const BUILTIN: [(&str, &str); 5] = [
     ("dmg", "DMG"),
     ("pocket", "Pocket"),
     ("color", "Color"),
-    ("clear", "Clear"),
+    ("prism", "Prism"),
     ("light", "Light"),
 ];
+
+/// Built-in palettes that were renamed, as (old id, new id): settings and theme files that name
+/// the old one get the new one.
+const RENAMED: [(&str, &str); 1] = [("clear", "prism")];
+
+/// The id a palette has now, for one that may have been renamed.
+pub fn current_id(id: &str) -> &str {
+    RENAMED
+        .iter()
+        .find(|&&(old, _)| old == id)
+        .map_or(id, |&(_, new)| new)
+}
 
 /// The colour tokens a theme may set, the CSS custom properties without the leading `--`.
 pub const TOKENS: [&str; 25] = [
@@ -50,10 +62,10 @@ pub const TOKENS: [&str; 25] = [
 /// The consoles the mini player can be drawn as: the first model and the colour one.
 pub const CONSOLES: [&str; 2] = ["dmg", "gbc"];
 
-/// The console a theme without one is drawn as: the colour model for the color and clear
+/// The console a theme without one is drawn as: the colour model for the color and prism
 /// palettes.
 fn default_console(base: &str) -> String {
-    if matches!(base, "color" | "clear") {
+    if matches!(base, "color" | "prism") {
         "gbc"
     } else {
         "dmg"
@@ -357,7 +369,7 @@ fn parse(path: &Path, text: &str, t: &Text, warnings: &mut Vec<String>) -> Optio
             return None;
         }
     };
-    let base = match parsed.base {
+    let base = match parsed.base.map(|b| current_id(&b).to_string()) {
         Some(b) if is_builtin(&b) => b,
         Some(b) => {
             warnings.push(t.fmt("theme_bad_base", &[("file", &file), ("base", &b)]));
@@ -617,7 +629,12 @@ mod tests {
         };
         assert_eq!(console("base = \"color\"\n", &mut warnings), "gbc");
         assert_eq!(console("base = \"pocket\"\n", &mut warnings), "dmg");
-        assert_eq!(console("base = \"clear\"\n", &mut warnings), "gbc");
+        assert_eq!(console("base = \"prism\"\n", &mut warnings), "gbc");
+        // A palette that was renamed is still found by its old name.
+        let old = parse(Path::new("x.toml"), "base = \"clear\"\n", &t, &mut warnings).unwrap();
+        assert_eq!((old.base.as_str(), old.console.as_str()), ("prism", "gbc"));
+        assert_eq!(current_id("clear"), "prism");
+        assert_eq!(current_id("color"), "color");
         assert_eq!(
             console("base = \"pocket\"\nconsole = \"gbc\"\n", &mut warnings),
             "gbc"

@@ -467,10 +467,10 @@ function SheenSection({
           </div>
         </>
       ) : (
-        // Starts from the pearly one of Clear, to change from there.
+        // Starts from the pearly one of Prism, to change from there.
         <button
           className={`${smallButton} self-start`}
-          onClick={() => onChange(structuredClone(BASE_SHEENS.clear))}
+          onClick={() => onChange(structuredClone(BASE_SHEENS.prism))}
         >
           {t("theme_sheen_add_sheen")}
         </button>

@@ -316,7 +316,7 @@ function Screen({
       {!dmg && (
         <div className="mt-2.5 text-center text-[16px] font-bold tracking-tight">
           <span className="text-white/75">GB </span>
-          {/* In the sheen where the palette has one (Clear). */}
+          {/* In the sheen where the palette has one (Prism). */}
           <span
             className="[background-image:var(--accent-sheen,none)] bg-clip-text [-webkit-text-fill-color:var(--sheen-text,currentColor)]"
             style={{ color: logo }}
