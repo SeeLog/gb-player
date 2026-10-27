@@ -1,12 +1,12 @@
 import { memo, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { api } from "./api";
-import { describe, type Translate } from "./format";
-import type { Library } from "./types";
+import { fmtDuration, playTime, playTimeDetail, type Translate } from "./format";
+import type { Length, Library } from "./types";
 import Icon from "./Icon";
 import { useTick } from "./tick";
 
-// Re-renders only when the library, the language, the filter or the playing song change, not on
-// every tick.
+// Re-renders only when the library (including the loop setting), the language, the filter or the
+// playing song change, not on every tick.
 export default memo(function SongList({
   library,
   t,
@@ -83,9 +83,7 @@ export default memo(function SongList({
               >
                 {song.title}
               </span>
-              <span className={`num text-xs ${song.length ? "text-muted" : "text-faint italic"}`}>
-                {describe(t, song.length)}
-              </span>
+              <Duration t={t} length={song.length} loopCount={library.loopCount} />
             </button>
           );
         })}
@@ -93,3 +91,27 @@ export default memo(function SongList({
     </section>
   );
 });
+
+/** How long the song plays with the current loop setting, with the details on hover. */
+function Duration({
+  t,
+  length,
+  loopCount,
+}: {
+  t: Translate;
+  length: Length | null;
+  loopCount: number | null;
+}) {
+  if (!length) return <span className="text-xs text-faint italic">{t("analyzing")}</span>;
+  const secs = playTime(length, loopCount);
+  return (
+    <span className="flex items-center gap-2" title={playTimeDetail(t, length, loopCount)}>
+      {length.kind === "ends" && (
+        <span className="rounded border border-line px-1.5 text-[10px] leading-4 text-muted">
+          {t("no_loop")}
+        </span>
+      )}
+      <span className="num text-xs text-muted">{secs === null ? "—" : fmtDuration(secs)}</span>
+    </span>
+  );
+}
