@@ -4,6 +4,7 @@ import { fmtDuration, playTime, playTimeDetail, type Translate } from "./format"
 import type { Length, Library, RomView, SongView as Song } from "./types";
 import Icon from "./Icon";
 import { useTick } from "./tick";
+import Tip from "./Tip";
 
 type SortKey = "title" | "length";
 type Sort = { key: SortKey; desc: boolean } | null;
@@ -121,19 +122,20 @@ export default memo(function SongList({
           className="min-w-0 flex-1 bg-transparent text-text outline-none"
         />
         {filter && (
-          <button
-            className="-mr-1.5 grid size-6 place-items-center rounded-md text-muted hover:bg-panel-2 hover:text-text"
-            title={t("search_clear")}
-            aria-label={t("search_clear")}
-            // Keep the focus in the field.
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => {
-              setFilter("");
-              search.current?.focus();
-            }}
-          >
-            <Icon name="close" size={14} />
-          </button>
+          <Tip text={t("search_clear")}>
+            <button
+              className="-mr-1.5 grid size-6 place-items-center rounded-md text-muted hover:bg-panel-2 hover:text-text"
+              aria-label={t("search_clear")}
+              // Keep the focus in the field.
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                setFilter("");
+                search.current?.focus();
+              }}
+            >
+              <Icon name="close" size={14} />
+            </button>
+          </Tip>
         )}
       </div>
       <div
@@ -202,13 +204,15 @@ export function Duration({
   if (!length) return <span className="text-xs text-faint italic">{t("analyzing")}</span>;
   const secs = playTime(length, loopCount);
   return (
-    <span className="flex items-center gap-2" title={playTimeDetail(t, length, loopCount)}>
-      {length.kind === "ends" && (
-        <span className="rounded border border-line px-1.5 text-[10px] leading-4 text-muted">
-          {t("no_loop")}
-        </span>
-      )}
-      <span className="num text-xs text-muted">{secs === null ? "—" : fmtDuration(secs)}</span>
-    </span>
+    <Tip text={playTimeDetail(t, length, loopCount)}>
+      <span className="flex items-center gap-2">
+        {length.kind === "ends" && (
+          <span className="rounded border border-line px-1.5 text-[10px] leading-4 text-muted">
+            {t("no_loop")}
+          </span>
+        )}
+        <span className="num text-xs text-muted">{secs === null ? "—" : fmtDuration(secs)}</span>
+      </span>
+    </Tip>
   );
 }

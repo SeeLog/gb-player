@@ -7,6 +7,7 @@ import type { Library, PlaylistView as Playlist } from "./types";
 import Icon from "./Icon";
 import { Duration } from "./SongList";
 import { useTick } from "./tick";
+import Tip from "./Tip";
 
 /** How far the pointer moves before a press on a song becomes a drag. */
 const DRAG_START = 4;
@@ -122,58 +123,61 @@ export default memo(function PlaylistView({
                 ? "shadow-[inset_0_-2px_0_var(--accent)]"
                 : "";
           return (
-            <div
+            <Tip
               key={i}
-              data-entry={i}
-              role="option"
-              aria-selected={active}
-              aria-disabled={entry.missing || undefined}
-              tabIndex={0}
-              title={entry.missing ? t("playlist_missing", { path: entry.path }) : entry.path}
-              onPointerDown={(e) => onPointerDown(e, i)}
-              onClick={() => {
-                if (!dragged.current) activate(i);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") activate(i);
-                else if (e.key === "Delete" || e.key === "Backspace") {
-                  e.stopPropagation();
-                  api.removeFromPlaylist(list.id, [i]);
-                }
-              }}
-              className={`grid w-full cursor-default grid-cols-[44px_minmax(0,1fr)_auto] items-center gap-2 rounded-lg px-2.5 py-[7px] text-left outline-none select-none focus-visible:ring-1 focus-visible:ring-accent-2 ${gapLine} ${
-                drag?.gap != null && drag.from === i ? "opacity-50" : ""
-              } ${
-                active ? "bg-[color-mix(in_srgb,var(--accent)_14%,var(--panel))]" : "hover:bg-panel"
-              }`}
+              text={entry.missing ? t("playlist_missing", { path: entry.path }) : entry.path}
             >
-              <span className="num pr-1.5 text-right text-faint">
-                {active && playing ? (
-                  <span className="eq inline-flex h-3 items-end gap-0.5" aria-hidden="true">
-                    <i />
-                    <i />
-                    <i />
+              <div
+                data-entry={i}
+                role="option"
+                aria-selected={active}
+                aria-disabled={entry.missing || undefined}
+                tabIndex={0}
+                onPointerDown={(e) => onPointerDown(e, i)}
+                onClick={() => {
+                  if (!dragged.current) activate(i);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") activate(i);
+                  else if (e.key === "Delete" || e.key === "Backspace") {
+                    e.stopPropagation();
+                    api.removeFromPlaylist(list.id, [i]);
+                  }
+                }}
+                className={`grid w-full cursor-default grid-cols-[44px_minmax(0,1fr)_auto] items-center gap-2 rounded-lg px-2.5 py-[7px] text-left outline-none select-none focus-visible:ring-1 focus-visible:ring-accent-2 ${gapLine} ${
+                  drag?.gap != null && drag.from === i ? "opacity-50" : ""
+                } ${
+                  active ? "bg-[color-mix(in_srgb,var(--accent)_14%,var(--panel))]" : "hover:bg-panel"
+                }`}
+              >
+                <span className="num pr-1.5 text-right text-faint">
+                  {active && playing ? (
+                    <span className="eq inline-flex h-3 items-end gap-0.5" aria-hidden="true">
+                      <i />
+                      <i />
+                      <i />
+                    </span>
+                  ) : (
+                    i + 1
+                  )}
+                </span>
+                <span className={`flex min-w-0 flex-col ${entry.missing ? "text-faint" : ""}`}>
+                  <span className={`truncate ${active ? "font-semibold text-accent" : ""}`}>
+                    {entry.title}
                   </span>
+                  <span className="truncate text-xs text-muted">{entry.game}</span>
+                </span>
+                {entry.missing ? (
+                  <span className="rounded border border-line px-1.5 text-[11px] leading-5 text-muted">
+                    {t("playlist_locate")}
+                  </span>
+                ) : entry.length ? (
+                  <Duration t={t} length={entry.length} loopCount={library.loopCount} />
                 ) : (
-                  i + 1
+                  <span className="num text-xs text-faint">—</span>
                 )}
-              </span>
-              <span className={`flex min-w-0 flex-col ${entry.missing ? "text-faint" : ""}`}>
-                <span className={`truncate ${active ? "font-semibold text-accent" : ""}`}>
-                  {entry.title}
-                </span>
-                <span className="truncate text-xs text-muted">{entry.game}</span>
-              </span>
-              {entry.missing ? (
-                <span className="rounded border border-line px-1.5 text-[11px] leading-5 text-muted">
-                  {t("playlist_locate")}
-                </span>
-              ) : entry.length ? (
-                <Duration t={t} length={entry.length} loopCount={library.loopCount} />
-              ) : (
-                <span className="num text-xs text-faint">—</span>
-              )}
-            </div>
+              </div>
+            </Tip>
           );
         })}
       </div>

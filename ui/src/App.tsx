@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { api, onLibrary, onTick, previous } from "./lib/api";
 import { translator } from "./lib/format";
@@ -8,6 +9,7 @@ import Icon from "./lib/Icon";
 import { menuFor, wantsNativeMenu, type MenuActions } from "./lib/menus";
 import PlaylistView from "./lib/PlaylistView";
 import Select from "./lib/Select";
+import Tip, { Tooltips } from "./lib/Tip";
 import Sidebar, { type View } from "./lib/Sidebar";
 import SongList from "./lib/SongList";
 import NowPlaying from "./lib/NowPlaying";
@@ -15,6 +17,7 @@ import ThemeEditor from "./lib/ThemeEditor";
 import WindowControls from "./lib/WindowControls";
 import { applyTheme, imageUrl, type Draft } from "./lib/theme";
 import { tickStore } from "./lib/tick";
+import { useLeaving } from "./lib/leaving";
 
 const headerControl =
   "flex h-[30px] items-center gap-1.5 rounded-lg border border-line bg-panel-2 text-text hover:border-faint";
@@ -22,7 +25,21 @@ const headerButton = `${headerControl} px-2.5`;
 
 export default function App() {
   const [library, setLibrary] = useState<Library | null>(null);
+  const shownLibrary = useRef(library);
+  shownLibrary.current = library;
+  /** Shows a new library, fading the whole window over when the theme or language changes. */
+  const showLibrary = useCallback((l: Library) => {
+    const last = shownLibrary.current;
+    const restyled = !!last && (last.theme !== l.theme || last.language !== l.language);
+    const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (restyled && document.startViewTransition && !still) {
+      document.startViewTransition(() => flushSync(() => setLibrary(l)));
+    } else {
+      setLibrary(l);
+    }
+  }, []);
   const [dragging, setDragging] = useState(false);
+  const drop = useLeaving(dragging || null, 150);
   const search = useRef<HTMLInputElement>(null);
 
   const t = useMemo(() => translator(library?.text ?? {}), [library?.text]);
@@ -65,7 +82,7 @@ export default function App() {
 
   useEffect(() => {
     const unlisten = [
-      onLibrary(setLibrary),
+      onLibrary(showLibrary),
       // Ticks go to the tick store, not to state: see lib/tick.ts.
       onTick((tick) => tickStore.set(tick)),
       getCurrentWebview().onDragDropEvent((e) => {
@@ -83,7 +100,7 @@ export default function App() {
       restored.current = true;
     });
     return () => unlisten.forEach((u) => void u.then((f) => f()));
-  }, [showRom]);
+  }, [showRom, showLibrary]);
 
   useEffect(() => {
     if (library) document.documentElement.lang = library.language;
@@ -91,8 +108,12 @@ export default function App() {
 
   // A draft from the theme editor is shown instead of the chosen theme while it is open.
   const [draft, setDraft] = useState<Draft | null>(null);
+  // The editor slides out after it is closed; a new one each time it is opened.
+  const editor = useLeaving(draft, 200);
+  const [editorKey, setEditorKey] = useState(0);
   const theme = library?.themes.find((th) => th.id === library.theme);
-  useEffect(() => {
+  // Before paint, so a theme change is in place for the fade (see showLibrary).
+  useLayoutEffect(() => {
     if (draft) applyTheme(draft.base, draft.colors);
     else if (theme) applyTheme(theme.base, theme.colors);
   }, [draft, theme]);
@@ -123,8 +144,14 @@ export default function App() {
   }, [image]);
   const errorText = [library?.error, backgroundError].filter(Boolean).join("\n");
 
+  /** Opens the theme editor on the chosen theme, or closes it when it is open (as its × does). */
   function editTheme() {
+    if (draft) {
+      setDraft(null);
+      return;
+    }
     if (!theme) return;
+    setEditorKey((k) => k + 1);
     setDraft({
       name: theme.custom ? theme.name : t("theme_new_name"),
       base: theme.base,
@@ -230,25 +257,28 @@ export default function App() {
             <span>GB Player</span>
           </div>
           {shownRom && view.kind === "rom" && (
-            <div
-              data-tauri-drag-region
-              title={shownRom.path}
-              className="flex min-w-0 items-baseline gap-2 border-l border-line pl-3.5 *:pointer-events-none"
-            >
-              {shownRom.game && <span className="truncate font-semibold">{shownRom.game}</span>}
-              <span className="rounded border border-line bg-panel-2 px-1.5 py-px text-[11px] text-muted">
-                {shownRom.title}
-              </span>
-              <span className="whitespace-nowrap text-muted">
-                {t("song_count", { n: shownRom.songs.length })}
-              </span>
-            </div>
+            <Tip text={shownRom.path}>
+              <div
+                data-tauri-drag-region
+                className="flex min-w-0 items-baseline gap-2 border-l border-line pl-3.5 *:pointer-events-none"
+              >
+                {shownRom.game && <span className="truncate font-semibold">{shownRom.game}</span>}
+                <span className="rounded border border-line bg-panel-2 px-1.5 py-px text-[11px] text-muted">
+                  {shownRom.title}
+                </span>
+                <span className="whitespace-nowrap text-muted">
+                  {t("song_count", { n: shownRom.songs.length })}
+                </span>
+              </div>
+            </Tip>
           )}
           <div data-tauri-drag-region className="flex-1 self-stretch" />
-          <button className={headerButton} onClick={pickRom} title="Ctrl+O">
-            <Icon name="open" size={18} />
-            <span>{t("open_rom")}</span>
-          </button>
+          <Tip text="Ctrl+O">
+            <button className={headerButton} onClick={pickRom}>
+              <Icon name="open" size={18} />
+              <span>{t("open_rom")}</span>
+            </button>
+          </Tip>
           {library && (
             <>
               <Select
@@ -260,14 +290,18 @@ export default function App() {
                 onChange={(id) => api.setTheme(id)}
                 disabled={!!draft}
               />
-              <button
-                className={`${headerControl} w-[30px] justify-center`}
-                onClick={editTheme}
-                title={t("edit_theme")}
-                aria-label={t("edit_theme")}
-              >
-                <Icon name="edit" size={18} />
-              </button>
+              <Tip text={draft ? t("theme_close") : t("edit_theme")}>
+                <button
+                  className={`${headerControl} w-[30px] justify-center ${
+                    draft ? "border-accent! text-accent" : ""
+                  }`}
+                  onClick={editTheme}
+                  aria-label={t("edit_theme")}
+                  aria-pressed={!!draft}
+                >
+                  <Icon name="edit" size={18} />
+                </button>
+              </Tip>
               <Select
                 className={headerButton}
                 label={t("language")}
@@ -339,20 +373,27 @@ export default function App() {
           </div>
         )}
 
-        {library && draft && (
+        {library && editor.shown && (
           <ThemeEditor
+            key={editorKey}
             library={library}
             t={t}
-            draft={draft}
+            draft={editor.shown}
             setDraft={setDraft}
             onClose={closeEditor}
+            leaving={editor.leaving}
           />
         )}
 
         <ContextMenu menu={menu} onClose={closeMenu} />
+        <Tooltips />
 
-        {dragging && (
-          <div className="pointer-events-none fixed inset-0 grid place-items-center bg-[color-mix(in_srgb,var(--backdrop)_75%,transparent)]">
+        {drop.shown && (
+          <div
+            className={`pointer-events-none fixed inset-0 grid place-items-center bg-[color-mix(in_srgb,var(--backdrop)_75%,transparent)] transition-opacity duration-150 starting:opacity-0 motion-reduce:transition-none ${
+              drop.leaving ? "opacity-0" : ""
+            }`}
+          >
             <div className="rounded-2xl border-2 border-dashed border-accent px-10 py-7 text-lg font-semibold text-accent">
               {t("drop_here")}
             </div>

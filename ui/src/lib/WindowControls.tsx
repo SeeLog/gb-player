@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { Translate } from "./format";
+import Tip from "./Tip";
 
 const base = "grid w-[46px] place-items-center text-muted focus-visible:outline-offset-[-2px]";
 const button = `${base} hover:bg-panel-2 hover:text-text`;
@@ -35,25 +36,29 @@ export default function WindowControls({ t }: { t: Translate }) {
   const toggle = maximized ? t("window_restore") : t("window_maximize");
   return (
     <div className="flex self-stretch">
-      <button
-        className={button}
-        onClick={() => win.minimize()}
-        title={t("window_minimize")}
-        aria-label={t("window_minimize")}
-      >
-        <Glyph d="M0 5.5h10" />
-      </button>
-      <button className={button} onClick={() => win.toggleMaximize()} title={toggle} aria-label={toggle}>
-        <Glyph d={maximized ? "M0.5 2.5h7v7h-7zM2.5 2.5v-2h7v7h-2" : "M0.5 0.5h9v9h-9z"} />
-      </button>
-      <button
-        className={`${base} hover:bg-[#c42b1c] hover:text-white`}
-        onClick={() => win.close()}
-        title={t("window_close")}
-        aria-label={t("window_close")}
-      >
-        <Glyph d="M0.5 0.5l9 9M9.5 0.5l-9 9" />
-      </button>
+      <Tip text={t("window_minimize")}>
+        <button
+          className={button}
+          onClick={() => win.minimize()}
+          aria-label={t("window_minimize")}
+        >
+          <Glyph d="M0 5.5h10" />
+        </button>
+      </Tip>
+      <Tip text={toggle}>
+        <button className={button} onClick={() => win.toggleMaximize()} aria-label={toggle}>
+          <Glyph d={maximized ? "M0.5 2.5h7v7h-7zM2.5 2.5v-2h7v7h-2" : "M0.5 0.5h9v9h-9z"} />
+        </button>
+      </Tip>
+      <Tip text={t("window_close")}>
+        <button
+          className={`${base} hover:bg-[#c42b1c] hover:text-white`}
+          onClick={() => win.close()}
+          aria-label={t("window_close")}
+        >
+          <Glyph d="M0.5 0.5l9 9M9.5 0.5l-9 9" />
+        </button>
+      </Tip>
     </div>
   );
 }

@@ -7,6 +7,7 @@ import type { Translate } from "./format";
 import type { Library } from "./types";
 import Icon from "./Icon";
 import { useTick } from "./tick";
+import Tip from "./Tip";
 
 /** What the middle column shows: the songs of the shown ROM, or a playlist by id. */
 export type View = { kind: "rom" } | { kind: "playlist"; id: string };
@@ -55,60 +56,64 @@ export default memo(function Sidebar({
     <nav className="flex min-h-0 flex-col gap-1 overflow-y-auto border-r border-line px-2 py-3">
       <div className={`${label} flex items-center justify-between pr-1`}>
         <span>{t("now_open")}</span>
-        <button
-          className="grid size-6 place-items-center rounded-md text-muted hover:bg-panel hover:text-text"
-          onClick={pickRom}
-          title={`${t("open_rom")} (Ctrl+O)`}
-          aria-label={t("open_rom")}
-        >
-          <Icon name="plus" size={16} />
-        </button>
+        <Tip text={`${t("open_rom")} (Ctrl+O)`}>
+          <button
+            className="grid size-6 place-items-center rounded-md text-muted hover:bg-panel hover:text-text"
+            onClick={pickRom}
+            aria-label={t("open_rom")}
+          >
+            <Icon name="plus" size={16} />
+          </button>
+        </Tip>
       </div>
       {library.roms.length === 0 && <div className={`${item} text-muted`}>—</div>}
       {library.roms.map((rom) => {
         const name = rom.game || rom.title;
         return (
           <div key={rom.id} data-rom-item={rom.id} className="group relative">
-            <button
-              className={`${item} pr-8 ${view.kind === "rom" && rom.id === shownRom ? on : "hover:bg-panel"}`}
-              onClick={() => showRom(rom.id)}
-              title={rom.path}
-            >
-              <span className="flex-1 truncate">{name}</span>
-              {playingRom === rom.id ? (
-                <span className="eq inline-flex h-3 items-end gap-0.5 group-hover:invisible group-focus-within:invisible" aria-hidden="true">
-                  <i />
-                  <i />
-                  <i />
-                </span>
-              ) : (
-                <span className="num text-xs font-normal text-faint group-hover:invisible group-focus-within:invisible">
-                  {rom.songs.length}
-                </span>
-              )}
-            </button>
-            <button
-              className="absolute top-1/2 right-1.5 grid size-6 -translate-y-1/2 place-items-center rounded-md text-muted opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:bg-panel-2 hover:text-text"
-              onClick={() => api.closeRom(rom.id)}
-              title={t("rom_close")}
-              aria-label={`${t("rom_close")}: ${name}`}
-            >
-              <Icon name="close" size={14} />
-            </button>
+            <Tip text={rom.path}>
+              <button
+                className={`${item} pr-8 ${view.kind === "rom" && rom.id === shownRom ? on : "hover:bg-panel"}`}
+                onClick={() => showRom(rom.id)}
+              >
+                <span className="flex-1 truncate">{name}</span>
+                {playingRom === rom.id ? (
+                  <span className="eq inline-flex h-3 items-end gap-0.5 group-hover:invisible group-focus-within:invisible" aria-hidden="true">
+                    <i />
+                    <i />
+                    <i />
+                  </span>
+                ) : (
+                  <span className="num text-xs font-normal text-faint group-hover:invisible group-focus-within:invisible">
+                    {rom.songs.length}
+                  </span>
+                )}
+              </button>
+            </Tip>
+            <Tip text={t("rom_close")}>
+              <button
+                className="absolute top-1/2 right-1.5 grid size-6 -translate-y-1/2 place-items-center rounded-md text-muted opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:bg-panel-2 hover:text-text"
+                onClick={() => api.closeRom(rom.id)}
+                aria-label={`${t("rom_close")}: ${name}`}
+              >
+                <Icon name="close" size={14} />
+              </button>
+            </Tip>
           </div>
         );
       })}
 
       <div className={`${label} mt-3 flex items-center justify-between pr-1`}>
         <span>{t("playlists")}</span>
-        <button
-          className="grid size-6 place-items-center rounded-md text-muted hover:bg-panel hover:text-text"
-          onClick={newPlaylist}
-          title={t("playlist_new")}
-          aria-label={t("playlist_new")}
-        >
-          <Icon name="plus" size={16} />
-        </button>
+        <Tip text={t("playlist_new")}>
+          <button
+            className="grid size-6 place-items-center rounded-md text-muted hover:bg-panel hover:text-text"
+            onClick={newPlaylist}
+            aria-label={t("playlist_new")}
+          >
+            <Icon name="plus" size={16} />
+          </button>
+        </Tip>
       </div>
       {library.playlists.map((list) =>
         renaming === list.id ? (

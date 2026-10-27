@@ -13,6 +13,7 @@ import {
   splitColor,
   type Draft,
 } from "./theme";
+import Tip from "./Tip";
 
 const heading = "mb-0.5 text-[11px] font-bold tracking-[0.08em] uppercase text-faint";
 // Class lists are combined only where they set different properties, so no utility overrides
@@ -36,12 +37,15 @@ export default function ThemeEditor({
   draft,
   setDraft,
   onClose,
+  leaving = false,
 }: {
   library: Library;
   t: Translate;
   draft: Draft;
   setDraft: (d: Draft) => void;
   onClose: () => void;
+  /** Closed, and sliding out. */
+  leaving?: boolean;
 }) {
   // What Reset goes back to.
   const [initial] = useState(() => structuredClone(draft));
@@ -129,7 +133,10 @@ export default function ThemeEditor({
     // Painted solid with the base palette's panel over its bg and backdrop, so it stays readable
     // whatever the theme colours and background image are.
     <aside
-      className="fixed top-10 right-0 bottom-0 z-20 flex w-[380px] flex-col gap-3 border-l border-line px-4 py-3.5 shadow-[-12px_0_32px_rgba(0,0,0,0.3)]"
+      className={`fixed top-10 right-0 bottom-0 z-20 flex w-[380px] flex-col gap-3 border-l border-line px-4 py-3.5 shadow-[-12px_0_32px_rgba(0,0,0,0.3)] transition-[translate,opacity] duration-200 ease-out starting:translate-x-full starting:opacity-0 motion-reduce:transition-none ${
+        leaving ? "translate-x-full opacity-0 ease-in" : ""
+      }`}
+      inert={leaving}
       aria-label={t("theme_editor")}
       style={{
         background: `linear-gradient(${baseColors.panel}, ${baseColors.panel}), linear-gradient(${baseColors.bg}, ${baseColors.bg}), ${baseColors.backdrop}`,
@@ -137,14 +144,15 @@ export default function ThemeEditor({
     >
       <div className="flex items-center justify-between">
         <h2 className="text-[15px] font-bold">{t("theme_editor")}</h2>
-        <button
-          className={`${iconButton} size-[30px]`}
-          onClick={onClose}
-          title={t("theme_close")}
-          aria-label={t("theme_close")}
-        >
-          <Icon name="close" size={18} />
-        </button>
+        <Tip text={t("theme_close")}>
+          <button
+            className={`${iconButton} size-[30px]`}
+            onClick={onClose}
+            aria-label={t("theme_close")}
+          >
+            <Icon name="close" size={18} />
+          </button>
+        </Tip>
       </div>
 
       <div className="-mx-1.5 flex flex-1 flex-col gap-[18px] overflow-y-auto px-1.5">
@@ -165,9 +173,11 @@ export default function ThemeEditor({
 
         <section className="flex flex-col gap-1.5">
           <h3 className={heading}>{t("theme_background")}</h3>
-          <span className="truncate text-xs text-muted" title={bg?.image}>
-            {bg?.image ?? t("theme_no_image")}
-          </span>
+          <Tip text={bg?.image}>
+            <span className="truncate text-xs text-muted">
+              {bg?.image ?? t("theme_no_image")}
+            </span>
+          </Tip>
           <div className="flex items-center gap-1.5">
             <button className={smallButton} onClick={pickImage}>
               {t("theme_choose_image")}
@@ -254,19 +264,20 @@ export default function ThemeEditor({
                     aria-label={token}
                     className="h-[26px] w-[30px] cursor-pointer rounded-md border border-line bg-panel-2 p-0.5"
                   />
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    step="1"
-                    value={Math.round(parts.alpha * 100)}
-                    onChange={(e) =>
-                      setPart(token, { alpha: e.currentTarget.valueAsNumber / 100 })
-                    }
-                    title={`${t("theme_opacity")} ${Math.round(parts.alpha * 100)}%`}
-                    aria-label={`${token} ${t("theme_opacity")}`}
-                    className="w-full accent-accent"
-                  />
+                  <Tip text={`${t("theme_opacity")} ${Math.round(parts.alpha * 100)}%`}>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      step="1"
+                      value={Math.round(parts.alpha * 100)}
+                      onChange={(e) =>
+                        setPart(token, { alpha: e.currentTarget.valueAsNumber / 100 })
+                      }
+                      aria-label={`${token} ${t("theme_opacity")}`}
+                      className="w-full accent-accent"
+                    />
+                  </Tip>
                   <input
                     className={`${fieldBase} ${mono} h-[26px] ${bad ? "border-danger" : "border-line"}`}
                     value={text ?? value(token)}
@@ -275,15 +286,16 @@ export default function ThemeEditor({
                     spellCheck={false}
                     aria-label={token}
                   />
-                  <button
-                    className={`${iconButton} size-[22px]`}
-                    onClick={() => clearColor(token)}
-                    disabled={!set}
-                    title={t("theme_reset")}
-                    aria-label={t("theme_reset")}
-                  >
-                    <Icon name="close" size={14} />
-                  </button>
+                  <Tip text={t("theme_reset")}>
+                    <button
+                      className={`${iconButton} size-[22px]`}
+                      onClick={() => clearColor(token)}
+                      disabled={!set}
+                      aria-label={t("theme_reset")}
+                    >
+                      <Icon name="close" size={14} />
+                    </button>
+                  </Tip>
                 </div>
               );
             })}

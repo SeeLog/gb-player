@@ -158,6 +158,21 @@
     cursor: pointer;
   }
 
+  /* Hover and the chosen row change colour over a moment, not at once. Menu items are left
+     instant, as in the system's menus. */
+  button,
+  [data-entry] {
+    transition-property: color, background-color, border-color, opacity;
+    transition-duration: 100ms;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    button,
+    [data-entry] {
+      transition: none;
+    }
+  }
+
   button:focus-visible,
   input:focus-visible,
   select:focus-visible {
@@ -205,6 +220,20 @@
   border-radius: 50%;
   background: var(--text);
   border: 0;
+}
+
+/* A theme or language change fades the whole window over (see App.tsx). */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 220ms;
+}
+
+/* The song name on the LCD as it changes. */
+@keyframes lcd-in {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
 }
 
 /* The bouncing bars next to the playing song. */

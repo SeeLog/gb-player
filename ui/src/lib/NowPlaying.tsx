@@ -8,6 +8,7 @@ import { describe, fmtTime, type Translate } from "./format";
 import type { Length, Library, Shuffle, SongView } from "./types";
 import Icon from "./Icon";
 import Scope from "./Scope";
+import Tip from "./Tip";
 import { tickStore, useTick } from "./tick";
 
 const CHANNELS = ["channel_pulse1", "channel_pulse2", "channel_wave", "channel_noise"];
@@ -83,22 +84,23 @@ export default memo(function NowPlaying({ library, t }: { library: Library; t: T
 
       <div className="flex items-center gap-2.5 text-muted">
         <Icon name="volume" size={18} />
-        <input
-          type="range"
-          min="0"
-          max="1"
-          step="0.01"
-          value={volume}
-          onChange={(e) => {
-            const v = e.currentTarget.valueAsNumber;
-            setVolume(v);
-            api.setVolume(v);
-          }}
-          aria-label={t("volume")}
-          title={t("volume")}
-          className="volume-slider flex-1"
-          style={{ "--v": `${volume * 100}%` } as React.CSSProperties}
-        />
+        <Tip text={t("volume")}>
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.01"
+            value={volume}
+            onChange={(e) => {
+              const v = e.currentTarget.valueAsNumber;
+              setVolume(v);
+              api.setVolume(v);
+            }}
+            aria-label={t("volume")}
+            className="volume-slider flex-1"
+            style={{ "--v": `${volume * 100}%` } as React.CSSProperties}
+          />
+        </Tip>
         <span className="num w-7 text-right text-xs">{Math.round(volume * 100)}</span>
       </div>
 
@@ -112,6 +114,7 @@ export default memo(function NowPlaying({ library, t }: { library: Library; t: T
 
 function Lcd({ library, t, volume }: { library: Library; t: Translate; volume: number }) {
   const song = useSong(library);
+  const rom = useTick((tick) => tick?.rom ?? null);
   const state = useTick((tick) => tick?.state ?? "none");
   return (
     <div className="rounded-xl bg-[linear-gradient(160deg,var(--lcd-hi),var(--lcd)_60%,var(--lcd-lo))] px-3.5 pt-3 pb-2.5 text-lcd-ink shadow-[inset_0_0_0_1px_rgba(0,0,0,0.25),inset_0_2px_10px_rgba(0,0,0,0.25),0_0_0_6px_var(--bezel)]">
@@ -119,9 +122,14 @@ function Lcd({ library, t, volume }: { library: Library; t: Translate; volume: n
         <span className="num">{song ? `#${String(song.index + 1).padStart(2, "0")}` : "--"}</span>
         <span className="tracking-[0.08em] uppercase">{t(`state_${state}`)}</span>
       </div>
-      <div className="mt-0.5 truncate text-lg font-bold" title={song?.title}>
-        {song?.title ?? t("not_playing")}
-      </div>
+      {/* A new element for each song, so the name comes in afresh even mid-way through the last. */}
+      <Tip key={song ? `${rom}:${song.index}` : ""} text={song?.title}>
+        <div
+          className="mt-0.5 animate-[lcd-in_180ms_ease-out] truncate text-lg font-bold motion-reduce:animate-none"
+        >
+          {song?.title ?? t("not_playing")}
+        </div>
+      </Tip>
       <div className="mt-1.5 h-[72px]">
         <Scope volume={volume} />
       </div>
@@ -247,11 +255,12 @@ function Progress({ library, t }: { library: Library; t: Translate }) {
                   className="absolute inset-y-0 left-0 rounded-l bg-overlay"
                   style={{ width: `${progress.loopStart * 100}%` }}
                 />
-                <div
-                  className="absolute -top-1 -bottom-1 -ml-px w-0.5 rounded-[1px] bg-text opacity-60"
-                  style={{ left: `${progress.loopStart * 100}%` }}
-                  title={t("loop_point")}
-                />
+                <Tip text={t("loop_point")}>
+                  <div
+                    className="absolute -top-1 -bottom-1 -ml-px w-0.5 rounded-[1px] bg-text opacity-60"
+                    style={{ left: `${progress.loopStart * 100}%` }}
+                  />
+                </Tip>
               </>
             )}
             <div
@@ -301,23 +310,30 @@ function Transport({ t }: { t: Translate }) {
   const prev = restarts ? t("prev_restart") : t("prev");
   return (
     <div className="flex items-center justify-center gap-3.5">
-      <button className={round} onClick={() => previous(tickStore.get())} title={prev} aria-label={prev}>
-        <Icon name="prev" />
-      </button>
-      <button className={round} onClick={() => api.stop()} title={t("stop")} aria-label={t("stop")}>
-        <Icon name="stop" />
-      </button>
-      <button
-        className="grid size-[62px] place-items-center rounded-full bg-accent text-accent-ink shadow-[0_6px_18px_color-mix(in_srgb,var(--accent)_25%,transparent)] hover:brightness-108"
-        onClick={() => api.toggle()}
-        title={`${playing ? t("pause") : t("play")} (Space)`}
-        aria-label={playing ? t("pause") : t("play")}
-      >
-        <Icon name={playing ? "pause" : "play"} size={28} />
-      </button>
-      <button className={round} onClick={() => api.skip(1)} title={t("next")} aria-label={t("next")}>
-        <Icon name="next" />
-      </button>
+      <Tip text={prev}>
+        <button className={round} onClick={() => previous(tickStore.get())} aria-label={prev}>
+          <Icon name="prev" />
+        </button>
+      </Tip>
+      <Tip text={t("stop")}>
+        <button className={round} onClick={() => api.stop()} aria-label={t("stop")}>
+          <Icon name="stop" />
+        </button>
+      </Tip>
+      <Tip text={`${playing ? t("pause") : t("play")} (Space)`}>
+        <button
+          className="grid size-[62px] place-items-center rounded-full bg-accent text-accent-ink shadow-[0_6px_18px_color-mix(in_srgb,var(--accent)_25%,transparent)] hover:brightness-108"
+          onClick={() => api.toggle()}
+          aria-label={playing ? t("pause") : t("play")}
+        >
+          <Icon name={playing ? "pause" : "play"} size={28} />
+        </button>
+      </Tip>
+      <Tip text={t("next")}>
+        <button className={round} onClick={() => api.skip(1)} aria-label={t("next")}>
+          <Icon name="next" />
+        </button>
+      </Tip>
     </div>
   );
 }
@@ -356,40 +372,40 @@ function Channels({ library, t }: { library: Library; t: Translate }) {
       {CHANNELS.map((key, ch) => {
         const muted = library.muted[ch];
         return (
-          <button
-            key={key}
-            className={`flex flex-col gap-2 rounded-[9px] border border-line bg-panel-2 px-2.5 py-[9px] text-left hover:border-faint ${
-              muted ? "opacity-45" : ""
-            }`}
-            onClick={() => api.setMuted(ch, !muted)}
-            title={t("toggle_mute")}
-            aria-pressed={!muted}
-          >
-            <span className={`flex items-center gap-[7px] text-xs font-semibold ${muted ? "line-through" : ""}`}>
-              <span
-                className={`size-2 rounded-full ${
-                  muted ? "bg-faint" : "bg-accent shadow-[0_0_6px_var(--accent)]"
-                }`}
-              />
-              {t(key)}
-            </span>
-            {/* bg as it looks over the backdrop, whatever is under the meter. */}
-            <span className="relative h-1.5 overflow-hidden rounded-[3px] [background:linear-gradient(var(--bg),var(--bg)),var(--backdrop)]">
-              <span
-                ref={(el) => {
-                  levels.current[ch] = el;
-                }}
-                className="absolute inset-0 origin-left bg-[linear-gradient(90deg,var(--accent-2),var(--accent))] transition-transform duration-[60ms] ease-linear"
-                style={{ transform: "scaleX(0)" }}
-              />
-              <span
-                ref={(el) => {
-                  peaks.current[ch] = el;
-                }}
-                className="absolute inset-0 before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-text before:opacity-70"
-              />
-            </span>
-          </button>
+          <Tip key={key} text={t("toggle_mute")}>
+            <button
+              className={`flex flex-col gap-2 rounded-[9px] border border-line bg-panel-2 px-2.5 py-[9px] text-left hover:border-faint ${
+                muted ? "opacity-45" : ""
+              }`}
+              onClick={() => api.setMuted(ch, !muted)}
+              aria-pressed={!muted}
+            >
+              <span className={`flex items-center gap-[7px] text-xs font-semibold ${muted ? "line-through" : ""}`}>
+                <span
+                  className={`size-2 rounded-full ${
+                    muted ? "bg-faint" : "bg-accent shadow-[0_0_6px_var(--accent)]"
+                  }`}
+                />
+                {t(key)}
+              </span>
+              {/* bg as it looks over the backdrop, whatever is under the meter. */}
+              <span className="relative h-1.5 overflow-hidden rounded-[3px] [background:linear-gradient(var(--bg),var(--bg)),var(--backdrop)]">
+                <span
+                  ref={(el) => {
+                    levels.current[ch] = el;
+                  }}
+                  className="absolute inset-0 origin-left bg-[linear-gradient(90deg,var(--accent-2),var(--accent))] transition-transform duration-[60ms] ease-linear"
+                  style={{ transform: "scaleX(0)" }}
+                />
+                <span
+                  ref={(el) => {
+                    peaks.current[ch] = el;
+                  }}
+                  className="absolute inset-0 before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-text before:opacity-70"
+                />
+              </span>
+            </button>
+          </Tip>
         );
       })}
     </div>
@@ -444,18 +460,18 @@ function Segmented<T>({
         </div>
       )}
       {options.map((o, i) => (
-        <button
-          key={String(o.value)}
-          role="radio"
-          aria-checked={i === index}
-          className={`relative h-[30px] rounded-md font-semibold transition-colors duration-150 ${
-            small ? "text-[13px]" : ""
-          } ${i === index ? "text-accent-ink" : "text-muted hover:text-text"}`}
-          onClick={() => onChange(o.value)}
-          title={o.title}
-        >
-          {o.text}
-        </button>
+        <Tip key={String(o.value)} text={o.title}>
+          <button
+            role="radio"
+            aria-checked={i === index}
+            className={`relative h-[30px] rounded-md font-semibold transition-colors duration-150 ${
+              small ? "text-[13px]" : ""
+            } ${i === index ? "text-accent-ink" : "text-muted hover:text-text"}`}
+            onClick={() => onChange(o.value)}
+          >
+            {o.text}
+          </button>
+        </Tip>
       ))}
     </div>
   );

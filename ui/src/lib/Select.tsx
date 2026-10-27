@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { Select as Base } from "@base-ui/react/select";
 import { popupClass } from "./ContextMenu";
 import Icon from "./Icon";
+import Tip from "./Tip";
 
 export interface Option {
   value: string;
@@ -38,17 +39,18 @@ export default function Select({
       disabled={disabled}
       modal={false}
     >
-      <Base.Trigger
-        className={`${className ?? ""} cursor-pointer data-disabled:cursor-default data-disabled:opacity-60`}
-        title={label}
-        aria-label={label}
-      >
-        {icon}
-        <Base.Value />
-        <Base.Icon className="-mr-1 text-muted">
-          <Icon name="chevron" size={16} />
-        </Base.Icon>
-      </Base.Trigger>
+      <Tip text={label}>
+        <Base.Trigger
+          className={`${className ?? ""} cursor-pointer data-disabled:cursor-default data-disabled:opacity-60`}
+          aria-label={label}
+        >
+          {icon}
+          <Base.Value />
+          <Base.Icon className="-mr-1 text-muted">
+            <Icon name="chevron" size={16} />
+          </Base.Icon>
+        </Base.Trigger>
+      </Tip>
       <Base.Portal>
         {/* Below the button, as on Windows, not over it with the chosen item in line. */}
         <Base.Positioner
