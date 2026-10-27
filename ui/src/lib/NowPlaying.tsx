@@ -38,29 +38,16 @@ export default memo(function NowPlaying({ library, t }: { library: Library; t: T
 
       <div className="flex flex-col gap-2">
         <div className={label}>{t("loop_label")}</div>
-        <div
-          className="grid grid-cols-4 rounded-[9px] border border-line bg-panel-2 p-[3px]"
-          role="radiogroup"
-          aria-label={t("loop_label")}
-        >
-          {LOOP_COUNTS.map((n) => {
-            const on = library.loopCount === n;
-            return (
-              <button
-                key={String(n)}
-                role="radio"
-                aria-checked={on}
-                className={`h-[30px] rounded-md font-semibold ${
-                  on ? "bg-accent text-accent-ink" : "text-muted hover:text-text"
-                }`}
-                onClick={() => api.setLoopCount(n)}
-                title={n === null ? t("loop_forever") : t("loop_playlist", { n })}
-              >
-                {n === null ? "∞" : `×${n}`}
-              </button>
-            );
-          })}
-        </div>
+        <Segmented
+          label={t("loop_label")}
+          options={LOOP_COUNTS.map((n) => ({
+            value: n,
+            text: n === null ? "∞" : `×${n}`,
+            title: n === null ? t("loop_forever") : t("loop_playlist", { n }),
+          }))}
+          value={library.loopCount}
+          onChange={(n) => api.setLoopCount(n)}
+        />
         <label className="group mt-1 flex cursor-pointer items-center gap-2.5 text-[13px] text-muted hover:text-text">
           <input
             type="checkbox"
@@ -81,29 +68,17 @@ export default memo(function NowPlaying({ library, t }: { library: Library; t: T
           <Icon name="shuffle" size={14} />
           {t("shuffle")}
         </div>
-        <div
-          className="grid grid-cols-3 rounded-[9px] border border-line bg-panel-2 p-[3px]"
-          role="radiogroup"
-          aria-label={t("shuffle")}
-        >
-          {SHUFFLES.map((mode) => {
-            const on = library.shuffle === mode;
-            return (
-              <button
-                key={mode}
-                role="radio"
-                aria-checked={on}
-                className={`h-[30px] rounded-md text-[13px] font-semibold ${
-                  on ? "bg-accent text-accent-ink" : "text-muted hover:text-text"
-                }`}
-                onClick={() => api.setShuffle(mode)}
-                title={t(`shuffle_${mode}_hint`)}
-              >
-                {t(`shuffle_${mode}`)}
-              </button>
-            );
-          })}
-        </div>
+        <Segmented
+          label={t("shuffle")}
+          options={SHUFFLES.map((mode) => ({
+            value: mode,
+            text: t(`shuffle_${mode}`),
+            title: t(`shuffle_${mode}_hint`),
+          }))}
+          value={library.shuffle}
+          onChange={(mode) => api.setShuffle(mode)}
+          small
+        />
       </div>
 
       <div className="flex items-center gap-2.5 text-muted">
@@ -417,6 +392,71 @@ function Channels({ library, t }: { library: Library; t: Translate }) {
           </button>
         );
       })}
+    </div>
+  );
+}
+
+// A row of choices with one picked, whose highlight slides over to the new one: the edge on the
+// side it moves to goes first and the other follows, so it stretches on the way and settles.
+function Segmented<T>({
+  label,
+  options,
+  value,
+  onChange,
+  small = false,
+}: {
+  label: string;
+  options: { value: T; text: string; title: string }[];
+  value: T;
+  onChange: (value: T) => void;
+  small?: boolean;
+}) {
+  const n = options.length;
+  const index = options.findIndex((o) => o.value === value);
+  // Which way the highlight last moved: 1 to the right, -1 to the left.
+  const [last, setLast] = useState(index);
+  const [direction, setDirection] = useState(1);
+  if (index !== last) {
+    setLast(index);
+    if (index >= 0 && last >= 0) setDirection(Math.sign(index - last));
+  }
+  const lead = "150ms cubic-bezier(0.3, 1.25, 0.5, 1)";
+  const follow = "230ms cubic-bezier(0.5, 0, 0.2, 1) 20ms";
+
+  return (
+    <div
+      className="relative grid rounded-[9px] border border-line bg-panel-2 p-[3px]"
+      style={{ gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))` }}
+      role="radiogroup"
+      aria-label={label}
+    >
+      {index >= 0 && (
+        <div className="pointer-events-none absolute inset-[3px]" aria-hidden="true">
+          <div
+            className="absolute inset-y-0 rounded-md bg-accent motion-reduce:transition-none!"
+            style={{
+              left: `${(index / n) * 100}%`,
+              right: `${((n - 1 - index) / n) * 100}%`,
+              transition:
+                direction > 0 ? `right ${lead}, left ${follow}` : `left ${lead}, right ${follow}`,
+            }}
+          />
+        </div>
+      )}
+      {options.map((o, i) => (
+        <button
+          key={String(o.value)}
+          role="radio"
+          aria-checked={i === index}
+          className={`relative h-[30px] rounded-md font-semibold transition-colors duration-150 ${
+            small ? "text-[13px]" : ""
+          } ${i === index ? "text-accent-ink" : "text-muted hover:text-text"}`}
+          onClick={() => onChange(o.value)}
+          title={o.title}
+        >
+          {o.text}
+        </button>
+      ))}
     </div>
   );
 }
