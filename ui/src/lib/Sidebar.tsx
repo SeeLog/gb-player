@@ -1,5 +1,6 @@
-// The left column: the open ROM's song list and the playlists, one of which the middle column
-// shows. A playlist is renamed in place (double-click it, or Rename in its right-click menu).
+// The left column: the open ROMs and the playlists, one of which the middle column shows. A
+// playlist is renamed in place (double-click it, or Rename in its right-click menu); a ROM is
+// closed with its × (or Close in its right-click menu).
 import { memo, useEffect, useRef, useState } from "react";
 import { api } from "./api";
 import type { Translate } from "./format";
@@ -7,7 +8,7 @@ import type { Library } from "./types";
 import Icon from "./Icon";
 import { useTick } from "./tick";
 
-/** What the middle column shows: the open ROM's songs, or a playlist by id. */
+/** What the middle column shows: the songs of the shown ROM, or a playlist by id. */
 export type View = { kind: "rom" } | { kind: "playlist"; id: string };
 
 const label = "px-2.5 text-[11px] font-bold tracking-[0.08em] uppercase text-faint";
@@ -18,6 +19,9 @@ export default memo(function Sidebar({
   t,
   view,
   setView,
+  shownRom,
+  showRom,
+  pickRom,
   renaming,
   setRenaming,
 }: {
@@ -25,19 +29,22 @@ export default memo(function Sidebar({
   t: Translate;
   view: View;
   setView: (v: View) => void;
+  shownRom: string | null;
+  showRom: (id: string) => void;
+  pickRom: () => void;
   renaming: string | null;
   setRenaming: (id: string | null) => void;
 }) {
   const playingList = useTick((tick) => tick?.queue?.playlist ?? null);
-  const hasRom = library.songs.length > 0;
+  const playingRom = useTick((tick) => (tick?.state === "playing" ? tick.rom : null));
+  const on = "bg-[color-mix(in_srgb,var(--accent)_14%,var(--panel))] font-semibold text-accent";
   const selected = (v: View) =>
-    v.kind === view.kind && (v.kind === "rom" || (view.kind === "playlist" && v.id === view.id))
-      ? "bg-[color-mix(in_srgb,var(--accent)_14%,var(--panel))] font-semibold text-accent"
-      : "hover:bg-panel";
+    view.kind === "playlist" && v.kind === "playlist" && v.id === view.id ? on : "hover:bg-panel";
 
   async function newPlaylist() {
     const id = await api.createPlaylist(
       t("playlist_default_name", { n: library.playlists.length + 1 }),
+      null,
       [],
     );
     setView({ kind: "playlist", id });
@@ -46,14 +53,51 @@ export default memo(function Sidebar({
 
   return (
     <nav className="flex min-h-0 flex-col gap-1 overflow-y-auto border-r border-line px-2 py-3">
-      <div className={label}>{t("now_open")}</div>
-      <button
-        className={`${item} ${selected({ kind: "rom" })}`}
-        onClick={() => setView({ kind: "rom" })}
-        title={library.romPath ?? ""}
-      >
-        <span className="truncate">{hasRom ? library.game || library.title : "—"}</span>
-      </button>
+      <div className={`${label} flex items-center justify-between pr-1`}>
+        <span>{t("now_open")}</span>
+        <button
+          className="grid size-6 place-items-center rounded-md text-muted hover:bg-panel hover:text-text"
+          onClick={pickRom}
+          title={`${t("open_rom")} (Ctrl+O)`}
+          aria-label={t("open_rom")}
+        >
+          <Icon name="plus" size={16} />
+        </button>
+      </div>
+      {library.roms.length === 0 && <div className={`${item} text-muted`}>—</div>}
+      {library.roms.map((rom) => {
+        const name = rom.game || rom.title;
+        return (
+          <div key={rom.id} data-rom-item={rom.id} className="group relative">
+            <button
+              className={`${item} pr-8 ${view.kind === "rom" && rom.id === shownRom ? on : "hover:bg-panel"}`}
+              onClick={() => showRom(rom.id)}
+              title={rom.path}
+            >
+              <span className="flex-1 truncate">{name}</span>
+              {playingRom === rom.id ? (
+                <span className="eq inline-flex h-3 items-end gap-0.5 group-hover:invisible group-focus-within:invisible" aria-hidden="true">
+                  <i />
+                  <i />
+                  <i />
+                </span>
+              ) : (
+                <span className="num text-xs font-normal text-faint group-hover:invisible group-focus-within:invisible">
+                  {rom.songs.length}
+                </span>
+              )}
+            </button>
+            <button
+              className="absolute top-1/2 right-1.5 grid size-6 -translate-y-1/2 place-items-center rounded-md text-muted opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:bg-panel-2 hover:text-text"
+              onClick={() => api.closeRom(rom.id)}
+              title={t("rom_close")}
+              aria-label={`${t("rom_close")}: ${name}`}
+            >
+              <Icon name="close" size={14} />
+            </button>
+          </div>
+        );
+      })}
 
       <div className={`${label} mt-3 flex items-center justify-between pr-1`}>
         <span>{t("playlists")}</span>

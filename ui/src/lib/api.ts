@@ -2,26 +2,31 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { Background, Library, Tick } from "./types";
+import type { Background, Library, Shuffle, Tick } from "./types";
 
 export const api = {
   library: () => invoke<Library>("library"),
-  openRom: (path: string) => invoke<void>("open_rom", { path }),
-  /** Resolves to whether a file was picked. */
-  pickRom: () => invoke<boolean>("pick_rom"),
-  play: (index: number) => invoke<void>("play", { index }),
-  createPlaylist: (name: string, songs: number[]) =>
-    invoke<string>("create_playlist", { name, songs }),
+  /** Resolves to the id of the last ROM opened. */
+  openRoms: (paths: string[]) => invoke<string | null>("open_roms", { paths }),
+  closeRom: (id: string) => invoke<void>("close_rom", { id }),
+  /** Resolves to the id of the last ROM opened, or `null` when none was picked. */
+  pickRoms: () => invoke<string | null>("pick_roms"),
+  play: (rom: string, index: number) => invoke<void>("play", { rom, index }),
+  createPlaylist: (name: string, rom: string | null, songs: number[]) =>
+    invoke<string>("create_playlist", { name, rom: rom ?? "", songs }),
   renamePlaylist: (id: string, name: string) => invoke<void>("rename_playlist", { id, name }),
   /** Asks first; resolves to whether it was deleted. */
   deletePlaylist: (id: string, name: string) => invoke<boolean>("delete_playlist", { id, name }),
-  addToPlaylist: (id: string, songs: number[]) => invoke<void>("add_to_playlist", { id, songs }),
+  addToPlaylist: (id: string, rom: string, songs: number[]) =>
+    invoke<void>("add_to_playlist", { id, rom, songs }),
   removeFromPlaylist: (id: string, positions: number[]) =>
     invoke<void>("remove_from_playlist", { id, positions }),
   moveInPlaylist: (id: string, from: number, to: number) =>
     invoke<void>("move_in_playlist", { id, from, to }),
   playEntry: (id: string, position: number) => invoke<boolean>("play_entry", { id, position }),
-  setOpenPlaylist: (id: string | null) => invoke<void>("set_open_playlist", { id }),
+  /** The ROM whose songs are shown (or were, before the playlist), and the playlist shown. */
+  setView: (rom: string | null, playlist: string | null) =>
+    invoke<void>("set_view", { rom, playlist }),
   relinkEntry: (id: string, position: number) => invoke<void>("relink_entry", { id, position }),
   toggle: () => invoke<void>("toggle"),
   stop: () => invoke<void>("stop"),
@@ -29,6 +34,7 @@ export const api = {
   seek: (secs: number) => invoke<void>("seek", { secs }),
   setLoopCount: (count: number | null) => invoke<void>("set_loop_count", { count }),
   setAutoNext: (autoNext: boolean) => invoke<void>("set_auto_next", { autoNext }),
+  setShuffle: (shuffle: Shuffle) => invoke<void>("set_shuffle", { shuffle }),
   setVolume: (volume: number) => invoke<void>("set_volume", { volume }),
   setMuted: (channel: number, muted: boolean) => invoke<void>("set_muted", { channel, muted }),
   setTheme: (theme: string) => invoke<void>("set_theme", { theme }),
@@ -55,6 +61,8 @@ export const RESTART_AFTER = 3;
 /** Previous, as in most music players: back to the start of the song once it has played a
  * little, otherwise to the previous song. */
 export function previous(tick: Tick | null) {
-  if (tick?.current != null && tick.position > RESTART_AFTER) api.play(tick.current);
+  if (tick?.rom != null && tick.current != null && tick.position > RESTART_AFTER) {
+    api.play(tick.rom, tick.current);
+  }
   else api.skip(-1);
 }

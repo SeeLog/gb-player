@@ -17,6 +17,7 @@ const paths: Record<string, string> = {
   close: "M6 6l12 12M18 6 6 18",
   plus: "M12 5v14M5 12h14",
   repeat: "M5 11V9.5a3 3 0 0 1 3-3h10M15 3.5l3 3-3 3M19 13v1.5a3 3 0 0 1-3 3H6M9 20.5l-3-3 3-3",
+  shuffle: "M4 7h3.5c4.5 0 4.5 10 9 10H20M4 17h3.5c1.6 0 2.6-1.3 3.3-3M13.2 10c.7-1.7 1.7-3 3.3-3H20M17.5 4.5 20 7l-2.5 2.5M17.5 14.5 20 17l-2.5 2.5",
 };
 const filled = new Set(["play", "pause", "stop", "prev", "next"]);
 

@@ -1,31 +1,34 @@
 import { memo, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { api } from "./api";
 import { fmtDuration, playTime, playTimeDetail, type Translate } from "./format";
-import type { Length, Library, SongView as Song } from "./types";
+import type { Length, Library, RomView, SongView as Song } from "./types";
 import Icon from "./Icon";
 import { useTick } from "./tick";
 
 type SortKey = "title" | "length";
 type Sort = { key: SortKey; desc: boolean } | null;
 
-/** The sort survives switching to a playlist and back, but not a restart. `null` is song order. */
+/** The sort survives switching to a playlist or another ROM and back, but not a restart. `null`
+ * is song order. */
 let lastSort: Sort = null;
 
 // Re-renders only when the library (including the loop setting), the language, the filter, the
 // sort or the playing song change, not on every tick.
 export default memo(function SongList({
   library,
+  rom,
   t,
   search,
 }: {
   library: Library;
+  rom: RomView;
   t: Translate;
   search: RefObject<HTMLInputElement | null>;
 }) {
   const [filter, setFilter] = useState("");
   const [sort, setSortState] = useState<Sort>(lastSort);
   const list = useRef<HTMLDivElement>(null);
-  const current = useTick((tick) => tick?.current ?? null);
+  const current = useTick((tick) => (tick?.rom === rom.id ? tick.current : null));
   const playing = useTick((tick) => tick?.state === "playing");
 
   function setSort(next: Sort) {
@@ -43,8 +46,8 @@ export default memo(function SongList({
   const songs = useMemo(() => {
     const f = filter.trim().toLowerCase();
     const found = f
-      ? library.songs.filter((s) => s.title.toLowerCase().includes(f))
-      : library.songs;
+      ? rom.songs.filter((s) => s.title.toLowerCase().includes(f))
+      : rom.songs;
     if (!sort) return found;
     const dir = sort.desc ? -1 : 1;
     let compare: (a: Song, b: Song) => number;
@@ -64,7 +67,7 @@ export default memo(function SongList({
       };
     }
     return [...found].sort(compare);
-  }, [library.songs, library.language, library.loopCount, filter, sort]);
+  }, [rom.songs, library.language, library.loopCount, filter, sort]);
 
   // Keep the playing song in view when the playlist moves on.
   useEffect(() => {
@@ -99,7 +102,7 @@ export default memo(function SongList({
   }
 
   return (
-    <section className="flex min-h-0 flex-col border-r border-line">
+    <section data-rom={rom.id} className="flex min-h-0 flex-col border-r border-line">
       <div className="mx-4 mt-3 mb-2 flex h-9 items-center gap-2 rounded-[9px] border border-line bg-panel px-3 text-muted focus-within:border-accent-2">
         <Icon name="search" size={16} />
         <input
@@ -145,7 +148,7 @@ export default memo(function SongList({
         ref={list}
         className="flex-1 overflow-y-auto px-2 pt-1 pb-3 [scrollbar-gutter:stable]"
         role="listbox"
-        aria-label={library.game}
+        aria-label={rom.game || rom.title}
       >
         {songs.length === 0 && <p className="mt-8 text-center text-muted">{t("no_results")}</p>}
         {songs.map((song) => {
@@ -159,7 +162,7 @@ export default memo(function SongList({
               data-index={song.index}
               role="option"
               aria-selected={active}
-              onClick={() => api.play(song.index)}
+              onClick={() => api.play(rom.id, song.index)}
             >
               <span className="num pr-1.5 text-right text-faint">
                 {active && playing ? (

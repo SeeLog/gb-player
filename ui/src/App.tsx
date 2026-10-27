@@ -25,7 +25,7 @@ export default function App() {
   const search = useRef<HTMLInputElement>(null);
 
   const t = useMemo(() => translator(library?.text ?? {}), [library?.text]);
-  const hasRom = !!library && library.songs.length > 0;
+  const hasRom = !!library && library.roms.length > 0;
 
   // What the middle column shows; back to the ROM when the playlist shown is deleted.
   const [view, setView] = useState<View>({ kind: "rom" });
@@ -35,16 +35,32 @@ export default function App() {
   useEffect(() => {
     if (library && view.kind === "playlist" && !shownList) setView({ kind: "rom" });
   }, [library, view, shownList]);
+  // The ROM whose songs are shown, or were before a playlist; when it is closed, the one the
+  // Rust side moved on to.
+  const [romId, setRomId] = useState<string | null>(null);
+  const shownRom =
+    library?.roms.find((r) => r.id === romId) ??
+    library?.roms.find((r) => r.id === library.shownRom) ??
+    library?.roms[0];
+  useEffect(() => {
+    if (shownRom && shownRom.id !== romId) setRomId(shownRom.id);
+  }, [shownRom, romId]);
+  const showRom = useCallback((id: string) => {
+    setRomId(id);
+    setView({ kind: "rom" });
+  }, []);
   // The view is remembered for the next run once the one from the last run is restored.
   const restored = useRef(false);
   useEffect(() => {
-    if (restored.current) api.setOpenPlaylist(view.kind === "playlist" ? view.id : null);
-  }, [view]);
+    if (restored.current) {
+      api.setView(shownRom?.id ?? null, view.kind === "playlist" ? view.id : null);
+    }
+  }, [view, shownRom?.id]);
 
-  /** Open a ROM the user picks, and show its songs. */
+  /** Open ROMs the user picks, and show the songs of the last one. */
   const pickRom = useCallback(() => {
-    api.pickRom().then((picked) => picked && setView({ kind: "rom" }));
-  }, []);
+    api.pickRoms().then((id) => id && showRom(id));
+  }, [showRom]);
 
   useEffect(() => {
     const unlisten = [
@@ -55,18 +71,18 @@ export default function App() {
         const p = e.payload;
         setDragging(p.type === "enter" || p.type === "over");
         if (p.type === "drop" && p.paths.length > 0) {
-          api.openRom(p.paths[0]);
-          setView({ kind: "rom" });
+          api.openRoms(p.paths).then((id) => id && showRom(id));
         }
       }),
     ];
     api.library().then((l) => {
       setLibrary(l);
+      setRomId(l.shownRom);
       if (l.openPlaylist) setView({ kind: "playlist", id: l.openPlaylist });
       restored.current = true;
     });
     return () => unlisten.forEach((u) => void u.then((f) => f()));
-  }, []);
+  }, [showRom]);
 
   useEffect(() => {
     if (library) document.documentElement.lang = library.language;
@@ -206,18 +222,18 @@ export default function App() {
             />
             <span>GB Player</span>
           </div>
-          {library?.game && (
+          {shownRom && view.kind === "rom" && (
             <div
               data-tauri-drag-region
-              title={library.romPath ?? ""}
+              title={shownRom.path}
               className="flex min-w-0 items-baseline gap-2 border-l border-line pl-3.5 *:pointer-events-none"
             >
-              <span className="truncate font-semibold">{library.game}</span>
+              {shownRom.game && <span className="truncate font-semibold">{shownRom.game}</span>}
               <span className="rounded border border-line bg-panel-2 px-1.5 py-px text-[11px] text-muted">
-                {library.title}
+                {shownRom.title}
               </span>
               <span className="whitespace-nowrap text-muted">
-                {t("song_count", { n: library.songs.length })}
+                {t("song_count", { n: shownRom.songs.length })}
               </span>
             </div>
           )}
@@ -287,13 +303,17 @@ export default function App() {
               t={t}
               view={view}
               setView={setView}
+              shownRom={shownRom?.id ?? null}
+              showRom={showRom}
+              pickRom={pickRom}
               renaming={renaming}
               setRenaming={setRenaming}
             />
             {shownList ? (
               <PlaylistView library={library} list={shownList} t={t} />
-            ) : hasRom ? (
-              <SongList library={library} t={t} search={search} />
+            ) : shownRom ? (
+              // A new list for each ROM: the search starts empty (the sort carries over).
+              <SongList key={shownRom.id} library={library} rom={shownRom} t={t} search={search} />
             ) : (
               <div className="flex flex-col items-center justify-center gap-4 border-r border-line text-muted">
                 <p>{t("drop_hint")}</p>

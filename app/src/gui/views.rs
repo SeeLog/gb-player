@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use gb_music::{frames_to_secs, SongLength};
 use serde::{Deserialize, Serialize};
 
+use crate::settings::Shuffle;
 use crate::themes::Theme;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -36,6 +37,17 @@ pub struct SongView {
     pub title: String,
     /// `None` while the song is still being analysed.
     pub length: Option<LengthView>,
+}
+
+/// An open ROM and its songs.
+#[derive(Debug, Clone, Serialize)]
+pub struct RomView {
+    /// The ROM's [hash](super::playlists::hash), which stays the same between runs.
+    pub id: String,
+    pub game: String,
+    pub title: String,
+    pub path: String,
+    pub songs: Vec<SongView>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -70,19 +82,20 @@ pub struct QueueView {
     pub position: usize,
 }
 
-/// Everything about the loaded ROM and the settings, sent when any of it changes.
+/// Everything about the open ROMs and the settings, sent when any of it changes.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LibraryView {
     pub language: String,
     pub languages: Vec<LanguageView>,
     pub text: HashMap<String, String>,
-    pub game: String,
-    pub title: String,
-    pub rom_path: Option<String>,
-    pub songs: Vec<SongView>,
+    /// In the order they were opened.
+    pub roms: Vec<RomView>,
+    /// The ROM whose songs were last shown (on startup, the one shown when the app was closed).
+    pub shown_rom: Option<String>,
     pub loop_count: Option<u32>,
     pub auto_next: bool,
+    pub shuffle: Shuffle,
     pub volume: f32,
     pub muted: [bool; 4],
     pub theme: String,
@@ -97,6 +110,8 @@ pub struct LibraryView {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TickView {
+    /// The id of the ROM the current song is from.
+    pub rom: Option<String>,
     pub current: Option<usize>,
     /// Set while a playlist is playing.
     pub queue: Option<QueueView>,

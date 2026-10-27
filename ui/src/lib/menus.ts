@@ -1,5 +1,6 @@
 // What the right-click menu holds: window items on the title bar, play, copy and add to a
-// playlist on a song, the playlist items on a playlist and its songs, and playback elsewhere. Text fields keep the WebView's Cut / Copy / Paste.
+// playlist on a song, Close on an open ROM, the playlist items on a playlist and its songs, and
+// playback elsewhere. Text fields keep the WebView's Cut / Copy / Paste.
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { RESTART_AFTER, api, previous } from "./api";
 import type { MenuItem } from "./ContextMenu";
@@ -33,13 +34,19 @@ export async function menuFor(
 ): Promise<MenuItem[] | null> {
   if (target.closest("header")) return windowItems(t);
   const row = target.closest<HTMLElement>("[data-index]");
-  const song = row && library?.songs.find((s) => s.index === Number(row.dataset.index));
-  if (library && song) {
+  const romId = target.closest<HTMLElement>("[data-rom]")?.dataset.rom;
+  const rom = library?.roms.find((r) => r.id === romId);
+  const song = row && rom?.songs.find((s) => s.index === Number(row.dataset.index));
+  if (library && rom && song) {
     return [
-      ...songItems(song.index, song.title, t),
+      ...songItems(rom.id, song.index, song.title, t),
       "separator",
-      ...addItems(song.index, library, t, actions),
+      ...addItems(rom.id, song.index, library, t, actions),
     ];
+  }
+  const romItem = target.closest<HTMLElement>("[data-rom-item]")?.dataset.romItem;
+  if (romItem && library?.roms.some((r) => r.id === romItem)) {
+    return [{ label: t("rom_close"), onSelect: () => api.closeRom(romItem) }];
   }
   const entryRow = target.closest<HTMLElement>("[data-entry]");
   const listId = target.closest<HTMLElement>("[data-playlist]")?.dataset.playlist;
@@ -51,12 +58,13 @@ export async function menuFor(
     const first = item.entries.findIndex((e) => !e.missing);
     return playlistItems(item.id, item.name, first, t, actions);
   }
-  return playbackItems(!!library && library.songs.length > 0, t, actions);
+  return playbackItems(!!library && library.roms.length > 0, t, actions);
 }
 
-/** Add a song of the open ROM to a playlist (in a submenu, however many there are), or to a
+/** Add a song of an open ROM to a playlist (in a submenu, however many there are), or to a
  * new one. */
 function addItems(
+  rom: string,
   index: number,
   library: Library,
   t: Translate,
@@ -66,7 +74,7 @@ function addItems(
     label: t("playlist_add_new"),
     onSelect: async () => {
       const name = t("playlist_default_name", { n: library.playlists.length + 1 });
-      const id = await api.createPlaylist(name, [index]);
+      const id = await api.createPlaylist(name, rom, [index]);
       actions.showPlaylist(id);
       actions.renamePlaylist(id);
     },
@@ -81,7 +89,7 @@ function addItems(
         "separator",
         ...library.playlists.map((l) => ({
           label: l.name,
-          onSelect: () => api.addToPlaylist(l.id, [index]),
+          onSelect: () => api.addToPlaylist(l.id, rom, [index]),
         })),
       ],
     },
@@ -153,9 +161,9 @@ async function windowItems(t: Translate): Promise<MenuItem[]> {
   ];
 }
 
-function songItems(index: number, title: string, t: Translate): MenuItem[] {
+function songItems(rom: string, index: number, title: string, t: Translate): MenuItem[] {
   const tick = tickStore.get();
-  const current = tick?.current === index;
+  const current = tick?.rom === rom && tick.current === index;
   const playing = current && tick?.state === "playing";
   return [
     playing
@@ -163,7 +171,8 @@ function songItems(index: number, title: string, t: Translate): MenuItem[] {
       : {
           label: t("play"),
           // A paused song carries on from where it was; any other starts from the top.
-          onSelect: () => (current && tick?.state === "paused" ? api.toggle() : api.play(index)),
+          onSelect: () =>
+            current && tick?.state === "paused" ? api.toggle() : api.play(rom, index),
         },
     { label: t("copy_title"), onSelect: () => copyText(title) },
   ];

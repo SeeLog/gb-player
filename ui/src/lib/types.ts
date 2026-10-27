@@ -12,6 +12,20 @@ export interface SongView {
   length: Length | null;
 }
 
+/** An open ROM. */
+export interface RomView {
+  /** The hash of the file, the same between runs. */
+  id: string;
+  game: string;
+  title: string;
+  path: string;
+  songs: SongView[];
+}
+
+/** What Next plays: the next song, a random one of the ROM (or the playlist being played), or a
+ * random one of any open ROM (or of the playlist being played). */
+export type Shuffle = "off" | "list" | "all";
+
 export interface Theme {
   id: string;
   name: string;
@@ -55,12 +69,13 @@ export interface Library {
   language: string;
   languages: { code: string; name: string }[];
   text: Record<string, string>;
-  game: string;
-  title: string;
-  romPath: string | null;
-  songs: SongView[];
+  /** In the order they were opened. */
+  roms: RomView[];
+  /** The ROM whose songs were last shown. */
+  shownRom: string | null;
   loopCount: number | null;
   autoNext: boolean;
+  shuffle: Shuffle;
   volume: number;
   muted: [boolean, boolean, boolean, boolean];
   /** The id of the chosen theme. */
@@ -75,6 +90,8 @@ export interface Library {
 export type PlayState = "none" | "stopped" | "playing" | "paused" | "finished" | "failed";
 
 export interface Tick {
+  /** The ROM the current song is from. */
+  rom: string | null;
   current: number | null;
   /** The playlist being played and the position in it. */
   queue: { playlist: string; position: number } | null;

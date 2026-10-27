@@ -15,9 +15,14 @@ pub struct Settings {
     pub loop_count: Option<u32>,
     /// Whether a finished song is followed by the next one.
     pub auto_next: bool,
+    pub shuffle: Shuffle,
     /// A built-in palette such as `dmg`, or `custom:<file stem>` for a custom theme.
     pub theme: String,
-    /// The ROM or GBS file that was open, opened again on startup.
+    /// The ROM and GBS files that were open, in the order of the list, opened again on startup.
+    pub open_roms: Vec<PathBuf>,
+    /// The one of them whose songs were shown.
+    pub shown_rom: Option<PathBuf>,
+    /// The one of them that was playing.
     pub last_rom: Option<PathBuf>,
     /// The song that was selected in it.
     pub last_song: Option<SavedSong>,
@@ -25,6 +30,19 @@ pub struct Settings {
     pub last_entry: Option<SavedEntry>,
     /// The id of the playlist shown instead of the ROM's songs.
     pub open_playlist: Option<String>,
+}
+
+/// What Next (and a finished song) plays.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Shuffle {
+    /// The next song of the list, or of the playlist being played.
+    #[default]
+    Off,
+    /// A random song of the ROM, or of the playlist being played.
+    List,
+    /// A random song of any open ROM, or of the playlist being played.
+    All,
 }
 
 /// A song of the last ROM: by its song database key when it has one, so that a change to the
@@ -66,7 +84,10 @@ impl Default for Settings {
             volume: 0.8,
             loop_count: None,
             auto_next: true,
+            shuffle: Shuffle::Off,
             theme: "dmg".into(),
+            open_roms: Vec::new(),
+            shown_rom: None,
             last_rom: None,
             last_song: None,
             last_entry: None,
@@ -117,7 +138,13 @@ mod tests {
             volume: 0.5,
             loop_count: Some(2),
             auto_next: false,
+            shuffle: Shuffle::All,
             theme: "custom:night".into(),
+            open_roms: vec![
+                PathBuf::from("C:/roms/game.gb"),
+                PathBuf::from("C:/roms/other.gbs"),
+            ],
+            shown_rom: Some(PathBuf::from("C:/roms/other.gbs")),
             last_rom: Some(PathBuf::from("C:/roms/game.gb")),
             last_song: Some(SavedSong {
                 key: Some("route_1".into()),
@@ -157,6 +184,8 @@ theme = \"gbp\"
         assert_eq!(old.language.as_deref(), Some("ja"));
         assert_eq!(old.theme, "gbp");
         assert_eq!(old.last_rom, None);
+        assert!(old.open_roms.is_empty());
+        assert_eq!(old.shuffle, Shuffle::Off);
         assert_eq!(old.last_song, None);
         assert_eq!(old.open_playlist, None);
     }

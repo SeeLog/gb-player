@@ -1,25 +1,28 @@
-// The right-hand panel: LCD with the oscilloscope, progress, transport, loop settings, volume and
-// channels. It is split into small parts so that a tick only re-renders what it changes: the
+// The right-hand panel: LCD with the oscilloscope, progress, transport, loop and shuffle
+// settings, volume and channels. It is split into small parts so that a tick only re-renders what it changes: the
 // progress (position), the LCD and transport (song and state), and nothing else; the meters and
 // the oscilloscope update from animation frames.
 import { memo, useEffect, useRef, useState } from "react";
 import { RESTART_AFTER, api, previous } from "./api";
 import { describe, fmtTime, type Translate } from "./format";
-import type { Length, Library, SongView } from "./types";
+import type { Length, Library, Shuffle, SongView } from "./types";
 import Icon from "./Icon";
 import Scope from "./Scope";
 import { tickStore, useTick } from "./tick";
 
 const CHANNELS = ["channel_pulse1", "channel_pulse2", "channel_wave", "channel_noise"];
 const LOOP_COUNTS: (number | null)[] = [null, 1, 2, 3];
+const SHUFFLES: Shuffle[] = ["off", "list", "all"];
 
 const label = "text-[11px] font-bold tracking-[0.08em] uppercase text-faint";
 const round =
   "grid size-[42px] place-items-center rounded-full border border-line bg-panel-2 text-text hover:border-faint";
 
 function useSong(library: Library): SongView | undefined {
+  const rom = useTick((tick) => tick?.rom ?? null);
   const current = useTick((tick) => tick?.current ?? null);
-  return current === null ? undefined : library.songs.find((s) => s.index === current);
+  if (current === null) return undefined;
+  return library.roms.find((r) => r.id === rom)?.songs.find((s) => s.index === current);
 }
 
 export default memo(function NowPlaying({ library, t }: { library: Library; t: Translate }) {
@@ -71,6 +74,36 @@ export default memo(function NowPlaying({ library, t }: { library: Library; t: T
           </span>
           <span>{t("auto_next")}</span>
         </label>
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <div className={`${label} flex items-center gap-1.5`}>
+          <Icon name="shuffle" size={14} />
+          {t("shuffle")}
+        </div>
+        <div
+          className="grid grid-cols-3 rounded-[9px] border border-line bg-panel-2 p-[3px]"
+          role="radiogroup"
+          aria-label={t("shuffle")}
+        >
+          {SHUFFLES.map((mode) => {
+            const on = library.shuffle === mode;
+            return (
+              <button
+                key={mode}
+                role="radio"
+                aria-checked={on}
+                className={`h-[30px] rounded-md text-[13px] font-semibold ${
+                  on ? "bg-accent text-accent-ink" : "text-muted hover:text-text"
+                }`}
+                onClick={() => api.setShuffle(mode)}
+                title={t(`shuffle_${mode}_hint`)}
+              >
+                {t(`shuffle_${mode}`)}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       <div className="flex items-center gap-2.5 text-muted">

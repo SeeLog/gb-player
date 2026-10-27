@@ -1,4 +1,4 @@
-//! Playback control behind the GUI commands: the loaded ROM, the playlists, the settings and
+//! Playback control behind the GUI commands: the open ROMs, the playlists, the settings and
 //! the analysis results, independent of Tauri.
 
 use std::collections::{BTreeMap, HashMap};
@@ -6,16 +6,18 @@ use std::path::{Path, PathBuf};
 use std::sync::PoisonError;
 
 use gb_music::songdb::{Names, LANGUAGES};
-use gb_music::{frames_to_secs, read_rom, PlayState, Player, Song, SongLength, FRAME_RATE};
+use gb_music::{frames_to_secs, read_rom, Driver, PlayState, Player, Song, SongLength, FRAME_RATE};
 
 use super::playlists::{self, Entry, Playlist};
+use super::shuffle::{Order, Rng};
 use super::views::{
-    EntryView, LanguageView, LengthView, LibraryView, PlaylistView, QueueView, SongView, TickView,
+    EntryView, LanguageView, LengthView, LibraryView, PlaylistView, QueueView, RomView, SongView,
+    TickView,
 };
 use crate::analyzer::Analyzer;
 use crate::audio::{Scope, SharedPlayer};
 use crate::i18n::Text;
-use crate::settings::{SavedEntry, SavedSong, Settings};
+use crate::settings::{SavedEntry, SavedSong, Settings, Shuffle};
 use crate::themes::{self, Background, Theme};
 
 /// Output samples sent with each tick for the oscilloscope.
@@ -29,15 +31,13 @@ pub struct Session {
     settings: Settings,
     sample_rate: u32,
     error: Option<String>,
-    rom_path: Option<PathBuf>,
-    /// [`playlists::hash`] of the loaded ROM.
-    rom_hash: Option<String>,
-    songs: Vec<Song>,
-    /// Game and song names in the UI language.
-    names: Names,
-    title: String,
-    lengths: HashMap<usize, SongLength>,
-    analyzer: Option<Analyzer>,
+    /// In the order they were opened.
+    roms: Vec<Rom>,
+    /// The id of the ROM whose player is in the audio output.
+    loaded: Option<String>,
+    /// The id of the ROM whose songs the UI shows (or showed before a playlist).
+    shown: Option<String>,
+    muted: [bool; 4],
     levels: [f32; 4],
     themes: Vec<Theme>,
     /// Problems found in the custom theme files.
@@ -46,6 +46,33 @@ pub struct Session {
     /// Problems found in the playlist files.
     playlist_warnings: Vec<String>,
     queue: Option<Queue>,
+    /// The order Next follows while shuffle is on, made when it is first needed.
+    order: Option<(Pool, Order<Pick>)>,
+    rng: Rng,
+}
+
+/// An open ROM.
+struct Rom {
+    /// [`playlists::hash`] of the file, which the UI knows the ROM by.
+    id: String,
+    path: PathBuf,
+    /// Its player while another ROM's is in the audio output.
+    player: Option<Player>,
+    driver: Driver,
+    songs: Vec<Song>,
+    title: String,
+    /// Game and song names in the UI language.
+    names: Names,
+    /// Problems found in the user's song names for it.
+    warnings: Vec<String>,
+    lengths: HashMap<usize, SongLength>,
+    analyzer: Analyzer,
+}
+
+impl Rom {
+    fn has_song(&self, index: usize) -> bool {
+        self.songs.iter().any(|s| s.index == index)
+    }
 }
 
 /// The playlist being played.
@@ -56,6 +83,25 @@ struct Queue {
     /// False once the playing entry was removed: `position` is then the entry that took its
     /// place, which comes next.
     on_entry: bool,
+}
+
+/// What a shuffled order is made of.
+#[derive(Debug, Clone, PartialEq)]
+enum Pool {
+    Rom(String),
+    AllRoms,
+    Playlist(String),
+}
+
+/// A song in a shuffled order.
+#[derive(Debug, Clone, PartialEq)]
+enum Pick {
+    Song {
+        rom: String,
+        index: usize,
+    },
+    /// A position in the playlist being played.
+    Entry(usize),
 }
 
 /// What play/pause does in a given playback state.
@@ -107,19 +153,18 @@ impl Session {
             settings,
             sample_rate,
             error,
-            rom_path: None,
-            rom_hash: None,
-            songs: Vec::new(),
-            names: Names::default(),
-            title: String::new(),
-            lengths: HashMap::new(),
-            analyzer: None,
+            roms: Vec::new(),
+            loaded: None,
+            shown: None,
+            muted: [false; 4],
             levels: [0.0; 4],
             themes: Vec::new(),
             theme_warnings: Vec::new(),
             playlists: Vec::new(),
             playlist_warnings: Vec::new(),
             queue: None,
+            order: None,
+            rng: Rng::from_clock(),
         }
     }
 
@@ -135,14 +180,41 @@ impl Session {
             .map(f)
     }
 
-    /// Open a ROM picked by the user, leaving the playlist being played.
-    pub fn open_rom(&mut self, path: &Path) {
-        self.queue = None;
-        self.load_rom(path);
+    fn rom(&self, id: &str) -> Option<&Rom> {
+        self.roms.iter().find(|r| r.id == id)
     }
 
-    /// Load a ROM; returns whether it could be.
-    fn load_rom(&mut self, path: &Path) -> bool {
+    fn loaded_rom(&self) -> Option<&Rom> {
+        self.rom(self.loaded.as_deref()?)
+    }
+
+    /// The ROM the UI shows, or else the first one.
+    fn shown_rom(&self) -> Option<&Rom> {
+        self.shown
+            .as_deref()
+            .and_then(|id| self.rom(id))
+            .or(self.roms.first())
+    }
+
+    /// Open ROMs picked by the user and show the last one that could be; returns its id. A ROM
+    /// that is open already is not opened twice.
+    pub fn open_roms(&mut self, paths: &[PathBuf]) -> Option<String> {
+        let mut last = None;
+        for path in paths {
+            if let Some(id) = self.open(path) {
+                last = Some(id);
+            }
+        }
+        if last.is_some() {
+            self.shown = last.clone();
+            self.remember();
+        }
+        last
+    }
+
+    /// Open a ROM, or find it among the open ones; returns its id. The first one opened goes
+    /// into the audio output, so that Play has something to play.
+    fn open(&mut self, path: &Path) -> Option<String> {
         let rom = match read_rom(path) {
             Ok(r) => r,
             Err(e) => {
@@ -150,77 +222,141 @@ impl Session {
                     self.text
                         .fmt("err_read", &[("path", &path.display()), ("error", &e)]),
                 );
-                return false;
+                return None;
             }
         };
-        let hash = playlists::hash(&rom);
-        match Player::new(rom, self.sample_rate) {
-            Ok(mut p) => {
-                p.volume = self.settings.volume;
-                self.lengths.clear();
-                self.analyzer = Some(Analyzer::start(p.rom(), p.driver().clone()));
-                self.rom_path = Some(path.to_path_buf());
-                self.rom_hash = Some(hash);
-                *self.player.lock().unwrap_or_else(PoisonError::into_inner) = Some(p);
-                self.refresh_names();
-                self.remember();
-                true
-            }
+        let id = playlists::hash(&rom);
+        if self.rom(&id).is_some() {
+            return Some(id);
+        }
+        let player = match Player::new(rom, self.sample_rate) {
+            Ok(p) => p,
             Err(e) => {
                 self.error = Some(self.text.fmt("err_unsupported", &[("error", &e)]));
-                false
+                return None;
             }
+        };
+        let driver = player.driver().clone();
+        let (names, warnings) = Names::new(&driver, self.text.language());
+        self.roms.push(Rom {
+            id: id.clone(),
+            path: path.to_path_buf(),
+            analyzer: Analyzer::start(player.rom(), driver.clone()),
+            songs: player.songs().to_vec(),
+            title: player.title().to_string(),
+            player: Some(player),
+            driver,
+            names,
+            warnings,
+            lengths: HashMap::new(),
+        });
+        self.error = None;
+        self.forget_order();
+        if self.loaded.is_none() {
+            self.load(&id);
         }
+        Some(id)
     }
 
-    /// Look up the game and song names in the UI language after loading a ROM or switching
-    /// languages.
-    fn refresh_names(&mut self) {
-        let Some((songs, title, (names, warnings))) = self.with_player(|p| {
-            (
-                p.songs().to_vec(),
-                p.title().to_string(),
-                Names::new(p.driver(), self.text.language()),
-            )
-        }) else {
+    /// Close an open ROM. When it is the one playing, playback stops (along with the playlist
+    /// being played) and the shown ROM takes its place in the audio output.
+    pub fn close_rom(&mut self, id: &str) {
+        let Some(i) = self.roms.iter().position(|r| r.id == id) else {
             return;
         };
-        self.songs = songs;
-        self.title = title;
-        self.names = names;
-        self.error = (!warnings.is_empty()).then(|| warnings.join("\n"));
+        if self.loaded.as_deref() == Some(id) {
+            *self.player.lock().unwrap_or_else(PoisonError::into_inner) = None;
+            self.loaded = None;
+            self.queue = None;
+        }
+        self.roms.remove(i);
+        if self.shown.as_deref() == Some(id) {
+            let next = self.roms.get(i).or(self.roms.last());
+            self.shown = next.map(|r| r.id.clone());
+        }
+        if self.loaded.is_none() {
+            if let Some(next) = self.shown_rom().map(|r| r.id.clone()) {
+                self.load(&next);
+            }
+        }
+        self.forget_order();
+        self.remember();
+    }
+
+    /// Put the player of the open ROM `id` in the audio output, stopping the one there and
+    /// keeping it with its ROM; returns whether the ROM is open.
+    fn load(&mut self, id: &str) -> bool {
+        if self.loaded.as_deref() == Some(id) {
+            return true;
+        }
+        let Some(mut next) = self
+            .roms
+            .iter_mut()
+            .find(|r| r.id == id)
+            .and_then(|r| r.player.take())
+        else {
+            return false;
+        };
+        next.volume = self.settings.volume;
+        for (ch, &m) in self.muted.iter().enumerate() {
+            next.set_muted(ch, m);
+        }
+        let old = self
+            .player
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .replace(next);
+        if let (Some(mut old), Some(was)) = (old, self.loaded.take()) {
+            old.stop();
+            if let Some(r) = self.roms.iter_mut().find(|r| r.id == was) {
+                r.player = Some(old);
+            }
+        }
+        self.loaded = Some(id.to_string());
+        true
+    }
+
+    /// Look up the game and song names in the UI language after switching languages.
+    fn refresh_names(&mut self) {
+        for rom in &mut self.roms {
+            (rom.names, rom.warnings) = Names::new(&rom.driver, self.text.language());
+        }
     }
 
     pub fn reload_themes(&mut self) {
         (self.themes, self.theme_warnings) = themes::load(&self.text);
     }
 
-    /// Play a song of the loaded ROM's list. That leaves the playlist being played, unless it
-    /// is the song the playlist is on (Previous starts it again this way).
-    pub fn play_song(&mut self, index: usize) {
+    /// Play a song of an open ROM. That leaves the playlist being played, unless it is the song
+    /// the playlist is on (Previous starts it again this way).
+    pub fn play_song(&mut self, rom: &str, index: usize) {
         let on_it = self
             .queue_entry()
-            .is_some_and(|e| e.song == index && self.rom_hash.as_deref() == Some(e.hash.as_str()));
+            .is_some_and(|e| e.song == index && e.hash == rom);
         if !on_it {
             self.queue = None;
         }
-        self.play(index);
+        if self.load(rom) {
+            self.play(index);
+        }
     }
 
+    /// Play a song of the loaded ROM.
     fn play(&mut self, index: usize) {
         self.start(index, Player::play);
     }
 
-    /// Select a song without playing it.
+    /// Select a song of the loaded ROM without playing it.
     fn cue(&mut self, index: usize) {
         self.start(index, Player::cue);
     }
 
     fn start(&mut self, index: usize, start: fn(&mut Player, usize)) {
-        if let Some(a) = &self.analyzer {
-            a.prioritize(index);
-        }
-        let length = self.lengths.get(&index).copied();
+        let Some(rom) = self.loaded_rom() else {
+            return;
+        };
+        rom.analyzer.prioritize(index);
+        let length = rom.lengths.get(&index).copied();
         let count = self.settings.loop_count;
         self.with_player(|p| {
             start(p, index);
@@ -232,43 +368,56 @@ impl Session {
         self.remember();
     }
 
-    /// Open the ROM given on the command line, or else what was open when the app was last
-    /// closed.
+    /// Open the ROMs of the last run, and the one given on the command line (shown).
     pub fn open_at_start(&mut self, rom: Option<&Path>) {
-        match rom {
-            Some(path) => {
-                self.settings.open_playlist = None;
-                self.open_rom(path);
-            }
-            None => self.restore(),
+        self.restore();
+        if let Some(path) = rom {
+            self.settings.open_playlist = None;
+            self.open_roms(&[path.to_path_buf()]);
         }
     }
 
-    /// Open the ROM of the last run and select its song, stopped, along with the playlist entry
-    /// it was played from. A ROM that is gone or cannot be loaded any more is forgotten
-    /// without a word.
+    /// Open the ROMs of the last run and select the song that was playing, stopped, along with
+    /// the playlist entry it was played from. ROMs that are gone or cannot be loaded any more
+    /// are forgotten without a word.
     fn restore(&mut self) {
-        let Some(path) = self.settings.last_rom.clone() else {
-            return;
-        };
+        let mut paths = std::mem::take(&mut self.settings.open_roms);
+        // Settings from before several ROMs could be open name only the one.
+        if paths.is_empty() {
+            paths.extend(self.settings.last_rom.clone());
+        }
+        let last = self.settings.last_rom.take();
+        let shown = self.settings.shown_rom.take();
         let song = self.settings.last_song.take();
         let entry = self.settings.last_entry.take();
         let error = self.error.take();
-        if !self.load_rom(&path) {
-            self.error = error;
-            self.settings.last_rom = None;
-            self.settings.open_playlist = None;
-            self.settings.save();
-            return;
+        let mut opened = Vec::new();
+        for path in paths {
+            if let Some(id) = self.open(&path) {
+                opened.push((path, id));
+            }
         }
-        let Some(index) = song.and_then(|s| s.find(&self.songs)) else {
+        self.error = error;
+        let id_of = |p: &Option<PathBuf>| {
+            opened
+                .iter()
+                .find(|(path, _)| Some(path) == p.as_ref())
+                .map(|(_, id)| id.clone())
+        };
+        self.shown = id_of(&shown).or_else(|| id_of(&last));
+        let last = id_of(&last);
+        let index = last.as_ref().and_then(|id| {
+            self.load(id);
+            song.and_then(|s| s.find(&self.rom(id)?.songs))
+        });
+        let (Some(last), Some(index)) = (last, index) else {
+            self.remember();
             return;
         };
         self.queue = entry
             .filter(|e| {
-                self.entry(&e.playlist, e.position).is_some_and(|x| {
-                    x.song == index && self.rom_hash.as_deref() == Some(x.hash.as_str())
-                })
+                self.entry(&e.playlist, e.position)
+                    .is_some_and(|x| x.song == index && x.hash == last)
             })
             .map(|e| Queue {
                 playlist: e.playlist,
@@ -278,14 +427,18 @@ impl Session {
         self.cue(index);
     }
 
-    /// Keep the open ROM, the selected song and the playlist entry it came from for the next
+    /// Keep the open ROMs, the selected song and the playlist entry it came from for the next
     /// run.
     fn remember(&mut self) {
         let current = self.with_player(|p| p.current()).flatten();
-        self.settings.last_rom = self.rom_path.clone();
-        self.settings.last_song = current
-            .and_then(|i| self.songs.iter().find(|s| s.index == i))
+        self.settings.open_roms = self.roms.iter().map(|r| r.path.clone()).collect();
+        self.settings.shown_rom = self.shown_rom().map(|r| r.path.clone());
+        let loaded = self.loaded_rom();
+        let last_rom = loaded.map(|r| r.path.clone());
+        let last_song = current
+            .and_then(|i| loaded?.songs.iter().find(|s| s.index == i))
             .map(SavedSong::new);
+        (self.settings.last_rom, self.settings.last_song) = (last_rom, last_song);
         self.settings.last_entry = self
             .queue
             .as_ref()
@@ -297,26 +450,38 @@ impl Session {
         self.settings.save();
     }
 
-    /// Remember the playlist shown instead of the ROM's songs, if any.
-    pub fn set_open_playlist(&mut self, id: Option<String>) {
-        if self.settings.open_playlist != id {
-            self.settings.open_playlist = id;
-            self.settings.save();
+    /// Remember what the middle column shows: the songs of the ROM `rom`, or the playlist
+    /// `playlist` in their place (`rom` is then the ROM shown before it).
+    pub fn set_view(&mut self, rom: Option<String>, playlist: Option<String>) {
+        let rom = rom.filter(|id| self.rom(id).is_some());
+        if (rom.is_none() || rom == self.shown) && self.settings.open_playlist == playlist {
+            return;
         }
+        if rom.is_some() {
+            self.shown = rom;
+        }
+        self.settings.open_playlist = playlist;
+        self.remember();
     }
 
-    /// Play or pause; starts the current (or first) song again when nothing is playing.
+    /// Play or pause; starts the current song again when nothing is playing, or the first song
+    /// of the shown ROM when nothing was played yet.
     pub fn toggle(&mut self) {
-        let Some((current, state, paused)) =
-            self.with_player(|p| (p.current(), p.state(), p.paused()))
-        else {
-            return;
-        };
-        match toggle_action(current, state, paused, self.songs.len()) {
+        let (current, state, paused) = self
+            .with_player(|p| (p.current(), p.state(), p.paused()))
+            .unwrap_or((None, PlayState::Stopped, false));
+        let shown = self.shown_rom().map(|r| (r.id.clone(), r.songs.len()));
+        let count = shown.as_ref().map_or(0, |s| s.1);
+        match toggle_action(current, state, paused, count) {
             Toggle::SetPaused(paused) => {
                 self.with_player(|p| p.set_paused(paused));
             }
-            Toggle::Play(index) => self.play(index),
+            Toggle::Play(index) if current.is_some() => self.play(index),
+            Toggle::Play(index) => {
+                if let Some((id, _)) = shown {
+                    self.play_song(&id, index);
+                }
+            }
             Toggle::Nothing => {}
         }
     }
@@ -337,15 +502,129 @@ impl Session {
     }
 
     /// Play the song `delta` places away from the current one, wrapping around the list (or
-    /// the playlist being played).
+    /// the playlist being played), or the next or previous one of the shuffled order.
     pub fn skip(&mut self, delta: i64) {
+        if self.settings.shuffle != Shuffle::Off {
+            self.skip_shuffled(delta);
+            return;
+        }
         if self.queue.is_some() {
             self.advance_queue(delta);
             return;
         }
         let current = self.with_player(|p| p.current()).flatten();
-        if let Some(next) = skip_target(current, delta, self.songs.len()) {
-            self.play(next);
+        let Some(rom) = self.loaded_rom().or(self.shown_rom()) else {
+            return;
+        };
+        let (id, count) = (rom.id.clone(), rom.songs.len());
+        if let Some(next) = skip_target(current, delta, count) {
+            self.play_song(&id, next);
+        }
+    }
+
+    /// What a shuffled order is made of now: the playlist being played, or else the ROM
+    /// playing (or all open ones).
+    fn pool(&self) -> Option<Pool> {
+        if let Some(q) = &self.queue {
+            return Some(Pool::Playlist(q.playlist.clone()));
+        }
+        if self.settings.shuffle == Shuffle::All {
+            return Some(Pool::AllRoms);
+        }
+        let rom = self.loaded_rom().or(self.shown_rom())?;
+        Some(Pool::Rom(rom.id.clone()))
+    }
+
+    fn picks(&self, pool: &Pool) -> Vec<Pick> {
+        let songs = |r: &Rom| {
+            r.songs
+                .iter()
+                .map(|s| Pick::Song {
+                    rom: r.id.clone(),
+                    index: s.index,
+                })
+                .collect::<Vec<_>>()
+        };
+        match pool {
+            Pool::Rom(id) => self.rom(id).map(songs).unwrap_or_default(),
+            Pool::AllRoms => self.roms.iter().flat_map(songs).collect(),
+            Pool::Playlist(id) => {
+                let len = self.playlist(id).map_or(0, |l| l.entries.len());
+                (0..len).map(Pick::Entry).collect()
+            }
+        }
+    }
+
+    /// The song playing, as it appears in a shuffled order.
+    fn current_pick(&self) -> Option<Pick> {
+        if let Some(q) = &self.queue {
+            return q.on_entry.then_some(Pick::Entry(q.position));
+        }
+        let index = self.with_player(|p| p.current()).flatten()?;
+        Some(Pick::Song {
+            rom: self.loaded.clone()?,
+            index,
+        })
+    }
+
+    /// Make the shuffled order again from the song playing when it is next needed: the songs
+    /// it was made of changed.
+    fn forget_order(&mut self) {
+        self.order = None;
+    }
+
+    /// Play the next (or previous) song of the shuffled order. The order is made first when
+    /// there is none for what is being played, or the song playing is not where the order is
+    /// (the user picked another). Songs that cannot be played are passed over; going back
+    /// past the start of the order starts the song playing again.
+    fn skip_shuffled(&mut self, delta: i64) {
+        let Some(pool) = self.pool() else { return };
+        let current = self.current_pick();
+        let fits = self.order.as_ref().is_some_and(|(p, order)| {
+            *p == pool && current.is_some() && order.current() == current.as_ref()
+        });
+        let mut order = match self.order.take() {
+            Some((_, order)) if fits => order,
+            _ => Order::new(self.picks(&pool), current.as_ref(), &mut self.rng),
+        };
+        let mut tries = order.len();
+        while tries > 0 {
+            tries -= 1;
+            let played = match order.step(delta, &mut self.rng) {
+                // Before the start: the song playing from the top.
+                None => {
+                    tries = 0;
+                    match &current {
+                        Some(pick) => self.play_pick(&pool, pick),
+                        None => false,
+                    }
+                }
+                Some(pick) => self.play_pick(&pool, &pick),
+            };
+            if played {
+                break;
+            }
+        }
+        // Set after playing: opening the ROM of a playlist entry forgets the order.
+        self.order = Some((pool, order));
+    }
+
+    /// Play a song of a shuffled order; returns whether it plays.
+    fn play_pick(&mut self, pool: &Pool, pick: &Pick) -> bool {
+        match (pool, pick) {
+            (Pool::Playlist(id), &Pick::Entry(position)) => {
+                let id = id.clone();
+                self.play_entry(&id, position)
+            }
+            (_, Pick::Song { rom, index }) => {
+                if !self.rom(rom).is_some_and(|r| r.has_song(*index)) {
+                    return false;
+                }
+                let rom = rom.clone();
+                self.play_song(&rom, *index);
+                true
+            }
+            _ => false,
         }
     }
 
@@ -358,13 +637,20 @@ impl Session {
         self.settings.auto_next = auto_next;
     }
 
+    pub fn set_shuffle(&mut self, shuffle: Shuffle) {
+        self.settings.shuffle = shuffle;
+        self.forget_order();
+        self.settings.save();
+    }
+
     pub fn set_volume(&mut self, volume: f32) {
         let volume = volume.clamp(0.0, 1.0);
         self.settings.volume = volume;
         self.with_player(|p| p.volume = volume);
     }
 
-    pub fn set_muted(&self, channel: usize, muted: bool) {
+    pub fn set_muted(&mut self, channel: usize, muted: bool) {
+        self.muted[channel] = muted;
         self.with_player(|p| p.set_muted(channel, muted));
     }
 
@@ -402,9 +688,6 @@ impl Session {
     }
 
     pub fn library(&self) -> LibraryView {
-        let muted = self
-            .with_player(|p| std::array::from_fn(|ch| p.muted(ch)))
-            .unwrap_or_default();
         LibraryView {
             language: self.text.language().to_string(),
             languages: LANGUAGES
@@ -417,22 +700,31 @@ impl Session {
                 .into_iter()
                 .map(|(k, v)| (k.to_string(), v.to_string()))
                 .collect(),
-            game: self.names.game.clone(),
-            title: self.title.clone(),
-            rom_path: self.rom_path.as_ref().map(|p| p.display().to_string()),
-            songs: self
-                .songs
+            roms: self
+                .roms
                 .iter()
-                .map(|song| SongView {
-                    index: song.index,
-                    title: self.names.song(song.index).to_string(),
-                    length: self.lengths.get(&song.index).map(|&l| l.into()),
+                .map(|rom| RomView {
+                    id: rom.id.clone(),
+                    game: rom.names.game.clone(),
+                    title: rom.title.clone(),
+                    path: rom.path.display().to_string(),
+                    songs: rom
+                        .songs
+                        .iter()
+                        .map(|song| SongView {
+                            index: song.index,
+                            title: rom.names.song(song.index).to_string(),
+                            length: rom.lengths.get(&song.index).map(|&l| l.into()),
+                        })
+                        .collect(),
                 })
                 .collect(),
+            shown_rom: self.shown_rom().map(|r| r.id.clone()),
             loop_count: self.settings.loop_count,
             auto_next: self.settings.auto_next,
+            shuffle: self.settings.shuffle,
             volume: self.settings.volume,
-            muted,
+            muted: self.muted,
             theme: if self.themes.iter().any(|t| t.id == self.settings.theme) {
                 self.settings.theme.clone()
             } else {
@@ -453,6 +745,7 @@ impl Session {
                 let errors: Vec<&str> = self
                     .error
                     .iter()
+                    .chain(self.roms.iter().flat_map(|r| &r.warnings))
                     .chain(&self.theme_warnings)
                     .chain(&self.playlist_warnings)
                     .map(String::as_str)
@@ -495,31 +788,31 @@ impl Session {
         self.playlist(&q.playlist)?.entries.get(q.position)
     }
 
-    /// Entries for songs of the loaded ROM.
-    fn entries_for(&self, songs: &[usize]) -> Vec<Entry> {
-        let (Some(path), Some(hash)) = (&self.rom_path, &self.rom_hash) else {
+    /// Entries for songs of the open ROM `rom`.
+    fn entries_for(&self, rom: &str, songs: &[usize]) -> Vec<Entry> {
+        let Some(rom) = self.rom(rom) else {
             return Vec::new();
         };
         songs
             .iter()
-            .filter(|&&i| self.songs.iter().any(|s| s.index == i))
+            .filter(|&&i| rom.has_song(i))
             .map(|&song| Entry {
-                path: path.clone(),
-                hash: hash.clone(),
+                path: rom.path.clone(),
+                hash: rom.id.clone(),
                 song,
-                game: self.names.game.clone(),
-                title: self.names.song(song).to_string(),
-                length: self.lengths.get(&song).map(|&l| l.into()),
+                game: rom.names.game.clone(),
+                title: rom.names.song(song).to_string(),
+                length: rom.lengths.get(&song).map(|&l| l.into()),
             })
             .collect()
     }
 
-    /// Make a playlist holding `songs` of the loaded ROM; returns its id.
-    pub fn create_playlist(&mut self, name: &str, songs: &[usize]) -> String {
+    /// Make a playlist holding `songs` of the open ROM `rom`; returns its id.
+    pub fn create_playlist(&mut self, name: &str, rom: &str, songs: &[usize]) -> String {
         let list = Playlist {
             id: playlists::new_id(&self.playlists),
             name: name.trim().to_string(),
-            entries: self.entries_for(songs),
+            entries: self.entries_for(rom, songs),
         };
         let id = list.id.clone();
         if let Err(e) = playlists::save(&list, &self.text) {
@@ -547,15 +840,25 @@ impl Session {
         }
     }
 
-    /// Add songs of the loaded ROM to the end of a playlist.
-    pub fn add_to_playlist(&mut self, id: &str, songs: &[usize]) {
-        let entries = self.entries_for(songs);
+    /// Add songs of the open ROM `rom` to the end of a playlist.
+    pub fn add_to_playlist(&mut self, id: &str, rom: &str, songs: &[usize]) {
+        let entries = self.entries_for(rom, songs);
         if !entries.is_empty() {
             self.edit_playlist(id, |l| l.entries.extend(entries));
+            self.forget_playlist_order(id);
+        }
+    }
+
+    /// Forget the shuffled order of the playlist `id` when it is the one being played: its
+    /// entries moved.
+    fn forget_playlist_order(&mut self, id: &str) {
+        if self.queue.as_ref().is_some_and(|q| q.playlist == id) {
+            self.forget_order();
         }
     }
 
     pub fn remove_from_playlist(&mut self, id: &str, positions: &[usize]) {
+        self.forget_playlist_order(id);
         if let Some(q) = self.queue.as_mut().filter(|q| q.playlist == id) {
             let before = positions.iter().filter(|&&p| p < q.position).count();
             if positions.contains(&q.position) {
@@ -580,6 +883,7 @@ impl Session {
         if from >= len || to >= len || from == to {
             return;
         }
+        self.forget_playlist_order(id);
         if let Some(q) = self.queue.as_mut().filter(|q| q.playlist == id) {
             q.position = moved_position(q.position, from, to);
         }
@@ -619,8 +923,8 @@ impl Session {
         }
     }
 
-    /// Play the entry at `position` of the playlist `id`, loading its ROM when another is
-    /// loaded; returns whether it plays.
+    /// Play the entry at `position` of the playlist `id`, opening its ROM when it is not open;
+    /// returns whether it plays.
     pub fn play_entry(&mut self, id: &str, position: usize) -> bool {
         let Some(entry) = self.entry(id, position) else {
             return false;
@@ -628,10 +932,14 @@ impl Session {
         if !entry.path.is_file() {
             return false;
         }
-        if self.rom_hash.as_deref() != Some(entry.hash.as_str()) && !self.load_rom(&entry.path) {
-            return false;
-        }
-        if !self.songs.iter().any(|s| s.index == entry.song) {
+        let rom = match self.rom(&entry.hash) {
+            Some(r) => r.id.clone(),
+            None => match self.open(&entry.path) {
+                Some(id) => id,
+                None => return false,
+            },
+        };
+        if !self.rom(&rom).is_some_and(|r| r.has_song(entry.song)) {
             self.error = Some(self.text.fmt(
                 "playlist_no_song",
                 &[("n", &(entry.song + 1)), ("path", &entry.path.display())],
@@ -643,6 +951,7 @@ impl Session {
             position,
             on_entry: true,
         });
+        self.load(&rom);
         self.play(entry.song);
         true
     }
@@ -683,11 +992,8 @@ impl Session {
         }
     }
 
-    /// Keep the lengths found for the loaded ROM in the playlist entries of its songs.
-    fn store_lengths(&mut self, results: &[(usize, SongLength)]) {
-        let Some(hash) = self.rom_hash.clone() else {
-            return;
-        };
+    /// Keep the lengths found for the ROM `hash` in the playlist entries of its songs.
+    fn store_lengths(&mut self, hash: &str, results: &[(usize, SongLength)]) {
         let stale = |e: &Entry| {
             e.hash == hash
                 && results
@@ -719,19 +1025,12 @@ impl Session {
                 .entries
                 .iter()
                 .map(|e| {
-                    // The loaded ROM gives the names in the current language.
-                    let loaded = self.rom_hash.as_deref() == Some(e.hash.as_str());
+                    // An open ROM gives the names in the current language.
+                    let names = self.rom(&e.hash).map(|r| &r.names);
                     EntryView {
-                        game: if loaded {
-                            self.names.game.clone()
-                        } else {
-                            e.game.clone()
-                        },
-                        title: if loaded {
-                            self.names.song(e.song).to_string()
-                        } else {
-                            e.title.clone()
-                        },
+                        game: names.map_or_else(|| e.game.clone(), |n| n.game.clone()),
+                        title: names
+                            .map_or_else(|| e.title.clone(), |n| n.song(e.song).to_string()),
                         length: e.length.clone(),
                         path: e.path.display().to_string(),
                         missing: !e.path.is_file(),
@@ -744,31 +1043,33 @@ impl Session {
     /// Advance the playlist and collect analysis results; returns the state for the UI and
     /// whether the library changed.
     pub fn tick(&mut self) -> (TickView, bool) {
-        let results: Vec<_> = self
-            .analyzer
-            .as_ref()
-            .map(|a| a.results.try_iter().collect())
-            .unwrap_or_default();
-        let mut changed = !results.is_empty();
-        for &(index, length) in &results {
-            self.lengths.insert(index, length);
-            self.with_player(|p| p.set_length(index, length));
-        }
-        self.store_lengths(&results);
-        // Advance the playlist when a song has finished, if asked to.
-        let finished = self
-            .with_player(|p| (p.state() == PlayState::Finished).then(|| p.current()))
-            .flatten()
-            .flatten();
-        if let Some(cur) = finished {
-            if self.settings.auto_next && self.queue.is_some() {
-                self.advance_queue(1);
-                changed = true;
-            } else if self.settings.auto_next {
-                if let Some(next) = skip_target(Some(cur), 1, self.songs.len()) {
-                    self.play(next);
+        let mut changed = false;
+        for i in 0..self.roms.len() {
+            let results: Vec<_> = self.roms[i].analyzer.results.try_iter().collect();
+            if results.is_empty() {
+                continue;
+            }
+            changed = true;
+            let loaded = self.loaded.as_deref() == Some(self.roms[i].id.as_str());
+            for &(index, length) in &results {
+                self.roms[i].lengths.insert(index, length);
+                if loaded {
+                    self.with_player(|p| p.set_length(index, length));
+                } else if let Some(p) = &mut self.roms[i].player {
+                    p.set_length(index, length);
                 }
             }
+            let id = self.roms[i].id.clone();
+            self.store_lengths(&id, &results);
+        }
+        // Go on to the next song when one has finished, if asked to. That may open the ROM of
+        // a playlist entry.
+        let finished = self
+            .with_player(|p| p.state() == PlayState::Finished)
+            .unwrap_or(false);
+        if finished && self.settings.auto_next {
+            self.skip(1);
+            changed = true;
         }
         let info = self.with_player(|p| {
             (
@@ -787,6 +1088,7 @@ impl Session {
         };
         let Some((current, state, paused, pos, length, levels)) = info else {
             let view = TickView {
+                rom: None,
                 current: None,
                 queue: None,
                 state: "none",
@@ -812,6 +1114,7 @@ impl Session {
             ),
         };
         let view = TickView {
+            rom: self.loaded.clone(),
             current,
             queue: self
                 .queue

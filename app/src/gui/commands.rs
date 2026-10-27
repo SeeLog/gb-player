@@ -12,6 +12,7 @@ use super::playlists;
 use super::views::LibraryView;
 use super::{emit_library, App};
 use crate::i18n::Text;
+use crate::settings::Shuffle;
 use crate::themes::{self, Background};
 
 #[tauri::command]
@@ -19,22 +20,33 @@ pub fn library(app: State<'_, App>) -> LibraryView {
     app.lock().library()
 }
 
+/// Open ROMs (dropped on the window); returns the id of the last one that could be opened.
 #[tauri::command]
-pub fn open_rom(handle: AppHandle, app: State<'_, App>, path: PathBuf) {
+pub fn open_roms(handle: AppHandle, app: State<'_, App>, paths: Vec<PathBuf>) -> Option<String> {
     let mut s = app.lock();
-    s.open_rom(&path);
+    let id = s.open_roms(&paths);
+    emit_library(&handle, &s);
+    id
+}
+
+#[tauri::command]
+pub fn close_rom(handle: AppHandle, app: State<'_, App>, id: String) {
+    let mut s = app.lock();
+    s.close_rom(&id);
     emit_library(&handle, &s);
 }
+
+const ROM_FILTER: (&str, &[&str]) = (
+    "Game Boy ROM / GBS",
+    &["gb", "gbc", "gbs", "GB", "GBC", "GBS"],
+);
 
 /// The file dialog for a ROM or GBS file.
 fn pick_rom_file(handle: &AppHandle) -> Option<PathBuf> {
     let picked = handle
         .dialog()
         .file()
-        .add_filter(
-            "Game Boy ROM / GBS",
-            &["gb", "gbc", "gbs", "GB", "GBC", "GBS"],
-        )
+        .add_filter(ROM_FILTER.0, ROM_FILTER.1)
         .blocking_pick_file();
     picked.and_then(|f| f.into_path().ok())
 }
@@ -52,34 +64,43 @@ fn confirm(handle: &AppHandle, message: String, ok: &str, cancel: &str) -> bool 
         .blocking_show()
 }
 
-/// Let the user pick a ROM and open it; returns whether one was picked.
+/// Let the user pick ROMs and open them; returns the id of the last one that could be opened.
 #[tauri::command]
-pub async fn pick_rom(handle: AppHandle) -> bool {
-    let Some(path) = pick_rom_file(&handle) else {
-        return false;
-    };
+pub async fn pick_roms(handle: AppHandle) -> Option<String> {
+    let picked = handle
+        .dialog()
+        .file()
+        .add_filter(ROM_FILTER.0, ROM_FILTER.1)
+        .blocking_pick_files()?;
+    let paths: Vec<PathBuf> = picked
+        .into_iter()
+        .filter_map(|f| f.into_path().ok())
+        .collect();
     let app = handle.state::<App>();
     let mut s = app.lock();
-    s.open_rom(&path);
+    let id = s.open_roms(&paths);
     emit_library(&handle, &s);
-    true
+    id
 }
 
 #[tauri::command]
-pub fn play(app: State<'_, App>, index: usize) {
-    app.lock().play_song(index);
+pub fn play(handle: AppHandle, app: State<'_, App>, rom: String, index: usize) {
+    let mut s = app.lock();
+    s.play_song(&rom, index);
+    emit_library(&handle, &s);
 }
 
-/// Make a playlist holding `songs` of the loaded ROM; returns its id.
+/// Make a playlist holding `songs` of the open ROM `rom`; returns its id.
 #[tauri::command]
 pub fn create_playlist(
     handle: AppHandle,
     app: State<'_, App>,
     name: String,
+    rom: String,
     songs: Vec<usize>,
 ) -> String {
     let mut s = app.lock();
-    let id = s.create_playlist(&name, &songs);
+    let id = s.create_playlist(&name, &rom, &songs);
     emit_library(&handle, &s);
     id
 }
@@ -115,9 +136,15 @@ pub async fn delete_playlist(handle: AppHandle, id: String, name: String) -> boo
 }
 
 #[tauri::command]
-pub fn add_to_playlist(handle: AppHandle, app: State<'_, App>, id: String, songs: Vec<usize>) {
+pub fn add_to_playlist(
+    handle: AppHandle,
+    app: State<'_, App>,
+    id: String,
+    rom: String,
+    songs: Vec<usize>,
+) {
     let mut s = app.lock();
-    s.add_to_playlist(&id, &songs);
+    s.add_to_playlist(&id, &rom, &songs);
     emit_library(&handle, &s);
 }
 
@@ -155,10 +182,10 @@ pub fn play_entry(handle: AppHandle, app: State<'_, App>, id: String, position: 
     playing
 }
 
-/// The playlist shown instead of the ROM's songs, or `None` for the songs.
+/// What the middle column shows: the songs of the ROM `rom`, or the playlist `playlist`.
 #[tauri::command]
-pub fn set_open_playlist(app: State<'_, App>, id: Option<String>) {
-    app.lock().set_open_playlist(id);
+pub fn set_view(app: State<'_, App>, rom: Option<String>, playlist: Option<String>) {
+    app.lock().set_view(rom, playlist);
 }
 
 /// Let the user point an entry whose ROM is missing at its file. A file holding a different
@@ -219,6 +246,13 @@ pub fn toggle(app: State<'_, App>) {
 }
 
 #[tauri::command]
+pub fn set_shuffle(handle: AppHandle, app: State<'_, App>, shuffle: Shuffle) {
+    let mut s = app.lock();
+    s.set_shuffle(shuffle);
+    emit_library(&handle, &s);
+}
+
+#[tauri::command]
 pub fn stop(app: State<'_, App>) {
     app.lock().stop();
 }
@@ -228,9 +262,12 @@ pub fn seek(app: State<'_, App>, secs: f64) {
     app.lock().seek(secs);
 }
 
+/// Next or previous; that may open the ROM of a playlist entry.
 #[tauri::command]
-pub fn skip(app: State<'_, App>, delta: i64) {
-    app.lock().skip(delta);
+pub fn skip(handle: AppHandle, app: State<'_, App>, delta: i64) {
+    let mut s = app.lock();
+    s.skip(delta);
+    emit_library(&handle, &s);
 }
 
 #[tauri::command]
@@ -257,7 +294,7 @@ pub fn set_muted(handle: AppHandle, app: State<'_, App>, channel: usize, muted: 
     if channel >= 4 {
         return;
     }
-    let s = app.lock();
+    let mut s = app.lock();
     s.set_muted(channel, muted);
     emit_library(&handle, &s);
 }
