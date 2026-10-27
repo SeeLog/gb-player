@@ -54,26 +54,36 @@ export async function menuFor(
   return playbackItems(!!library && library.songs.length > 0, t, actions);
 }
 
-/** Add a song of the open ROM to each playlist, or to a new one. */
+/** Add a song of the open ROM to a playlist (in a submenu, however many there are), or to a
+ * new one. */
 function addItems(
   index: number,
   library: Library,
   t: Translate,
   actions: MenuActions,
 ): MenuItem[] {
+  const newPlaylist: MenuItem = {
+    label: t("playlist_add_new"),
+    onSelect: async () => {
+      const name = t("playlist_default_name", { n: library.playlists.length + 1 });
+      const id = await api.createPlaylist(name, [index]);
+      actions.showPlaylist(id);
+      actions.renamePlaylist(id);
+    },
+  };
+  if (library.playlists.length === 0) return [newPlaylist];
   return [
-    ...library.playlists.map((l) => ({
-      label: t("playlist_add_to", { name: l.name }),
-      onSelect: () => api.addToPlaylist(l.id, [index]),
-    })),
     {
-      label: t("playlist_add_new"),
-      onSelect: async () => {
-        const name = t("playlist_default_name", { n: library.playlists.length + 1 });
-        const id = await api.createPlaylist(name, [index]);
-        actions.showPlaylist(id);
-        actions.renamePlaylist(id);
-      },
+      label: t("playlist_add"),
+      // The new playlist first, so it is in reach however many playlists follow.
+      submenu: [
+        newPlaylist,
+        "separator",
+        ...library.playlists.map((l) => ({
+          label: l.name,
+          onSelect: () => api.addToPlaylist(l.id, [index]),
+        })),
+      ],
     },
   ];
 }
