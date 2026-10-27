@@ -123,6 +123,8 @@
   --knob: #e6e7e8;
 }
 
+/* Color: navy with a yellow accent and a pink second one, and a yellow-green LCD; the mini
+   player's body is yellow, with red A and B keys. */
 [data-palette="color"] {
   color-scheme: dark;
   --backdrop: #060714;
@@ -144,13 +146,13 @@
   --bezel: #262a52;
   --overlay: rgba(255, 255, 255, 0.05);
   --danger: #ff7a6b;
-  /* The body of the mini player (clear purple plastic), the frame around its screen, and its
-     A and B buttons. */
-  --shell: #6b4fb88f;
-  --shell-ink: #2c2244;
+  /* The body of the mini player (yellow plastic), the frame around its screen, and its A and B
+     buttons. */
+  --shell: #f4c63a;
+  --shell-ink: #3b2c00;
   --shell-frame: #1f1d26;
-  --key: #34313c;
-  --key-ink: #d7d3e0;
+  --key: #c8352a;
+  --key-ink: #fff1ec;
   /* The knobs of the sliders and switches. */
   --knob: #e8e9f5;
 }
