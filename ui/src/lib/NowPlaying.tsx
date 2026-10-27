@@ -58,11 +58,6 @@ export default memo(function NowPlaying({ library, t }: { library: Library; t: T
             );
           })}
         </div>
-        <div className="text-xs text-muted">
-          {library.loopCount === null
-            ? t("loop_forever")
-            : t("loop_playlist", { n: library.loopCount })}
-        </div>
         <label className="group mt-1 flex cursor-pointer items-center gap-2.5 text-[13px] text-muted hover:text-text">
           <input
             type="checkbox"
