@@ -103,6 +103,7 @@ pub fn run(initial_rom: Option<PathBuf>, language: Option<String>) {
             commands::remove_from_playlist,
             commands::move_in_playlist,
             commands::play_entry,
+            commands::set_open_playlist,
             commands::relink_entry,
             commands::toggle,
             commands::stop,
@@ -125,9 +126,7 @@ pub fn run(initial_rom: Option<PathBuf>, language: Option<String>) {
                 let mut s = app.lock();
                 s.reload_themes();
                 s.reload_playlists();
-                if let Some(path) = initial_rom {
-                    s.open_rom(&path);
-                }
+                s.open_at_start(initial_rom.as_deref());
             }
             std::thread::spawn(move || loop {
                 std::thread::sleep(TICK);

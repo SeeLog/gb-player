@@ -21,6 +21,7 @@ export const api = {
   moveInPlaylist: (id: string, from: number, to: number) =>
     invoke<void>("move_in_playlist", { id, from, to }),
   playEntry: (id: string, position: number) => invoke<boolean>("play_entry", { id, position }),
+  setOpenPlaylist: (id: string | null) => invoke<void>("set_open_playlist", { id }),
   relinkEntry: (id: string, position: number) => invoke<void>("relink_entry", { id, position }),
   toggle: () => invoke<void>("toggle"),
   stop: () => invoke<void>("stop"),

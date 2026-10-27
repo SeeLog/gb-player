@@ -155,6 +155,12 @@ pub fn play_entry(handle: AppHandle, app: State<'_, App>, id: String, position: 
     playing
 }
 
+/// The playlist shown instead of the ROM's songs, or `None` for the songs.
+#[tauri::command]
+pub fn set_open_playlist(app: State<'_, App>, id: Option<String>) {
+    app.lock().set_open_playlist(id);
+}
+
 /// Let the user point an entry whose ROM is missing at its file. A file holding a different
 /// ROM than the one the entry was made from is taken only once the user agrees.
 #[tauri::command]

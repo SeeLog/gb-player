@@ -15,7 +15,7 @@ use super::views::{
 use crate::analyzer::Analyzer;
 use crate::audio::{Scope, SharedPlayer};
 use crate::i18n::Text;
-use crate::settings::Settings;
+use crate::settings::{SavedEntry, SavedSong, Settings};
 use crate::themes::{self, Background, Theme};
 
 /// Output samples sent with each tick for the oscilloscope.
@@ -163,6 +163,7 @@ impl Session {
                 self.rom_hash = Some(hash);
                 *self.player.lock().unwrap_or_else(PoisonError::into_inner) = Some(p);
                 self.refresh_names();
+                self.remember();
                 true
             }
             Err(e) => {
@@ -207,18 +208,101 @@ impl Session {
     }
 
     fn play(&mut self, index: usize) {
+        self.start(index, Player::play);
+    }
+
+    /// Select a song without playing it.
+    fn cue(&mut self, index: usize) {
+        self.start(index, Player::cue);
+    }
+
+    fn start(&mut self, index: usize, start: fn(&mut Player, usize)) {
         if let Some(a) = &self.analyzer {
             a.prioritize(index);
         }
         let length = self.lengths.get(&index).copied();
         let count = self.settings.loop_count;
         self.with_player(|p| {
-            p.play(index);
+            start(p, index);
             p.loop_count = count;
             if let Some(l) = length {
                 p.set_length(index, l);
             }
         });
+        self.remember();
+    }
+
+    /// Open the ROM given on the command line, or else what was open when the app was last
+    /// closed.
+    pub fn open_at_start(&mut self, rom: Option<&Path>) {
+        match rom {
+            Some(path) => {
+                self.settings.open_playlist = None;
+                self.open_rom(path);
+            }
+            None => self.restore(),
+        }
+    }
+
+    /// Open the ROM of the last run and select its song, stopped, along with the playlist entry
+    /// it was played from. A ROM that is gone or cannot be loaded any more is forgotten
+    /// without a word.
+    fn restore(&mut self) {
+        let Some(path) = self.settings.last_rom.clone() else {
+            return;
+        };
+        let song = self.settings.last_song.take();
+        let entry = self.settings.last_entry.take();
+        let error = self.error.take();
+        if !self.load_rom(&path) {
+            self.error = error;
+            self.settings.last_rom = None;
+            self.settings.open_playlist = None;
+            self.settings.save();
+            return;
+        }
+        let Some(index) = song.and_then(|s| s.find(&self.songs)) else {
+            return;
+        };
+        self.queue = entry
+            .filter(|e| {
+                self.entry(&e.playlist, e.position).is_some_and(|x| {
+                    x.song == index && self.rom_hash.as_deref() == Some(x.hash.as_str())
+                })
+            })
+            .map(|e| Queue {
+                playlist: e.playlist,
+                position: e.position,
+                on_entry: true,
+            });
+        self.cue(index);
+    }
+
+    /// Keep the open ROM, the selected song and the playlist entry it came from for the next
+    /// run.
+    fn remember(&mut self) {
+        let current = self.with_player(|p| p.current()).flatten();
+        self.settings.last_rom = self.rom_path.clone();
+        self.settings.last_song = current
+            .and_then(|i| self.songs.iter().find(|s| s.index == i))
+            .map(SavedSong::new);
+        self.settings.last_entry = self
+            .queue
+            .as_ref()
+            .filter(|q| q.on_entry)
+            .map(|q| SavedEntry {
+                playlist: q.playlist.clone(),
+                position: q.position,
+            });
+        self.settings.save();
+    }
+
+    /// Remember the playlist shown instead of the ROM's songs, if any.
+    pub fn set_open_playlist(&mut self, id: Option<String>) {
+        if self.settings.open_playlist != id {
+            self.settings.open_playlist = id;
+            self.settings.save();
+        }
     }
 
     /// Play or pause; starts the current (or first) song again when nothing is playing.
@@ -313,8 +397,8 @@ impl Session {
         Ok(id)
     }
 
-    pub fn save_settings(&self) {
-        self.settings.save();
+    pub fn save_settings(&mut self) {
+        self.remember();
     }
 
     pub fn library(&self) -> LibraryView {
@@ -360,6 +444,11 @@ impl Session {
                 .iter()
                 .map(|l| self.playlist_view(l))
                 .collect(),
+            open_playlist: self
+                .settings
+                .open_playlist
+                .clone()
+                .filter(|id| self.playlist(id).is_some()),
             error: {
                 let errors: Vec<&str> = self
                     .error

@@ -88,6 +88,8 @@ pub struct LibraryView {
     pub theme: String,
     pub themes: Vec<Theme>,
     pub playlists: Vec<PlaylistView>,
+    /// The playlist that was shown when the app was last closed, to show it again.
+    pub open_playlist: Option<String>,
     pub error: Option<String>,
 }
 

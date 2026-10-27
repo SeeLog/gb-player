@@ -250,6 +250,15 @@ impl Player {
         self.keep_snapshot();
     }
 
+    /// Make `index` the current song, ready at its start but stopped: nothing plays until it
+    /// is played (or sought).
+    pub fn cue(&mut self, index: usize) {
+        self.play(index);
+        if self.state == PlayState::Playing {
+            self.state = PlayState::Stopped;
+        }
+    }
+
     pub fn stop(&mut self) {
         self.state = PlayState::Stopped;
         self.buf.clear();
@@ -584,6 +593,24 @@ mod tests {
         p.set_paused(true);
         p.seek(20);
         assert!(p.paused());
+        assert_eq!(p.machine.state_hash(), state_at(20));
+    }
+
+    #[test]
+    fn a_cued_song_stays_stopped_at_its_start() {
+        let mut p = counting_player();
+        run_frames(&mut p, 100);
+        p.cue(0);
+        assert_eq!(p.current(), Some(0));
+        assert_eq!(p.state(), PlayState::Stopped);
+        assert_eq!(p.position_frames(), 0);
+        let mut out = vec![1.0; 4800];
+        p.render(&mut out);
+        assert!(out.iter().all(|&s| s == 0.0));
+        assert_eq!(p.position_frames(), 0);
+        // Seeking starts it from there, as for a stopped song.
+        p.seek(20);
+        assert_eq!(p.state(), PlayState::Playing);
         assert_eq!(p.machine.state_hash(), state_at(20));
     }
 }

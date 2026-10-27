@@ -35,6 +35,11 @@ export default function App() {
   useEffect(() => {
     if (library && view.kind === "playlist" && !shownList) setView({ kind: "rom" });
   }, [library, view, shownList]);
+  // The view is remembered for the next run once the one from the last run is restored.
+  const restored = useRef(false);
+  useEffect(() => {
+    if (restored.current) api.setOpenPlaylist(view.kind === "playlist" ? view.id : null);
+  }, [view]);
 
   /** Open a ROM the user picks, and show its songs. */
   const pickRom = useCallback(() => {
@@ -55,7 +60,11 @@ export default function App() {
         }
       }),
     ];
-    api.library().then(setLibrary);
+    api.library().then((l) => {
+      setLibrary(l);
+      if (l.openPlaylist) setView({ kind: "playlist", id: l.openPlaylist });
+      restored.current = true;
+    });
     return () => unlisten.forEach((u) => void u.then((f) => f()));
   }, []);
 

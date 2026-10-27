@@ -67,6 +67,8 @@ export interface Library {
   theme: string;
   themes: Theme[];
   playlists: PlaylistView[];
+  /** The playlist shown when the app was last closed. */
+  openPlaylist: string | null;
   error: string | null;
 }
 
