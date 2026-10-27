@@ -238,7 +238,9 @@
   --knob: #ffffff;
 }
 
-/* Daylight: a light, warm background with the first model's greens. */
+/* Daylight: a light, warm background with the first model's greens. Its fills take a light lime
+   sheen (BASE_SHEENS in lib/theme.ts), and its edges, meters and rows a fresh green (accent-2),
+   so the dark olive accent only writes text. */
 [data-palette="daylight"] {
   color-scheme: light;
   --backdrop: #ffffff;
@@ -250,8 +252,11 @@
   --muted: #535b4e;
   --faint: #61685c;
   --accent: #486507;
-  --accent-2: #4b6a08;
-  --accent-ink: #ffffff;
+  --accent-2: #66a51a;
+  --accent-ink: #22300a;
+  /* The meters run from a pale lime to the green, the green at the tip. */
+  --meter-start: #cfe89a;
+  --meter-end: #66a51a;
   --lcd-hi: #a9c923;
   --lcd: #9bbc0f;
   --lcd-lo: #8bac0f;
@@ -267,7 +272,7 @@
   --key: #982a5b;
   --key-ink: #f6ecf0;
   /* The knobs of the sliders and switches. */
-  --knob: #1f241c;
+  --knob: #ffffff;
 }
 
 /* A theme may lay a sheen over what the accent fills (Prism's pearly one; applyTheme in

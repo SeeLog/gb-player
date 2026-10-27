@@ -38,6 +38,8 @@ export const BASE_SHEENS: Record<string, Sheen> = {
   prism: { colors: ["#bdf3e4", "#b2e4f7", "#d2c8fb", "#f8cbe4", "#fbe7c6"], angle: 115 },
   // A sunset: violet, magenta, orange and gold.
   nebula: { colors: ["#a58bff", "#e36cc4", "#ff9a6b", "#ffd27a"], angle: 115 },
+  // Barely a sheen: light lime, so the fills are not the dark olive of the text.
+  daylight: { colors: ["#b4da4e", "#9cc93a"], angle: 115 },
 };
 
 /** The sheen a theme shows: its own, or else its base's. */
