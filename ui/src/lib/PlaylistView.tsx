@@ -148,7 +148,7 @@ export default memo(function PlaylistView({
                 className={`grid w-full cursor-default grid-cols-[44px_minmax(0,1fr)_auto] items-center gap-2 rounded-lg px-2.5 py-[7px] text-left outline-none select-none focus-visible:ring-1 focus-visible:ring-accent-2 ${gapLine} ${
                   drag?.gap != null && drag.from === i ? "opacity-50" : ""
                 } ${
-                  active ? "bg-[color-mix(in_srgb,var(--accent)_14%,var(--panel))]" : "hover:bg-panel"
+                  active ? "bg-playing" : "hover:bg-hover"
                 }`}
               >
                 <span className="num pr-1.5 text-right text-faint">
@@ -163,7 +163,7 @@ export default memo(function PlaylistView({
                   )}
                 </span>
                 <span className={`flex min-w-0 flex-col ${entry.missing ? "text-faint" : ""}`}>
-                  <span className={`truncate ${active ? "font-semibold text-accent" : ""}`}>
+                  <span className={`truncate ${active ? "font-semibold text-[color:var(--row-text,var(--accent))]" : ""}`}>
                     {entry.title}
                   </span>
                   <span className="truncate text-xs text-muted">{entry.game}</span>

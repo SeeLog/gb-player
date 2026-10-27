@@ -36,7 +36,16 @@ export interface Theme {
   background: Background | null;
   /** The console the mini player is drawn as. */
   console: Console;
+  /** `null` takes the base's. */
+  sheen: Sheen | null;
   custom: boolean;
+}
+
+/** A sheen laid over what the accent fills: a gradient through the colours at an angle (degrees).
+ * No colours: none, whatever the base has. */
+export interface Sheen {
+  colors: string[];
+  angle: number;
 }
 
 /** The first model, or the colour one. */

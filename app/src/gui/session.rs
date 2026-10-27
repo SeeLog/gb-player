@@ -1,7 +1,7 @@
 //! Playback control behind the GUI commands: the open ROMs, the playlists, the settings and
 //! the analysis results, independent of Tauri.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::PoisonError;
 
@@ -18,7 +18,7 @@ use crate::analyzer::Analyzer;
 use crate::audio::{Scope, SharedPlayer};
 use crate::i18n::Text;
 use crate::settings::{Mini, SavedEntry, SavedSong, Settings, Shuffle};
-use crate::themes::{self, Background, Theme};
+use crate::themes::{self, NewTheme, Theme};
 
 /// Output samples sent with each tick for the oscilloscope.
 const SCOPE_POINTS: usize = 1024;
@@ -676,15 +676,8 @@ impl Session {
     }
 
     /// Save a custom theme and switch to it; returns its id.
-    pub fn save_theme(
-        &mut self,
-        name: &str,
-        base: &str,
-        colors: BTreeMap<String, String>,
-        background: Option<Background>,
-        console: &str,
-    ) -> Result<String, String> {
-        let id = themes::save(name, base, colors, background, console, &self.text)?;
+    pub fn save_theme(&mut self, theme: NewTheme) -> Result<String, String> {
+        let id = themes::save(theme, &self.text)?;
         self.reload_themes();
         self.settings.theme = id.clone();
         self.settings.save();

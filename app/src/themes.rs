@@ -10,15 +10,16 @@ use serde::{Deserialize, Serialize};
 use crate::i18n::Text;
 
 /// The built-in palettes as (id, name); the first is the default.
-pub const BUILTIN: [(&str, &str); 4] = [
+pub const BUILTIN: [(&str, &str); 5] = [
     ("dmg", "DMG"),
     ("pocket", "Pocket"),
     ("color", "Color"),
+    ("clear", "Clear"),
     ("light", "Light"),
 ];
 
 /// The colour tokens a theme may set, the CSS custom properties without the leading `--`.
-pub const TOKENS: [&str; 24] = [
+pub const TOKENS: [&str; 25] = [
     "backdrop",
     "bg",
     "panel",
@@ -43,14 +44,44 @@ pub const TOKENS: [&str; 24] = [
     "shell-frame",
     "key",
     "key-ink",
+    "knob",
 ];
 
 /// The consoles the mini player can be drawn as: the first model and the colour one.
 pub const CONSOLES: [&str; 2] = ["dmg", "gbc"];
 
-/// The console a theme without one is drawn as: the colour model for the color palette.
+/// The console a theme without one is drawn as: the colour model for the color and clear
+/// palettes.
 fn default_console(base: &str) -> String {
-    if base == "color" { "gbc" } else { "dmg" }.to_string()
+    if matches!(base, "color" | "clear") {
+        "gbc"
+    } else {
+        "dmg"
+    }
+    .to_string()
+}
+
+/// The most colours a sheen may run through; the rest are left out.
+const MAX_SHEEN_COLORS: usize = 8;
+/// The angle of a sheen that gives none, in degrees.
+const SHEEN_ANGLE: f32 = 115.0;
+
+/// A sheen laid over what the accent fills: a gradient through `colors` at `angle` degrees.
+/// A theme without one takes its base's; one without colours has none, whatever its base has.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Sheen {
+    pub colors: Vec<String>,
+    pub angle: f32,
+}
+
+impl Default for Sheen {
+    fn default() -> Sheen {
+        Sheen {
+            colors: Vec::new(),
+            angle: SHEEN_ANGLE,
+        }
+    }
 }
 
 /// Ids of custom themes start with this, so they never clash with the built-in ones.
@@ -66,6 +97,8 @@ pub struct Theme {
     pub background: Option<Background>,
     /// The console the mini player is drawn as, one of [`CONSOLES`].
     pub console: String,
+    /// `None` takes the base's sheen.
+    pub sheen: Option<Sheen>,
     pub custom: bool,
 }
 
@@ -112,11 +145,13 @@ struct ThemeFile {
     name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     base: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    console: Option<String>,
     colors: BTreeMap<String, String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     background: Option<Background>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    console: Option<String>,
+    sheen: Option<Sheen>,
 }
 
 pub fn dir() -> Option<PathBuf> {
@@ -281,6 +316,34 @@ fn clean_colors(
     out
 }
 
+/// Keep the plain colours of a sheen, at most [`MAX_SHEEN_COLORS`], and an angle from 0 to 360;
+/// report the rest.
+fn clean_sheen(sheen: Sheen, file: &str, t: &Text, warnings: &mut Vec<String>) -> Sheen {
+    let mut colors = Vec::new();
+    for value in sheen.colors {
+        if !is_color(&value) {
+            warnings.push(t.fmt(
+                "theme_bad_color",
+                &[("file", &file), ("token", &"sheen"), ("value", &value)],
+            ));
+        } else if colors.len() == MAX_SHEEN_COLORS {
+            warnings.push(t.fmt(
+                "theme_sheen_too_long",
+                &[("file", &file), ("n", &MAX_SHEEN_COLORS)],
+            ));
+            break;
+        } else {
+            colors.push(value.trim().to_string());
+        }
+    }
+    let angle = if sheen.angle.is_finite() {
+        sheen.angle.rem_euclid(360.0)
+    } else {
+        SHEEN_ANGLE
+    };
+    Sheen { colors, angle }
+}
+
 fn parse(path: &Path, text: &str, t: &Text, warnings: &mut Vec<String>) -> Option<Theme> {
     let stem = path.file_stem()?.to_string_lossy().into_owned();
     let file = path
@@ -319,6 +382,7 @@ fn parse(path: &Path, text: &str, t: &Text, warnings: &mut Vec<String>) -> Optio
             .background
             .and_then(|b| clean_background(b, &file, t, warnings)),
         console,
+        sheen: parsed.sheen.map(|s| clean_sheen(s, &file, t, warnings)),
         custom: true,
     })
 }
@@ -334,6 +398,7 @@ pub fn load(t: &Text) -> (Vec<Theme>, Vec<String>) {
             colors: BTreeMap::new(),
             background: None,
             console: default_console(id),
+            sheen: None,
             custom: false,
         })
         .collect();
@@ -391,24 +456,34 @@ pub fn file_stem(name: &str) -> String {
     stem
 }
 
+/// A theme as the theme editor saves it.
+#[derive(Debug, Clone, Deserialize)]
+pub struct NewTheme {
+    pub name: String,
+    pub base: String,
+    pub colors: BTreeMap<String, String>,
+    pub background: Option<Background>,
+    pub console: String,
+    pub sheen: Option<Sheen>,
+}
+
 /// Write a custom theme, replacing one with the same file name; returns its id.
-pub fn save(
-    name: &str,
-    base: &str,
-    colors: BTreeMap<String, String>,
-    background: Option<Background>,
-    console: &str,
-    t: &Text,
-) -> Result<String, String> {
+pub fn save(theme: NewTheme, t: &Text) -> Result<String, String> {
     let dir = dir().ok_or_else(|| t.get("theme_no_dir").to_string())?;
-    let stem = file_stem(name);
+    let stem = file_stem(&theme.name);
     let mut warnings = Vec::new();
+    let base = theme.base.as_str();
     let file = ThemeFile {
-        name: Some(name.trim().to_string()).filter(|n| !n.is_empty()),
+        name: Some(theme.name.trim().to_string()).filter(|n| !n.is_empty()),
         base: Some(if is_builtin(base) { base } else { BUILTIN[0].0 }.to_string()),
-        colors: clean_colors(colors, &stem, t, &mut warnings),
-        background: background.and_then(|b| clean_background(b, &stem, t, &mut warnings)),
-        console: CONSOLES.contains(&console).then(|| console.to_string()),
+        console: CONSOLES
+            .contains(&theme.console.as_str())
+            .then_some(theme.console),
+        colors: clean_colors(theme.colors, &stem, t, &mut warnings),
+        background: theme
+            .background
+            .and_then(|b| clean_background(b, &stem, t, &mut warnings)),
+        sheen: theme.sheen.map(|s| clean_sheen(s, &stem, t, &mut warnings)),
     };
     if !warnings.is_empty() {
         return Err(warnings.join("\n"));
@@ -478,6 +553,61 @@ mod tests {
     }
 
     #[test]
+    fn sheen_is_checked_and_round_trips() {
+        let t = Text::new("en");
+        let mut warnings = Vec::new();
+        let theme = parse(
+            Path::new("x.toml"),
+            "base = \"clear\"\n[sheen]\nangle = -45\ncolors = [\"#abc\", \"red\", \"#bdf3e4cc\"]\n",
+            &t,
+            &mut warnings,
+        )
+        .unwrap();
+        let sheen = theme.sheen.unwrap();
+        assert_eq!(sheen.colors, ["#abc", "#bdf3e4cc"]);
+        assert_eq!(sheen.angle, 315.0);
+        assert_eq!(warnings.len(), 1);
+        // No [sheen]: the base's. An empty one: none.
+        let none = |text: &str| parse(Path::new("x.toml"), text, &t, &mut Vec::new()).unwrap();
+        assert_eq!(none("base = \"clear\"\n").sheen, None);
+        assert_eq!(
+            none("[sheen]\ncolors = []\n").sheen,
+            Some(Sheen {
+                colors: Vec::new(),
+                angle: SHEEN_ANGLE
+            })
+        );
+        let many = Sheen {
+            colors: vec!["#fff".into(); MAX_SHEEN_COLORS + 2],
+            angle: 10.0,
+        };
+        let mut warnings = Vec::new();
+        assert_eq!(
+            clean_sheen(many, "x", &t, &mut warnings).colors.len(),
+            MAX_SHEEN_COLORS
+        );
+        assert_eq!(warnings.len(), 1);
+        // Everything a saved theme holds comes back as it was.
+        let file = ThemeFile {
+            name: Some("Holo".into()),
+            base: Some("clear".into()),
+            console: Some("gbc".into()),
+            colors: BTreeMap::from([("accent".to_string(), "#0a6d7d".to_string())]),
+            background: Some(Background {
+                image: "images/sky.png".into(),
+                ..Background::default()
+            }),
+            sheen: Some(sheen.clone()),
+        };
+        let text = toml::to_string(&file).unwrap();
+        let back = parse(Path::new("holo.toml"), &text, &t, &mut Vec::new()).unwrap();
+        assert_eq!(back.console, "gbc");
+        assert_eq!(back.colors["accent"], "#0a6d7d");
+        assert_eq!(back.background.unwrap().image, "images/sky.png");
+        assert_eq!(back.sheen, Some(sheen));
+    }
+
+    #[test]
     fn console_comes_from_the_file_or_the_base() {
         let t = Text::new("en");
         let mut warnings = Vec::new();
@@ -487,6 +617,7 @@ mod tests {
         };
         assert_eq!(console("base = \"color\"\n", &mut warnings), "gbc");
         assert_eq!(console("base = \"pocket\"\n", &mut warnings), "dmg");
+        assert_eq!(console("base = \"clear\"\n", &mut warnings), "gbc");
         assert_eq!(
             console("base = \"pocket\"\nconsole = \"gbc\"\n", &mut warnings),
             "gbc"

@@ -2,15 +2,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
 import type { Translate } from "./format";
-import type { Background, Console, Library } from "./types";
+import type { Background, Console, Library, Sheen } from "./types";
 import Icon from "./Icon";
 import {
+  BASE_SHEENS,
   BODY_COLORS,
   TOKENS,
   forgetImage,
   isColor,
   joinColor,
   paletteColors,
+  sheenGradient,
   splitColor,
   type Draft,
 } from "./theme";
@@ -37,6 +39,8 @@ const setting = "grid grid-cols-[72px_1fr_44px] items-center gap-2 text-xs text-
 const choice = "flex items-center justify-between gap-1.5 text-left data-popup-open:border-accent";
 const FITS: Background["fit"][] = ["cover", "contain", "tile"];
 const CONSOLES: Console[] = ["dmg", "gbc"];
+/** The most colours a sheen may run through (as in themes.rs). */
+const MAX_SHEEN_COLORS = 8;
 const mono = "font-[ui-monospace,'Cascadia_Mono',Consolas,monospace] text-xs";
 
 export default function ThemeEditor({
@@ -133,7 +137,7 @@ export default function ThemeEditor({
     setSaving(true);
     setError(null);
     try {
-      await api.saveTheme(draft.name, draft.base, draft.colors, draft.background, draft.console);
+      await api.saveTheme(draft);
       onClose();
     } catch (e) {
       setError(String(e));
@@ -292,6 +296,13 @@ export default function ThemeEditor({
           </div>
         </section>
 
+        <SheenSection
+          t={t}
+          sheen={draft.sheen}
+          base={BASE_SHEENS[draft.base] ?? null}
+          onChange={(sheen) => setDraft({ ...draft, sheen })}
+        />
+
         <section className="flex flex-col gap-1.5">
           <h3 className={heading}>{t("theme_colors")}</h3>
           <div className="flex flex-col gap-1">
@@ -376,5 +387,106 @@ export default function ThemeEditor({
         </div>
       </div>
     </aside>
+  );
+}
+
+/** The sheen over the accent's fills: its colours (each a swatch), its angle, none, or back to
+ * the base's (`sheen` is then `null`). */
+function SheenSection({
+  t,
+  sheen,
+  base,
+  onChange,
+}: {
+  t: Translate;
+  sheen: Sheen | null;
+  /** The base palette's sheen, if it has one. */
+  base: Sheen | null;
+  onChange: (sheen: Sheen | null) => void;
+}) {
+  const shown = sheen ?? base ?? { colors: [], angle: 115 };
+  const colors = shown.colors;
+  const setColors = (colors: string[]) => onChange({ ...shown, colors });
+  return (
+    <section className="flex flex-col gap-1.5">
+      <h3 className={heading}>{t("theme_sheen")}</h3>
+      <div
+        className="grid h-6 place-items-center rounded-[7px] border border-line text-xs text-muted"
+        style={{ background: colors.length > 0 ? sheenGradient(shown) : undefined }}
+      >
+        {colors.length === 0 && t("theme_sheen_none")}
+      </div>
+      {colors.length > 0 ? (
+        <>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {colors.map((color, i) => {
+              const parts = splitColor(color);
+              return (
+                <div key={i} className="flex items-center">
+                  <ColorPicker
+                    hex={parts.hex}
+                    onChange={(hex) =>
+                      setColors(colors.map((c, j) => (j === i ? joinColor(hex, parts.alpha) : c)))
+                    }
+                    label={t("theme_sheen_color", { n: i + 1 })}
+                  />
+                  <Tip text={t("theme_sheen_remove")}>
+                    <button
+                      className={`${iconButton} size-[18px]`}
+                      onClick={() => setColors(colors.filter((_, j) => j !== i))}
+                      aria-label={t("theme_sheen_remove")}
+                    >
+                      <Icon name="close" size={12} />
+                    </button>
+                  </Tip>
+                </div>
+              );
+            })}
+            {colors.length < MAX_SHEEN_COLORS && (
+              <Tip text={t("theme_sheen_add")}>
+                <button
+                  className={`${iconButton} size-[26px]`}
+                  onClick={() => setColors([...colors, colors[colors.length - 1]])}
+                  aria-label={t("theme_sheen_add")}
+                >
+                  <Icon name="plus" size={16} />
+                </button>
+              </Tip>
+            )}
+          </div>
+          <div className={setting}>
+            <span>{t("theme_sheen_angle")}</span>
+            <Slider
+              value={shown.angle}
+              max={360}
+              step={5}
+              onChange={(angle) => onChange({ ...shown, angle })}
+              label={t("theme_sheen_angle")}
+            />
+            <span className="num text-right">{shown.angle}°</span>
+          </div>
+        </>
+      ) : (
+        // Starts from the pearly one of Clear, to change from there.
+        <button
+          className={`${smallButton} self-start`}
+          onClick={() => onChange(structuredClone(BASE_SHEENS.clear))}
+        >
+          {t("theme_sheen_add_sheen")}
+        </button>
+      )}
+      <div className="flex items-center gap-1.5">
+        <button
+          className={smallButton}
+          onClick={() => onChange({ ...shown, colors: [] })}
+          disabled={colors.length === 0}
+        >
+          {t("theme_sheen_none")}
+        </button>
+        <button className={smallButton} onClick={() => onChange(null)} disabled={sheen === null}>
+          {t("theme_reset")}
+        </button>
+      </div>
+    </section>
   );
 }

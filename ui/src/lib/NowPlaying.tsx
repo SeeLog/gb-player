@@ -59,9 +59,9 @@ export default memo(function NowPlaying({ library, t }: { library: Library; t: T
           <Switch.Root
             checked={library.autoNext}
             onCheckedChange={(on) => api.setAutoNext(on)}
-            className="flex h-5 w-[34px] flex-none rounded-[10px] border border-line bg-panel-2 p-[2px] transition-colors data-checked:border-accent data-checked:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent motion-reduce:transition-none"
+            className="flex h-5 w-[34px] flex-none rounded-[10px] border border-line bg-panel-2 p-[2px] transition-colors data-checked:border-[var(--accent-edge,var(--accent))] data-checked:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent motion-reduce:transition-none"
           >
-            <Switch.Thumb className="size-3.5 rounded-full bg-muted transition-[translate,background-color] data-checked:translate-x-3.5 data-checked:bg-accent-ink motion-reduce:transition-none" />
+            <Switch.Thumb className="size-3.5 rounded-full bg-muted transition-[translate,background-color] data-checked:translate-x-3.5 data-checked:bg-[var(--knob-on,var(--accent-ink))] data-checked:shadow-[0_1px_2px_rgba(0,0,0,0.3)] motion-reduce:transition-none" />
           </Switch.Root>
           <span>{t("auto_next")}</span>
         </label>
@@ -177,7 +177,7 @@ const BAR = {
     mark: "-top-1 -bottom-1 rounded-[1px] bg-text opacity-60",
     fill: "rounded bg-accent",
     thumb:
-      "size-3.5 rounded-full bg-text shadow-[0_0_0_3px_color-mix(in_srgb,var(--accent)_40%,transparent)]",
+      "size-3.5 rounded-full bg-knob shadow-[0_0_0_3px_color-mix(in_srgb,var(--accent-edge,var(--accent))_40%,transparent),0_1px_3px_rgba(0,0,0,0.3)]",
     empty: "bg-panel-2",
     analysing: "bg-[repeating-linear-gradient(-45deg,var(--panel-2)_0_6px,var(--line)_6px_12px)]",
     lap: "gap-1 rounded-[10px] bg-accent/18 px-[7px] py-px text-accent",
@@ -371,7 +371,9 @@ function Transport({ t }: { t: Translate }) {
   );
 }
 
-// The meters are moved straight from animation frames (scaleX / translateX), with a slowly
+// The meters run from accent-2 to accent, or between --meter-start and --meter-end where a
+// palette sets them (clear: pale mint to emerald, its accent being for text). The tip shows the
+// end colour, so that is the stronger one. They are moved straight from animation frames (scaleX / translateX), with a slowly
 // falling peak marker, so the channel buttons themselves render only when mute changes.
 function Channels({ library, t }: { library: Library; t: Translate }) {
   const levels = useRef<(HTMLSpanElement | null)[]>([]);
@@ -425,7 +427,7 @@ function Channels({ library, t }: { library: Library; t: Translate }) {
                 <span className="flex items-center gap-[7px] text-xs font-semibold">
                   <span
                     className={`size-2 rounded-full ${
-                      muted ? "bg-faint" : "bg-accent shadow-[0_0_6px_var(--accent)]"
+                      muted ? "bg-faint" : "bg-accent shadow-[0_0_6px_var(--accent-edge,var(--accent))]"
                     }`}
                   />
                   <span className={`flex-1 ${muted ? "line-through" : ""}`}>{t(key)}</span>
@@ -439,7 +441,7 @@ function Channels({ library, t }: { library: Library; t: Translate }) {
                     ref={(el) => {
                       levels.current[ch] = el;
                     }}
-                    className="absolute inset-0 origin-left bg-[linear-gradient(90deg,var(--accent-2),var(--accent))] transition-transform duration-[60ms] ease-linear"
+                    className="absolute inset-0 origin-left bg-[linear-gradient(90deg,var(--meter-start,var(--accent-2)),var(--meter-end,var(--accent)))] transition-transform duration-[60ms] ease-linear"
                     style={{ transform: "scaleX(0)" }}
                   />
                   <span

@@ -146,10 +146,13 @@ pub fn run(initial_rom: Option<PathBuf>, language: Option<String>) {
                 // The window starts hidden (see tauri.conf.json), so the full window does not
                 // flash up before it becomes the mini player.
                 if let Some(window) = handle.get_webview_window("main") {
-                    if s.mini().on {
-                        if let Err(e) = mini::show_mini(&window, s.mini()) {
-                            eprintln!("{e}");
-                        }
+                    let shaped = if s.mini().on {
+                        mini::show_mini(&window, s.mini())
+                    } else {
+                        mini::check_full(&window, s.mini())
+                    };
+                    if let Err(e) = shaped {
+                        eprintln!("{e}");
                     }
                     let _ = window.show();
                 }

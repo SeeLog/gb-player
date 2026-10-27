@@ -159,7 +159,7 @@ export default memo(function SongList({
             <button
               key={song.index}
               className={`grid w-full grid-cols-[44px_minmax(0,1fr)_auto] items-center gap-2 rounded-lg px-2.5 py-[7px] text-left ${
-                active ? "bg-[color-mix(in_srgb,var(--accent)_14%,var(--panel))]" : "hover:bg-panel"
+                active ? "bg-playing" : "hover:bg-hover"
               }`}
               data-index={song.index}
               role="option"
@@ -178,7 +178,7 @@ export default memo(function SongList({
                 )}
               </span>
               <span
-                className={`truncate ${active ? "font-semibold text-accent" : ""}`}
+                className={`truncate ${active ? "font-semibold text-[color:var(--row-text,var(--accent))]" : ""}`}
               >
                 {song.title}
               </span>

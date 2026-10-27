@@ -17,7 +17,7 @@ import Icon from "./Icon";
 import Marquee from "./Marquee";
 import { Progress, useSong } from "./NowPlaying";
 import Scope from "./Scope";
-import { paletteColors, splitColor } from "./theme";
+import { contrast, paletteColors, splitColor } from "./theme";
 import Tip from "./Tip";
 import { tickStore, useTick } from "./tick";
 
@@ -40,10 +40,17 @@ type Model = Console;
 export default function MiniPlayer({ library, t }: { library: Library; t: Translate }) {
   const theme = library.themes.find((th) => th.id === library.theme);
   const model: Model = theme?.console ?? "dmg";
-  // Whether the shell is see-through, so the insides show.
-  const clear = useMemo(() => {
-    if (!theme) return false;
-    return splitColor(theme.colors.shell ?? paletteColors(theme.base).shell).alpha < 1;
+  // Whether the shell is see-through, so the insides show, and the colour of the logo on the
+  // colour model's dark frame: the accent, or the second one when the accent is too dark to show.
+  const { clear, logo } = useMemo(() => {
+    if (!theme) return { clear: false, logo: "var(--accent)" };
+    const palette = paletteColors(theme.base);
+    const color = (token: string) => theme.colors[token] ?? palette[token];
+    return {
+      clear: splitColor(color("shell")).alpha < 1,
+      logo:
+        contrast(color("accent"), color("shell-frame")) >= 3 ? "var(--accent)" : "var(--accent-2)",
+    };
   }, [theme]);
   // Kept here as in NowPlaying: the Rust side does not send the library back for the volume.
   const [volume, setVolume] = useState(library.volume);
@@ -88,7 +95,14 @@ export default function MiniPlayer({ library, t }: { library: Library; t: Transl
       />
       <div className="relative flex h-full flex-col px-4 pt-1 pb-3">
         <TopEdge library={library} t={t} model={model} />
-        <Screen library={library} t={t} volume={volume} flash={flash} model={model} />
+        <Screen
+          library={library}
+          t={t}
+          volume={volume}
+          flash={flash}
+          model={model}
+          logo={logo}
+        />
         {model === "dmg" && (
           <div className="mt-2 pl-1 text-[17px] font-bold tracking-tight italic">GB Player</div>
         )}
@@ -124,9 +138,12 @@ export default function MiniPlayer({ library, t }: { library: Library; t: Transl
   );
 }
 
-// The rubber under the keys, seen through a clear shell of the colour model.
-const RUBBER = "bg-[#b4e2da] shadow-[inset_0_1px_3px_rgba(0,0,0,0.2)]";
-const RUBBER_SMALL = "bg-[#bccad2] shadow-[inset_0_1px_2px_rgba(0,0,0,0.25)]";
+// The rubber under the keys, seen through a clear shell of the colour model: the shell's colour
+// is laid over it, so a tinted shell tints it (faint under clear purple, mint under clear).
+const RUBBER =
+  "[background:linear-gradient(var(--shell),var(--shell)),#86d3c5] shadow-[inset_0_1px_3px_rgba(0,0,0,0.2)]";
+const RUBBER_SMALL =
+  "[background:linear-gradient(var(--shell),var(--shell)),#9fb6c4] shadow-[inset_0_1px_2px_rgba(0,0,0,0.25)]";
 
 /** What is inside the body, drawn only under a see-through shell: the board and the frame that
  * hold it, which fill the body all but a rim about 10px wide (where the desktop shows through), a
@@ -202,12 +219,15 @@ function Screen({
   volume,
   flash,
   model,
+  logo,
 }: {
   library: Library;
   t: Translate;
   volume: number;
   flash: string | null;
   model: Model;
+  /** The colour of "Player" in the colour model's logo. */
+  logo: string;
 }) {
   const song = useSong(library);
   const rom = useTick((tick) => tick?.rom ?? null);
@@ -296,7 +316,13 @@ function Screen({
       {!dmg && (
         <div className="mt-2.5 text-center text-[16px] font-bold tracking-tight">
           <span className="text-white/75">GB </span>
-          <span className="text-accent">Player</span>
+          {/* In the sheen where the palette has one (Clear). */}
+          <span
+            className="[background-image:var(--accent-sheen,none)] bg-clip-text [-webkit-text-fill-color:var(--sheen-text,currentColor)]"
+            style={{ color: logo }}
+          >
+            Player
+          </span>
         </div>
       )}
     </div>

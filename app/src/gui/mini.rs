@@ -13,6 +13,11 @@ const FULL_MIN: LogicalSize<f64> = LogicalSize {
     width: 760.0,
     height: 600.0,
 };
+/// The size of the full window when none was kept, as in `tauri.conf.json`.
+const FULL_SIZE: LogicalSize<f64> = LogicalSize {
+    width: 1040.0,
+    height: 760.0,
+};
 /// The mini player's size, which cannot be changed: it is drawn to fit.
 const MINI_SIZE: LogicalSize<f64> = LogicalSize {
     width: 288.0,
@@ -88,21 +93,45 @@ pub fn set<R: Runtime>(window: &WebviewWindow<R>, mini: &mut Mini, on: bool) -> 
     } else {
         remember(window, mini);
         mini.on = false;
-        window.set_always_on_top(false)?;
-        window.set_max_size(None::<LogicalSize<f64>>)?;
-        window.set_min_size(Some(FULL_MIN))?;
-        window.set_resizable(true)?;
-        window.set_maximizable(true)?;
-        window.set_shadow(true)?;
-        if let Some(full) = mini.full {
-            window.set_size(PhysicalSize::new(full.width, full.height))?;
-            place(window, &full)?;
-            if full.maximized {
-                window.maximize()?;
-            }
-        }
-        Ok(())
+        show_full(window, mini.full)
     }
+}
+
+/// Shape `window` as the full window again, at `full` when it was kept and at the default size
+/// otherwise. Every step is tried even when one fails, so the window is never left with the mini
+/// player's size; the first error is returned.
+pub fn show_full<R: Runtime>(window: &WebviewWindow<R>, full: Option<Bounds>) -> tauri::Result<()> {
+    let results = [
+        window.set_always_on_top(false),
+        window.set_max_size(None::<LogicalSize<f64>>),
+        window.set_min_size(Some(FULL_MIN)),
+        window.set_resizable(true),
+        window.set_maximizable(true),
+        window.set_shadow(true),
+        match full {
+            Some(b) => window
+                .set_size(PhysicalSize::new(b.width, b.height))
+                .and_then(|_| place(window, &b)),
+            None => window.set_size(FULL_SIZE),
+        },
+        match full {
+            Some(b) if b.maximized => window.maximize(),
+            _ => Ok(()),
+        },
+    ];
+    results.into_iter().collect()
+}
+
+/// Start the full window at a usable size if it is smaller than the full window may be, as when
+/// the mini player's size was left behind.
+pub fn check_full<R: Runtime>(window: &WebviewWindow<R>, mini: &Mini) -> tauri::Result<()> {
+    let size = window
+        .inner_size()?
+        .to_logical::<f64>(window.scale_factor()?);
+    if size.width < FULL_MIN.width || size.height < FULL_MIN.height {
+        show_full(window, mini.full)?;
+    }
+    Ok(())
 }
 
 /// Keep where the mini player is now, when it is the mini player.

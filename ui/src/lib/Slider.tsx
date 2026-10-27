@@ -47,7 +47,7 @@ export default function Slider({
           <Base.Indicator className="rounded-full bg-accent" />
           <Base.Thumb
             aria-label={label}
-            className={`rounded-full bg-text transition-transform group-hover:scale-115 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-accent motion-reduce:transition-none ${
+            className={`rounded-full bg-knob shadow-[0_1px_3px_rgba(0,0,0,0.3)] transition-transform group-hover:scale-115 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-accent motion-reduce:transition-none ${
               small ? "size-3" : "size-4"
             }`}
           />

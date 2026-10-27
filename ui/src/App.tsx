@@ -119,8 +119,8 @@ export default function App() {
   const theme = library?.themes.find((th) => th.id === library.theme);
   // Before paint, so a theme change is in place for the fade (see showLibrary).
   useLayoutEffect(() => {
-    if (draft) applyTheme(draft.base, draft.colors);
-    else if (theme) applyTheme(theme.base, theme.colors);
+    if (draft) applyTheme(draft.base, draft.colors, draft.sheen);
+    else if (theme) applyTheme(theme.base, theme.colors, theme.sheen);
   }, [draft, theme]);
 
   // The background image of the shown theme, loaded as a data: URL.
@@ -163,6 +163,7 @@ export default function App() {
       colors: { ...theme.colors },
       background: theme.background && { ...theme.background },
       console: theme.console,
+      sheen: theme.sheen && structuredClone(theme.sheen),
     });
   }
   const closeEditor = useCallback(() => setDraft(null), []);
@@ -273,7 +274,7 @@ export default function App() {
               className="flex flex-none items-center gap-2 font-bold tracking-[0.02em] whitespace-nowrap *:pointer-events-none"
             >
               <span
-                className="size-[22px] rounded-md [background:radial-gradient(circle_at_50%_50%,var(--accent)_0_5px,transparent_5.5px),var(--accent-ink)] shadow-[inset_0_0_0_2px_var(--accent)]"
+                className="size-[22px] rounded-md [background:radial-gradient(circle_at_50%_50%,var(--accent-edge,var(--accent))_0_5px,transparent_5.5px),var(--accent-sheen,linear-gradient(var(--accent-ink),var(--accent-ink)))] shadow-[inset_0_0_0_2px_var(--accent-edge,var(--accent))]"
                 aria-hidden="true"
               />
               <span>GB Player</span>

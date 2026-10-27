@@ -1,7 +1,7 @@
 // Applying themes to the page; the palettes themselves are in app.css and app/src/themes.rs.
 
 import { api } from "./api";
-import type { Background, Console } from "./types";
+import type { Background, Console, Sheen } from "./types";
 
 /** The colour tokens, the CSS custom properties without `--` (mirrors `TOKENS` in themes.rs). */
 export const TOKENS = [
@@ -29,7 +29,26 @@ export const TOKENS = [
   "shell-frame",
   "key",
   "key-ink",
+  "knob",
 ] as const;
+
+/** The sheens of the built-in palettes that have one (the others have none). */
+export const BASE_SHEENS: Record<string, Sheen> = {
+  // Pearly and iridescent: mint, aqua, lavender, pink and a little cream.
+  clear: { colors: ["#bdf3e4", "#b2e4f7", "#d2c8fb", "#f8cbe4", "#fbe7c6"], angle: 115 },
+};
+
+/** The sheen a theme shows: its own, or else its base's. */
+export function sheenOf(base: string, sheen: Sheen | null): Sheen | null {
+  const shown = sheen ?? BASE_SHEENS[base] ?? null;
+  return shown && shown.colors.length > 0 ? shown : null;
+}
+
+/** A sheen as a CSS gradient. */
+export function sheenGradient(sheen: Sheen): string {
+  const colors = sheen.colors.length === 1 ? [sheen.colors[0], sheen.colors[0]] : sheen.colors;
+  return `linear-gradient(${sheen.angle}deg, ${colors.join(", ")})`;
+}
 
 /** Ready-made colours for the mini player's body (shell, shell-ink, shell-frame, key, key-ink),
  * picked in the theme editor; the name is a key of the UI text. */
@@ -97,13 +116,32 @@ export const BODY_COLORS: { name: string; colors: Record<string, string> }[] = [
 ];
 
 /** Show `base` with `colors` laid over it, dropping the colours set before. */
-export function applyTheme(base: string, colors: Record<string, string>) {
+export function applyTheme(base: string, colors: Record<string, string>, sheen: Sheen | null) {
   const root = document.documentElement;
   root.dataset.palette = base;
   for (const token of TOKENS) {
     const value = colors[token];
     if (value) root.style.setProperty(`--${token}`, value);
     else root.style.removeProperty(`--${token}`);
+  }
+  // With a sheen, the accent's fills take it (see app.css), the switch's knob is the knob colour
+  // rather than the dark accent-ink, and the mini player's logo is drawn in it. The accent then
+  // only writes text: what else it marks (edges, the app's mark, rows under the pointer and
+  // playing) is in accent-2, lighter washes for the rows (about 1.17:1 and 1.31:1 in Clear), and
+  // the name on a playing or chosen row is in the plain text colour, which goes with the green.
+  const shown = sheenOf(base, sheen);
+  const withSheen: Record<string, string> = {
+    "--accent-sheen": shown ? sheenGradient(shown) : "",
+    "--sheen-text": "transparent",
+    "--knob-on": "var(--knob)",
+    "--accent-edge": "var(--accent-2)",
+    "--row-hover": "color-mix(in srgb, var(--accent-2) 17%, transparent)",
+    "--row-playing": "color-mix(in srgb, var(--accent-2) 29%, transparent)",
+    "--row-text": "var(--text)",
+  };
+  for (const [name, value] of Object.entries(withSheen)) {
+    if (shown) root.style.setProperty(name, value);
+    else root.style.removeProperty(name);
   }
 }
 
@@ -140,6 +178,20 @@ export function splitColor(color: string): { hex: string; alpha: number } {
   return { hex: "#" + [r, g, b].map(hex2).join(""), alpha: a ?? 1 };
 }
 
+/** The contrast ratio of two colours (their opacity left out), from 1 to 21. */
+export function contrast(a: string, b: string): number {
+  const luminance = (color: string) => {
+    const hex = splitColor(color).hex;
+    const [r, g, b] = [1, 3, 5].map((i) => {
+      const v = parseInt(hex.slice(i, i + 2), 16) / 255;
+      return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  const [x, y] = [luminance(a), luminance(b)].sort((p, q) => q - p);
+  return (x + 0.05) / (y + 0.05);
+}
+
 /** `#rrggbb`, or `#rrggbbaa` when `alpha` is below 1. */
 export function joinColor(hex: string, alpha: number): string {
   return alpha >= 1 ? hex : hex + hex2(alpha * 255);
@@ -161,6 +213,7 @@ export interface Draft {
   colors: Record<string, string>;
   background: Background | null;
   console: Console;
+  sheen: Sheen | null;
 }
 
 const images = new Map<string, Promise<string>>();

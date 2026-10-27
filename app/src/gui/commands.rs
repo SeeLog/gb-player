@@ -2,7 +2,6 @@
 //!
 //! [`Session`]: super::session::Session
 
-use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
@@ -14,7 +13,7 @@ use super::{emit_library, App};
 use super::{mini, playlists};
 use crate::i18n::Text;
 use crate::settings::Shuffle;
-use crate::themes::{self, Background};
+use crate::themes::{self, NewTheme};
 
 #[tauri::command]
 pub fn library(app: State<'_, App>) -> LibraryView {
@@ -357,14 +356,10 @@ pub fn set_theme(handle: AppHandle, app: State<'_, App>, theme: String) {
 pub fn save_theme(
     handle: AppHandle,
     app: State<'_, App>,
-    name: String,
-    base: String,
-    colors: BTreeMap<String, String>,
-    background: Option<Background>,
-    console: String,
+    theme: NewTheme,
 ) -> Result<String, String> {
     let mut s = app.lock();
-    let id = s.save_theme(&name, &base, colors, background, &console)?;
+    let id = s.save_theme(theme)?;
     emit_library(&handle, &s);
     Ok(id)
 }

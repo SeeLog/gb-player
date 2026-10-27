@@ -38,9 +38,9 @@ export default memo(function Sidebar({
 }) {
   const playingList = useTick((tick) => tick?.queue?.playlist ?? null);
   const playingRom = useTick((tick) => (tick?.state === "playing" ? tick.rom : null));
-  const on = "bg-[color-mix(in_srgb,var(--accent)_14%,var(--panel))] font-semibold text-accent";
+  const on = "bg-playing font-semibold text-[color:var(--row-text,var(--accent))]";
   const selected = (v: View) =>
-    view.kind === "playlist" && v.kind === "playlist" && v.id === view.id ? on : "hover:bg-panel";
+    view.kind === "playlist" && v.kind === "playlist" && v.id === view.id ? on : "hover:bg-hover";
 
   async function newPlaylist() {
     const id = await api.createPlaylist(
@@ -58,7 +58,7 @@ export default memo(function Sidebar({
         <span>{t("now_open")}</span>
         <Tip text={`${t("open_rom")} (Ctrl+O)`}>
           <button
-            className="grid size-6 place-items-center rounded-md text-muted hover:bg-panel hover:text-text"
+            className="grid size-6 place-items-center rounded-md text-muted hover:bg-hover hover:text-text"
             onClick={pickRom}
             aria-label={t("open_rom")}
           >
@@ -73,7 +73,7 @@ export default memo(function Sidebar({
           <div key={rom.id} data-rom-item={rom.id} className="group relative">
             <Tip text={rom.path}>
               <button
-                className={`${item} pr-8 ${view.kind === "rom" && rom.id === shownRom ? on : "hover:bg-panel"}`}
+                className={`${item} pr-8 ${view.kind === "rom" && rom.id === shownRom ? on : "hover:bg-hover"}`}
                 onClick={() => showRom(rom.id)}
               >
                 <span className="flex-1 truncate">{name}</span>
@@ -107,7 +107,7 @@ export default memo(function Sidebar({
         <span>{t("playlists")}</span>
         <Tip text={t("playlist_new")}>
           <button
-            className="grid size-6 place-items-center rounded-md text-muted hover:bg-panel hover:text-text"
+            className="grid size-6 place-items-center rounded-md text-muted hover:bg-hover hover:text-text"
             onClick={newPlaylist}
             aria-label={t("playlist_new")}
           >
