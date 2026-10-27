@@ -238,7 +238,8 @@
   --knob: #ffffff;
 }
 
-[data-palette="light"] {
+/* Daylight: a light, warm background with the first model's greens. */
+[data-palette="daylight"] {
   color-scheme: light;
   --backdrop: #ffffff;
   --bg: #ebe9df99;

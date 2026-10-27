@@ -16,12 +16,12 @@ pub const BUILTIN: [(&str, &str); 6] = [
     ("color", "Color"),
     ("prism", "Prism"),
     ("nebula", "Nebula"),
-    ("light", "Light"),
+    ("daylight", "Daylight"),
 ];
 
 /// Built-in palettes that were renamed, as (old id, new id): settings and theme files that name
 /// the old one get the new one.
-const RENAMED: [(&str, &str); 1] = [("clear", "prism")];
+const RENAMED: [(&str, &str); 2] = [("clear", "prism"), ("light", "daylight")];
 
 /// The id a palette has now, for one that may have been renamed.
 pub fn current_id(id: &str) -> &str {
@@ -636,6 +636,7 @@ mod tests {
         let old = parse(Path::new("x.toml"), "base = \"clear\"\n", &t, &mut warnings).unwrap();
         assert_eq!((old.base.as_str(), old.console.as_str()), ("prism", "gbc"));
         assert_eq!(current_id("clear"), "prism");
+        assert_eq!(current_id("light"), "daylight");
         assert_eq!(current_id("color"), "color");
         assert_eq!(
             console("base = \"pocket\"\nconsole = \"gbc\"\n", &mut warnings),
