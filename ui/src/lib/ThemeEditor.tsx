@@ -18,7 +18,7 @@ import ColorPicker from "./ColorPicker";
 import Select from "./Select";
 import Slider from "./Slider";
 
-const heading = "mb-0.5 text-[11px] font-bold tracking-[0.08em] uppercase text-faint";
+const heading = "mb-0.5 text-xs font-bold tracking-[0.08em] uppercase text-muted";
 // Class lists are combined only where they set different properties, so no utility overrides
 // another.
 const fieldBase =

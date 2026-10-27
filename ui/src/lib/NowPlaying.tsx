@@ -20,7 +20,7 @@ const CHANNELS = ["channel_pulse1", "channel_pulse2", "channel_wave", "channel_n
 const LOOP_COUNTS: (number | null)[] = [null, 1, 2, 3];
 const SHUFFLES: Shuffle[] = ["off", "list", "all"];
 
-const label = "text-[11px] font-bold tracking-[0.08em] uppercase text-faint";
+const label = "text-xs font-bold tracking-[0.08em] uppercase text-muted";
 const round =
   "grid size-[42px] place-items-center rounded-full border border-line bg-panel-2 text-text hover:border-faint";
 

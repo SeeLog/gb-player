@@ -35,11 +35,16 @@
 
 :root {
   --radius: 10px;
-  --font: "Segoe UI Variable", "Segoe UI", "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
+  /* Segoe UI has no Japanese, so kana and kanji come from the next one: BIZ UDPGothic stays clear
+     at small sizes, where Yu Gothic UI is thin (it and Meiryo are left for Windows without it). */
+  --font: "Segoe UI Variable", "Segoe UI", "BIZ UDPGothic", "Yu Gothic UI", "Meiryo", system-ui,
+    sans-serif;
 }
 
 /* Built-in palettes, picked with data-palette on <html> ("dmg" by default). Not tied to
    :root, so the theme editor can read a palette's colours from a probe element.
+   Every text colour (muted and faint too, and accent in the light one) reads at 4.5:1 or more
+   over panel-2 as it is drawn, the WCAG level for small text.
    Layers from the back: --backdrop (or the theme's background image instead), then --bg, then
    the panels. bg and the panels are translucent so an image shows through; over the backdrop
    they add up to the same colours as fully opaque ones would. */
@@ -53,7 +58,7 @@
   --line: #26392a;
   --text: #dbe8c8;
   --muted: #8fa886;
-  --faint: #6b8765;
+  --faint: #7a9472;
   --accent: #9bbc0f;
   --accent-2: #8bac0f;
   --accent-ink: #0f380f;
@@ -76,7 +81,7 @@
   --line: #2f3337;
   --text: #e6e7e8;
   --muted: #9a9fa5;
-  --faint: #7a8188;
+  --faint: #868c93;
   --accent: #a9b89a;
   --accent-2: #94a385;
   --accent-ink: #1e231a;
@@ -99,7 +104,7 @@
   --line: #2b3060;
   --text: #e8e9f5;
   --muted: #a0a4c8;
-  --faint: #7a7faa;
+  --faint: #858ab2;
   --accent: #f8d030;
   --accent-2: #d0407f;
   --accent-ink: #2a2100;
@@ -122,8 +127,8 @@
   --line: #d4d1c6;
   --text: #1f241c;
   --muted: #535b4e;
-  --faint: #6e7568;
-  --accent: #5a7d0a;
+  --faint: #61685c;
+  --accent: #517009;
   --accent-2: #4b6a08;
   --accent-ink: #ffffff;
   --lcd-hi: #a9c923;

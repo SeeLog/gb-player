@@ -12,7 +12,7 @@ import Tip from "./Tip";
 /** What the middle column shows: the songs of the shown ROM, or a playlist by id. */
 export type View = { kind: "rom" } | { kind: "playlist"; id: string };
 
-const label = "px-2.5 text-[11px] font-bold tracking-[0.08em] uppercase text-faint";
+const label = "px-2.5 text-xs font-bold tracking-[0.08em] uppercase text-muted";
 const item = "flex w-full items-center gap-2 rounded-lg px-2.5 py-[7px] text-left";
 
 export default memo(function Sidebar({
