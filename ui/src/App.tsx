@@ -3,7 +3,9 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { api, onLibrary, onTick, previous } from "./lib/api";
 import { translator } from "./lib/format";
 import type { Library } from "./lib/types";
+import ContextMenu, { type MenuState } from "./lib/ContextMenu";
 import Icon from "./lib/Icon";
+import { menuFor, wantsNativeMenu } from "./lib/menus";
 import SongList from "./lib/SongList";
 import NowPlaying from "./lib/NowPlaying";
 import ThemeEditor from "./lib/ThemeEditor";
@@ -86,6 +88,25 @@ export default function App() {
     });
   }
   const closeEditor = useCallback(() => setDraft(null), []);
+
+  // Our right-click menu in place of the WebView's. Shift+right-click in a dev build still gives
+  // the WebView's, for Inspect.
+  const [menu, setMenu] = useState<MenuState | null>(null);
+  const closeMenu = useCallback(() => setMenu(null), []);
+  const latest = useRef({ library, t });
+  latest.current = { library, t };
+  useEffect(() => {
+    const onContextMenu = async (e: MouseEvent) => {
+      const target = e.target as Element;
+      if ((import.meta.env.DEV && e.shiftKey) || wantsNativeMenu(target)) return;
+      e.preventDefault();
+      if (target.closest('[role="menu"]')) return;
+      const items = await menuFor(target, latest.current.library, latest.current.t);
+      setMenu(items && { x: e.clientX, y: e.clientY, items });
+    };
+    document.addEventListener("contextmenu", onContextMenu);
+    return () => document.removeEventListener("contextmenu", onContextMenu);
+  }, []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -252,6 +273,8 @@ export default function App() {
             onClose={closeEditor}
           />
         )}
+
+        {menu && <ContextMenu menu={menu} onClose={closeMenu} />}
 
         {dragging && (
           <div className="pointer-events-none fixed inset-0 grid place-items-center bg-[color-mix(in_srgb,var(--backdrop)_75%,transparent)]">
