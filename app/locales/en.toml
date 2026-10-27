@@ -5,7 +5,7 @@
 usage = """usage:
   gb-player [--lang <code>] [rom]
   gb-player [--lang <code>] --info <rom>
-  gb-player [--lang <code>] --wav <rom> <song#> <out.wav> [loops]"""
+  gb-player [--lang <code>] --wav <rom> <song#> <out.wav> [loops] [line|gbc-speaker]"""
 info_loops = "intro {intro}s, loop {loop}s"
 info_ends = "ends at {at}s"
 info_unknown = "no loop found"
@@ -16,6 +16,7 @@ err_song_number = "song# must be a number"
 err_song_start = "song# starts at 1"
 err_no_song = "no such song"
 err_loops = "loops must be a number"
+err_profile = "the output must be line or gbc-speaker"
 err_playback = "playback failed: {error}"
 
 # Window
@@ -104,6 +105,12 @@ shuffle_all = "All ROMs"
 shuffle_all_hint = "Mix the songs of every open ROM (of the playlist, while one is playing). Every song plays once before any plays again"
 loop_lap = "loop {n}"
 volume = "Volume"
+output = "Output"
+output_line = "Line"
+output_line_hint = "The sound chip's output as it is"
+output_gbcSpeaker = "GBC speaker"
+output_gbcSpeaker_hint = "As heard from a Game Boy Color's own speaker (measured on a real one; mono)"
+speaker_noise = "Play the console's own noise too"
 channel_pulse1 = "Pulse 1"
 channel_pulse2 = "Pulse 2"
 channel_wave = "Wave"

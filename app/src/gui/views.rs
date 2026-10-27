@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use gb_music::{frames_to_secs, SongLength};
+use gb_music::{frames_to_secs, Profile, SongLength};
 use serde::{Deserialize, Serialize};
 
 use crate::settings::Shuffle;
@@ -97,6 +97,8 @@ pub struct LibraryView {
     pub auto_next: bool,
     pub shuffle: Shuffle,
     pub volume: f32,
+    pub profile: Profile,
+    pub speaker_noise: bool,
     /// The volume of each channel, from 0 to 1.
     pub channel_volumes: [f32; 4],
     pub muted: [bool; 4],

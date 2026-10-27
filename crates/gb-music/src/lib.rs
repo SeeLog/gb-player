@@ -5,6 +5,7 @@
 pub mod analysis;
 pub mod config;
 pub mod driver;
+pub mod effects;
 pub mod gbs;
 pub mod length;
 pub mod pattern;
@@ -15,6 +16,7 @@ pub mod songdb;
 
 pub use analysis::{analyze, ANALYSIS_FRAMES};
 pub use driver::{Driver, Engine, Song};
+pub use effects::Profile;
 pub use gb_core::read_rom;
 pub use length::{frames_to_secs, SongLength, FRAME_RATE};
 pub use player::{LoadError, PlayState, Player, Seek};

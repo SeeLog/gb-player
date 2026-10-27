@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use gb_music::Song;
+use gb_music::{Profile, Song};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -15,6 +15,10 @@ pub struct Settings {
     pub channel_volumes: [f32; 4],
     /// Loops before fading out; `None` loops forever.
     pub loop_count: Option<u32>,
+    /// Where the sound comes out: the line out, or a console's speaker.
+    pub profile: Profile,
+    /// Whether the speaker plays the console's own noise too.
+    pub speaker_noise: bool,
     /// Whether a finished song is followed by the next one.
     pub auto_next: bool,
     pub shuffle: Shuffle,
@@ -123,6 +127,8 @@ impl Default for Settings {
             volume: 0.8,
             channel_volumes: [1.0; 4],
             loop_count: None,
+            profile: Profile::Line,
+            speaker_noise: true,
             auto_next: true,
             shuffle: Shuffle::Off,
             theme: "dmg".into(),
@@ -179,6 +185,8 @@ mod tests {
             volume: 0.5,
             channel_volumes: [1.0, 0.5, 0.25, 0.0],
             loop_count: Some(2),
+            profile: Profile::GbcSpeaker,
+            speaker_noise: false,
             auto_next: false,
             shuffle: Shuffle::All,
             theme: "custom:night".into(),
@@ -222,6 +230,8 @@ mod tests {
         assert_eq!(partial.volume, 0.25);
         assert_eq!(partial.channel_volumes, [1.0; 4]);
         assert_eq!(partial.loop_count, None);
+        assert_eq!(partial.profile, Profile::Line);
+        assert!(partial.speaker_noise);
         assert!(partial.auto_next);
         assert_eq!(partial.theme, "dmg");
         let none = Settings::default();

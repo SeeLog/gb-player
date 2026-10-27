@@ -4,7 +4,7 @@
 usage = """使い方:
   gb-player [--lang <言語コード>] [rom]
   gb-player [--lang <言語コード>] --info <rom>
-  gb-player [--lang <言語コード>] --wav <rom> <曲番号> <出力.wav> [ループ回数]"""
+  gb-player [--lang <言語コード>] --wav <rom> <曲番号> <出力.wav> [ループ回数] [line|gbc-speaker]"""
 info_loops = "イントロ {intro}秒, ループ {loop}秒"
 info_ends = "{at}秒で終了"
 info_unknown = "ループ不明"
@@ -15,6 +15,7 @@ err_song_number = "曲番号は数字で指定してください"
 err_song_start = "曲番号は1から始まります"
 err_no_song = "その番号の曲はありません"
 err_loops = "ループ回数は数字で指定してください"
+err_profile = "出力先は line か gbc-speaker で指定してください"
 err_playback = "再生に失敗しました: {error}"
 
 # ウィンドウ
@@ -103,6 +104,12 @@ shuffle_all = "全ROM"
 shuffle_all_hint = "開いているROMすべての曲を混ぜる(プレイリストの再生中はそのプレイリストの曲)。全曲を一巡するまで同じ曲は出ません"
 loop_lap = "{n} 周目"
 volume = "音量"
+output = "出力"
+output_line = "ライン"
+output_line_hint = "音源の出力をそのまま鳴らす"
+output_gbcSpeaker = "GBCスピーカー"
+output_gbcSpeaker_hint = "ゲームボーイカラー本体のスピーカーから聞こえる音(実機で測った特性、モノラル)"
+speaker_noise = "本体のノイズも鳴らす"
 channel_pulse1 = "矩形波1"
 channel_pulse2 = "矩形波2"
 channel_wave = "波形メモリ"

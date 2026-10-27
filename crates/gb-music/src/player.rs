@@ -6,6 +6,7 @@ use std::sync::Arc;
 use gb_core::{CallError, CartridgeError, Machine};
 
 use crate::driver::{Driver, Song};
+use crate::effects::{Chain, Profile};
 use crate::gbs::{self, is_gbs, GbsError};
 use crate::length::{SongLength, FRAME_RATE};
 
@@ -110,7 +111,12 @@ pub struct Player {
     /// Number of times to play the looping part before fading out; `None` loops forever.
     pub loop_count: Option<u32>,
     pub fade_secs: f32,
+    /// Applied after the [`Profile`]'s effects, as the console's volume wheel comes after the
+    /// chip: turning it down makes everything quieter but changes nothing else.
     pub volume: f32,
+    profile: Profile,
+    noise: bool,
+    effects: Chain,
     paused: bool,
     buf: Vec<f32>,
     buf_pos: usize,
@@ -154,6 +160,9 @@ impl Player {
             loop_count: None,
             fade_secs: 8.0,
             volume: 0.8,
+            profile: Profile::Line,
+            noise: true,
+            effects: Chain::new(Profile::Line, sample_rate, true),
             paused: false,
             buf: Vec::new(),
             buf_pos: 0,
@@ -231,6 +240,20 @@ impl Player {
         std::mem::take(&mut self.levels)
     }
 
+    /// Where the sound comes out, and whether the console's own noise comes with it.
+    pub fn set_profile(&mut self, profile: Profile, noise: bool) {
+        if (profile, noise) == (self.profile, self.noise) {
+            return;
+        }
+        self.profile = profile;
+        self.noise = noise;
+        self.effects = Chain::new(profile, self.machine.mem.apu.sample_rate(), noise);
+    }
+
+    pub fn profile(&self) -> (Profile, bool) {
+        (self.profile, self.noise)
+    }
+
     pub fn play(&mut self, index: usize) {
         let Some(song) = self.driver.songs.get(index).cloned() else {
             return;
@@ -250,6 +273,7 @@ impl Player {
         self.paused = false;
         self.buf.clear();
         self.buf_pos = 0;
+        self.effects.reset();
         self.state = match self.driver.play(&mut self.machine, &song) {
             Ok(()) => PlayState::Playing,
             Err(e) => PlayState::Failed(e),
@@ -303,7 +327,8 @@ impl Player {
             self.state = PlayState::Failed(e);
             return;
         }
-        let samples = self.machine.mem.apu.take_samples();
+        let mut samples = self.machine.mem.apu.take_samples();
+        self.effects.process(&mut samples);
         let (g0, g1) = (
             self.gain_at(self.frame),
             self.gain_at(self.frame.saturating_add(1)),
@@ -447,6 +472,7 @@ impl Player {
         self.frame = seek.frame;
         self.buf.clear();
         self.buf_pos = 0;
+        self.effects.reset();
         self.state = PlayState::Playing;
     }
 
@@ -518,6 +544,25 @@ mod tests {
         let mut p = counting_player();
         run_frames(&mut p, frame);
         p.machine.state_hash()
+    }
+
+    #[test]
+    fn the_volume_comes_after_the_profile() {
+        let render = |volume: f32| {
+            let mut p = counting_player();
+            p.set_profile(Profile::GbcSpeaker, true);
+            p.volume = volume;
+            let mut out = vec![0.0f32; 9600];
+            p.render(&mut out);
+            out
+        };
+        // The toy song is silent, so all there is is the console's noise, from the speaker.
+        let (full, half) = (render(0.8), render(0.4));
+        assert!(full.iter().any(|&v| v != 0.0));
+        assert!(full.chunks(2).all(|f| f[0] == f[1]));
+        for (a, b) in full.iter().zip(&half) {
+            assert!((a * 0.5 - b).abs() < 1e-6);
+        }
     }
 
     #[test]

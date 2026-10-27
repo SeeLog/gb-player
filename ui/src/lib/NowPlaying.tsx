@@ -1,15 +1,15 @@
-// The right-hand panel: LCD with the oscilloscope, progress, transport, loop and shuffle
-// settings, volume and channels. It is split into small parts so that a tick only re-renders what it changes: the
+// The right-hand panel: LCD with the oscilloscope, progress, transport, loop, shuffle and
+// output settings, volume and channels. It is split into small parts so that a tick only re-renders what it changes: the
 // progress (position), the LCD and transport (song and state), and nothing else; the meters and
 // the oscilloscope update from animation frames.
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState, type ReactNode } from "react";
 import { Radio } from "@base-ui/react/radio";
 import { RadioGroup } from "@base-ui/react/radio-group";
 import { Slider } from "@base-ui/react/slider";
 import { Switch } from "@base-ui/react/switch";
 import { RESTART_AFTER, api, previous } from "./api";
 import { describe, fmtTime, type Translate } from "./format";
-import type { Length, Library, Shuffle, SongView } from "./types";
+import type { Length, Library, Profile, Shuffle, SongView } from "./types";
 import Icon from "./Icon";
 import Marquee from "./Marquee";
 import Scope from "./Scope";
@@ -20,6 +20,7 @@ import { tickStore, useTick } from "./tick";
 const CHANNELS = ["channel_pulse1", "channel_pulse2", "channel_wave", "channel_noise"];
 const LOOP_COUNTS: (number | null)[] = [null, 1, 2, 3];
 const SHUFFLES: Shuffle[] = ["off", "list", "all"];
+const PROFILES: Profile[] = ["line", "gbcSpeaker"];
 
 const label = "text-xs font-bold tracking-[0.08em] uppercase text-muted";
 const round =
@@ -55,16 +56,9 @@ export default memo(function NowPlaying({ library, t }: { library: Library; t: T
           value={library.loopCount}
           onChange={(n) => api.setLoopCount(n)}
         />
-        <label className="mt-1 flex cursor-pointer items-center gap-2.5 text-[13px] text-muted hover:text-text">
-          <Switch.Root
-            checked={library.autoNext}
-            onCheckedChange={(on) => api.setAutoNext(on)}
-            className="flex h-5 w-[34px] flex-none rounded-[10px] border border-line bg-panel-2 p-[2px] transition-colors data-checked:border-[var(--accent-edge,var(--accent))] data-checked:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent motion-reduce:transition-none"
-          >
-            <Switch.Thumb className="size-3.5 rounded-full bg-muted transition-[translate,background-color] data-checked:translate-x-3.5 data-checked:bg-[var(--knob-on,var(--accent-ink))] data-checked:shadow-[0_1px_2px_rgba(0,0,0,0.3)] motion-reduce:transition-none" />
-          </Switch.Root>
-          <span>{t("auto_next")}</span>
-        </label>
+        <Toggle checked={library.autoNext} onChange={(on) => api.setAutoNext(on)}>
+          {t("auto_next")}
+        </Toggle>
       </div>
 
       <div className="flex flex-col gap-2">
@@ -83,6 +77,29 @@ export default memo(function NowPlaying({ library, t }: { library: Library; t: T
           onChange={(mode) => api.setShuffle(mode)}
           small
         />
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <div className={label}>{t("output")}</div>
+        <Segmented
+          label={t("output")}
+          options={PROFILES.map((profile) => ({
+            value: profile,
+            text: t(`output_${profile}`),
+            title: t(`output_${profile}_hint`),
+          }))}
+          value={library.profile}
+          onChange={(profile) => api.setProfile(profile, library.speakerNoise)}
+          small
+        />
+        {library.profile !== "line" && (
+          <Toggle
+            checked={library.speakerNoise}
+            onChange={(on) => api.setProfile(library.profile, on)}
+          >
+            {t("speaker_noise")}
+          </Toggle>
+        )}
       </div>
 
       <div className="flex items-center gap-2.5 text-muted">
@@ -466,6 +483,30 @@ function Channels({ library, t }: { library: Library; t: Translate }) {
         );
       })}
     </div>
+  );
+}
+
+// A switch with its label beside it.
+function Toggle({
+  checked,
+  onChange,
+  children,
+}: {
+  checked: boolean;
+  onChange: (on: boolean) => void;
+  children: ReactNode;
+}) {
+  return (
+    <label className="mt-1 flex cursor-pointer items-center gap-2.5 text-[13px] text-muted hover:text-text">
+      <Switch.Root
+        checked={checked}
+        onCheckedChange={onChange}
+        className="flex h-5 w-[34px] flex-none rounded-[10px] border border-line bg-panel-2 p-[2px] transition-colors data-checked:border-[var(--accent-edge,var(--accent))] data-checked:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent motion-reduce:transition-none"
+      >
+        <Switch.Thumb className="size-3.5 rounded-full bg-muted transition-[translate,background-color] data-checked:translate-x-3.5 data-checked:bg-[var(--knob-on,var(--accent-ink))] data-checked:shadow-[0_1px_2px_rgba(0,0,0,0.3)] motion-reduce:transition-none" />
+      </Switch.Root>
+      <span>{children}</span>
+    </label>
   );
 }
 

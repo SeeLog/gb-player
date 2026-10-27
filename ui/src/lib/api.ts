@@ -2,7 +2,16 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { Background, Console, Library, Relink, Sheen, Shuffle, Tick } from "./types";
+import type {
+  Background,
+  Console,
+  Library,
+  Profile,
+  Relink,
+  Sheen,
+  Shuffle,
+  Tick,
+} from "./types";
 
 export const api = {
   library: () => invoke<Library>("library"),
@@ -40,6 +49,8 @@ export const api = {
   setAutoNext: (autoNext: boolean) => invoke<void>("set_auto_next", { autoNext }),
   setShuffle: (shuffle: Shuffle) => invoke<void>("set_shuffle", { shuffle }),
   setVolume: (volume: number) => invoke<void>("set_volume", { volume }),
+  setProfile: (profile: Profile, noise: boolean) =>
+    invoke<void>("set_profile", { profile, noise }),
   setChannelVolume: (channel: number, volume: number) =>
     invoke<void>("set_channel_volume", { channel, volume }),
   setMuted: (channel: number, muted: boolean) => invoke<void>("set_muted", { channel, muted }),

@@ -6,7 +6,9 @@ use std::path::{Path, PathBuf};
 use std::sync::PoisonError;
 
 use gb_music::songdb::{Names, LANGUAGES};
-use gb_music::{frames_to_secs, read_rom, Driver, PlayState, Player, Song, SongLength, FRAME_RATE};
+use gb_music::{
+    frames_to_secs, read_rom, Driver, PlayState, Player, Profile, Song, SongLength, FRAME_RATE,
+};
 
 use super::playlists::{self, Entry, Playlist};
 use super::shuffle::{Order, Rng};
@@ -300,6 +302,7 @@ impl Session {
             return false;
         };
         next.volume = self.settings.volume;
+        next.set_profile(self.settings.profile, self.settings.speaker_noise);
         for (ch, &m) in self.muted.iter().enumerate() {
             next.set_muted(ch, m);
             next.set_channel_volume(ch, self.settings.channel_volumes[ch]);
@@ -652,6 +655,13 @@ impl Session {
         self.with_player(|p| p.volume = volume);
     }
 
+    pub fn set_profile(&mut self, profile: Profile, noise: bool) {
+        self.settings.profile = profile;
+        self.settings.speaker_noise = noise;
+        self.with_player(|p| p.set_profile(profile, noise));
+        self.settings.save();
+    }
+
     pub fn set_channel_volume(&mut self, channel: usize, volume: f32) {
         let volume = volume.clamp(0.0, 1.0);
         self.settings.channel_volumes[channel] = volume;
@@ -732,6 +742,8 @@ impl Session {
             auto_next: self.settings.auto_next,
             shuffle: self.settings.shuffle,
             volume: self.settings.volume,
+            profile: self.settings.profile,
+            speaker_noise: self.settings.speaker_noise,
             channel_volumes: self.settings.channel_volumes,
             muted: self.muted,
             theme: if self.themes.iter().any(|t| t.id == self.settings.theme) {

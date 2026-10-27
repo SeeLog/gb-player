@@ -7,6 +7,8 @@ Game Boy / Game Boy Color のROM(.gb / .gbc)を読み込み、ゲーム自身の
 - ゲームの「曲を再生する関数」と「毎フレーム呼ばれる更新関数」をROM内から自動検出して呼び出す(GBS方式)
 - ループ点を自動解析し、無限ループ再生/N回ループ後フェードアウトして次の曲へ、を選択可能
 - チャンネルごとのミュートとレベルメーター、出力波形のオシロスコープ表示
+- 出力は「ライン」(音源の出力そのまま)と「GBCスピーカー」から選べる。GBCスピーカーは実機のゲームボーイカラーで測った
+  スピーカーの特性と、液晶などから漏れる本体のノイズ(オフにもできる)を再現したモノラルの音
 - 曲名とUIは日本語・英語に対応(OSの言語に合わせて自動選択、切り替え可)
 
 ## 対応ソフト
@@ -44,6 +46,7 @@ gb-player                                # GUIを起動(ROMは「ROMを開く…
 gb-player pokemon.gb                     # ROMを指定して起動(前回開いていたROMに加えて開く)
 gb-player --info pokemon.gb              # 検出結果と全曲のループ長を表示
 gb-player --wav pokemon.gb 1 out.wav 2   # 1曲目を2ループ+フェードでWAV出力
+gb-player --wav pokemon.gb 1 out.wav 2 gbc-speaker   # 同じく、GBCのスピーカーの音で
 gb-player --lang en pokemon.gb           # 言語を指定して起動(既定は前回選んだ言語かOSの言語。GUIの右上でも切り替え可)
 ```
 
@@ -51,7 +54,7 @@ gb-player --lang en pokemon.gb           # 言語を指定して起動(既定は
 
 GUIのキー操作: Space 再生/一時停止、← → 前/次の曲、Ctrl+O ROMを開く、Ctrl+F 検索、Ctrl+M ミニプレイヤーと切り替え。
 シークバーはクリックかドラッグで再生位置を動かせ、フォーカス中は ← → で5秒ずつ移動します。
-言語・音量・ループ・テーマの設定は `%APPDATA%\gb-player\settings.toml`(Linux/macOSは `~/.config/gb-player/settings.toml`)に保存されます。
+言語・音量・ループ・出力・テーマの設定は `%APPDATA%\gb-player\settings.toml`(Linux/macOSは `~/.config/gb-player/settings.toml`)に保存されます。
 ウィンドウの位置と大きさも次回の起動に引き継がれます。
 
 ROMはいくつでも同時に開けます(ファイル選択で複数選ぶか、まとめてドロップ)。開いたROMは左の「開いているROM」に並び、

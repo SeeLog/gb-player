@@ -1,7 +1,9 @@
 //! Command-line helpers for checking a ROM without the GUI.
 //!
 //!   gb-player --info <rom>                      list detected songs and their loop points
-//!   gb-player --wav <rom> <song#> <out.wav> [loops]   render a song to a WAV file
+//!   gb-player --wav <rom> <song#> <out.wav> [loops] [line|gbc-speaker]
+//!                                               render a song to a WAV file, from the line out
+//!                                               (the default) or a GBC's speaker
 //!
 //! `--lang <code>` before the command (handled in main.rs) picks the language of the output
 //! and the song names; the default is the OS language.
@@ -11,7 +13,9 @@ use std::io::Write;
 use std::path::Path;
 
 use gb_music::songdb::Names;
-use gb_music::{analyze, frames_to_secs, read_rom, PlayState, Player, SongLength, ANALYSIS_FRAMES};
+use gb_music::{
+    analyze, frames_to_secs, read_rom, PlayState, Player, Profile, SongLength, ANALYSIS_FRAMES,
+};
 
 use crate::i18n::Text;
 
@@ -25,7 +29,14 @@ pub fn run(args: &[OsString], language: &str) -> i32 {
     let t = Text::new(language);
     let result = match a.first().map(String::as_str) {
         Some("--info") if a.len() == 2 => info(&t, &a[1]),
-        Some("--wav") if a.len() >= 4 => wav(&t, &a[1], &a[2], &a[3], a.get(4).map(String::as_str)),
+        Some("--wav") if (4..=6).contains(&a.len()) => wav(
+            &t,
+            &a[1],
+            &a[2],
+            &a[3],
+            a.get(4).map(String::as_str),
+            a.get(5).map(String::as_str),
+        ),
         _ => Err(t.get("usage").to_string()),
     };
     match result {
@@ -91,8 +102,21 @@ fn info(t: &Text, path: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn wav(t: &Text, path: &str, song: &str, out: &str, loops: Option<&str>) -> Result<(), String> {
+fn wav(
+    t: &Text,
+    path: &str,
+    song: &str,
+    out: &str,
+    loops: Option<&str>,
+    profile: Option<&str>,
+) -> Result<(), String> {
+    let profile = match profile {
+        None | Some("line") => Profile::Line,
+        Some("gbc-speaker") => Profile::GbcSpeaker,
+        Some(_) => return Err(t.get("err_profile").to_string()),
+    };
     let (mut player, names) = load(t, path)?;
+    player.set_profile(profile, true);
     let index = song
         .parse::<usize>()
         .map_err(|_| t.get("err_song_number"))?

@@ -25,6 +25,8 @@ export interface RomView {
 /** What Next plays: the next song, a random one of the ROM (or the playlist being played), or a
  * random one of any open ROM (or of the playlist being played). */
 export type Shuffle = "off" | "list" | "all";
+/** Where the sound comes out: the line out, or a console's speaker. */
+export type Profile = "line" | "gbcSpeaker";
 
 export interface Theme {
   id: string;
@@ -91,6 +93,9 @@ export interface Library {
   autoNext: boolean;
   shuffle: Shuffle;
   volume: number;
+  profile: Profile;
+  /** Whether the speaker plays the console's own noise too. */
+  speakerNoise: boolean;
   /** The volume of each channel, from 0 to 1. */
   channelVolumes: [number, number, number, number];
   muted: [boolean, boolean, boolean, boolean];

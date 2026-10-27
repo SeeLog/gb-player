@@ -4,6 +4,7 @@
 
 use std::path::{Path, PathBuf};
 
+use gb_music::Profile;
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State, WebviewWindow};
 use tauri_plugin_dialog::DialogExt;
@@ -282,6 +283,13 @@ pub fn set_auto_next(handle: AppHandle, app: State<'_, App>, auto_next: bool) {
 #[tauri::command]
 pub fn set_volume(app: State<'_, App>, volume: f32) {
     app.lock().set_volume(volume);
+}
+
+#[tauri::command]
+pub fn set_profile(handle: AppHandle, app: State<'_, App>, profile: Profile, noise: bool) {
+    let mut s = app.lock();
+    s.set_profile(profile, noise);
+    emit_library(&handle, &s);
 }
 
 #[tauri::command]
