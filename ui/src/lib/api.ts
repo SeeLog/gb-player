@@ -7,8 +7,21 @@ import type { Background, Library, Tick } from "./types";
 export const api = {
   library: () => invoke<Library>("library"),
   openRom: (path: string) => invoke<void>("open_rom", { path }),
-  pickRom: () => invoke<void>("pick_rom"),
+  /** Resolves to whether a file was picked. */
+  pickRom: () => invoke<boolean>("pick_rom"),
   play: (index: number) => invoke<void>("play", { index }),
+  createPlaylist: (name: string, songs: number[]) =>
+    invoke<string>("create_playlist", { name, songs }),
+  renamePlaylist: (id: string, name: string) => invoke<void>("rename_playlist", { id, name }),
+  /** Asks first; resolves to whether it was deleted. */
+  deletePlaylist: (id: string, name: string) => invoke<boolean>("delete_playlist", { id, name }),
+  addToPlaylist: (id: string, songs: number[]) => invoke<void>("add_to_playlist", { id, songs }),
+  removeFromPlaylist: (id: string, positions: number[]) =>
+    invoke<void>("remove_from_playlist", { id, positions }),
+  moveInPlaylist: (id: string, from: number, to: number) =>
+    invoke<void>("move_in_playlist", { id, from, to }),
+  playEntry: (id: string, position: number) => invoke<boolean>("play_entry", { id, position }),
+  relinkEntry: (id: string, position: number) => invoke<void>("relink_entry", { id, position }),
   toggle: () => invoke<void>("toggle"),
   stop: () => invoke<void>("stop"),
   skip: (delta: number) => invoke<void>("skip", { delta }),

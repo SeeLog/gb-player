@@ -34,6 +34,23 @@ export interface Background {
   dim: number;
 }
 
+/** A song of a playlist, from any ROM. */
+export interface EntryView {
+  game: string;
+  title: string;
+  length: Length | null;
+  /** The ROM file. */
+  path: string;
+  /** Whether the ROM file is not there any more. */
+  missing: boolean;
+}
+
+export interface PlaylistView {
+  id: string;
+  name: string;
+  entries: EntryView[];
+}
+
 export interface Library {
   language: string;
   languages: { code: string; name: string }[];
@@ -49,6 +66,7 @@ export interface Library {
   /** The id of the chosen theme. */
   theme: string;
   themes: Theme[];
+  playlists: PlaylistView[];
   error: string | null;
 }
 
@@ -56,6 +74,8 @@ export type PlayState = "none" | "stopped" | "playing" | "paused" | "finished" |
 
 export interface Tick {
   current: number | null;
+  /** The playlist being played and the position in it. */
+  queue: { playlist: string; position: number } | null;
   state: PlayState;
   failure: string | null;
   /** Seconds since the song started. */

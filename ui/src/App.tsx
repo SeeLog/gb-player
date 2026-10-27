@@ -5,7 +5,9 @@ import { translator } from "./lib/format";
 import type { Library } from "./lib/types";
 import ContextMenu, { type MenuState } from "./lib/ContextMenu";
 import Icon from "./lib/Icon";
-import { menuFor, wantsNativeMenu } from "./lib/menus";
+import { menuFor, wantsNativeMenu, type MenuActions } from "./lib/menus";
+import PlaylistView from "./lib/PlaylistView";
+import Sidebar, { type View } from "./lib/Sidebar";
 import SongList from "./lib/SongList";
 import NowPlaying from "./lib/NowPlaying";
 import ThemeEditor from "./lib/ThemeEditor";
@@ -25,6 +27,20 @@ export default function App() {
   const t = useMemo(() => translator(library?.text ?? {}), [library?.text]);
   const hasRom = !!library && library.songs.length > 0;
 
+  // What the middle column shows; back to the ROM when the playlist shown is deleted.
+  const [view, setView] = useState<View>({ kind: "rom" });
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const shownList =
+    view.kind === "playlist" ? library?.playlists.find((l) => l.id === view.id) : undefined;
+  useEffect(() => {
+    if (library && view.kind === "playlist" && !shownList) setView({ kind: "rom" });
+  }, [library, view, shownList]);
+
+  /** Open a ROM the user picks, and show its songs. */
+  const pickRom = useCallback(() => {
+    api.pickRom().then((picked) => picked && setView({ kind: "rom" }));
+  }, []);
+
   useEffect(() => {
     const unlisten = [
       onLibrary(setLibrary),
@@ -33,7 +49,10 @@ export default function App() {
       getCurrentWebview().onDragDropEvent((e) => {
         const p = e.payload;
         setDragging(p.type === "enter" || p.type === "over");
-        if (p.type === "drop" && p.paths.length > 0) api.openRom(p.paths[0]);
+        if (p.type === "drop" && p.paths.length > 0) {
+          api.openRom(p.paths[0]);
+          setView({ kind: "rom" });
+        }
       }),
     ];
     api.library().then(setLibrary);
@@ -95,13 +114,23 @@ export default function App() {
   const closeMenu = useCallback(() => setMenu(null), []);
   const latest = useRef({ library, t });
   latest.current = { library, t };
+  const actions = useRef<MenuActions>({
+    showPlaylist: (id) => setView({ kind: "playlist", id }),
+    renamePlaylist: setRenaming,
+    pickRom,
+  });
   useEffect(() => {
     const onContextMenu = async (e: MouseEvent) => {
       const target = e.target as Element;
       if ((import.meta.env.DEV && e.shiftKey) || wantsNativeMenu(target)) return;
       e.preventDefault();
       if (target.closest('[role="menu"]')) return;
-      const items = await menuFor(target, latest.current.library, latest.current.t);
+      const items = await menuFor(
+        target,
+        latest.current.library,
+        latest.current.t,
+        actions.current,
+      );
       setMenu(items && { x: e.clientX, y: e.clientY, items });
     };
     document.addEventListener("contextmenu", onContextMenu);
@@ -114,7 +143,7 @@ export default function App() {
         e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement;
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "o") {
         e.preventDefault();
-        api.pickRom();
+        pickRom();
       } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
         e.preventDefault();
         search.current?.focus();
@@ -184,7 +213,7 @@ export default function App() {
             </div>
           )}
           <div data-tauri-drag-region className="flex-1 self-stretch" />
-          <button className={headerButton} onClick={() => api.pickRom()} title="Ctrl+O">
+          <button className={headerButton} onClick={pickRom} title="Ctrl+O">
             <Icon name="open" size={18} />
             <span>{t("open_rom")}</span>
           </button>
@@ -242,9 +271,32 @@ export default function App() {
           </div>
         )}
 
-        {library && hasRom ? (
-          <main className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_380px]">
-            <SongList library={library} t={t} search={search} />
+        {library && (hasRom || library.playlists.length > 0) ? (
+          <main className="grid min-h-0 flex-1 grid-cols-[200px_minmax(0,1fr)_380px]">
+            <Sidebar
+              library={library}
+              t={t}
+              view={view}
+              setView={setView}
+              renaming={renaming}
+              setRenaming={setRenaming}
+            />
+            {shownList ? (
+              <PlaylistView library={library} list={shownList} t={t} />
+            ) : hasRom ? (
+              <SongList library={library} t={t} search={search} />
+            ) : (
+              <div className="flex flex-col items-center justify-center gap-4 border-r border-line text-muted">
+                <p>{t("drop_hint")}</p>
+                <button
+                  className="flex items-center gap-2 rounded-[10px] bg-accent px-[18px] py-2.5 font-semibold text-accent-ink hover:brightness-108"
+                  onClick={pickRom}
+                >
+                  <Icon name="open" size={18} />
+                  <span>{t("open_rom")}</span>
+                </button>
+              </div>
+            )}
             <NowPlaying library={library} t={t} />
           </main>
         ) : (
@@ -256,7 +308,7 @@ export default function App() {
             <p>{t("drop_hint")}</p>
             <button
               className="flex items-center gap-2 rounded-[10px] bg-accent px-[18px] py-2.5 font-semibold text-accent-ink hover:brightness-108"
-              onClick={() => api.pickRom()}
+              onClick={pickRom}
             >
               <Icon name="open" size={18} />
               <span>{t("open_rom")}</span>

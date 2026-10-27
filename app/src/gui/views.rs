@@ -3,11 +3,11 @@
 use std::collections::HashMap;
 
 use gb_music::{frames_to_secs, SongLength};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::themes::Theme;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum LengthView {
     Loops { intro: f64, period: f64 },
@@ -44,6 +44,32 @@ pub struct LanguageView {
     pub name: &'static str,
 }
 
+/// A song of a playlist, with the names it had when it was added (or the current ones when
+/// its ROM is loaded).
+#[derive(Debug, Clone, Serialize)]
+pub struct EntryView {
+    pub game: String,
+    pub title: String,
+    pub length: Option<LengthView>,
+    pub path: String,
+    /// Whether the ROM file is not where the playlist says.
+    pub missing: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PlaylistView {
+    pub id: String,
+    pub name: String,
+    pub entries: Vec<EntryView>,
+}
+
+/// The playlist being played and the position in it.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct QueueView {
+    pub playlist: String,
+    pub position: usize,
+}
+
 /// Everything about the loaded ROM and the settings, sent when any of it changes.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -61,6 +87,7 @@ pub struct LibraryView {
     pub muted: [bool; 4],
     pub theme: String,
     pub themes: Vec<Theme>,
+    pub playlists: Vec<PlaylistView>,
     pub error: Option<String>,
 }
 
@@ -69,6 +96,8 @@ pub struct LibraryView {
 #[serde(rename_all = "camelCase")]
 pub struct TickView {
     pub current: Option<usize>,
+    /// Set while a playlist is playing.
+    pub queue: Option<QueueView>,
     /// `none` (no ROM), `stopped`, `playing`, `paused`, `finished` or `failed`.
     pub state: &'static str,
     pub failure: Option<String>,

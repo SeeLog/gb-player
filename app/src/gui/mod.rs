@@ -1,8 +1,9 @@
 //! The Tauri application: the audio output, the commands for the web UI in `ui/` and a
-//! ticker that streams the playback state to the UI. ROM loading and playlist handling live
-//! in [`session`].
+//! ticker that streams the playback state to the UI. ROM loading and playlists live in
+//! [`session`].
 
 mod commands;
+mod playlists;
 mod session;
 mod views;
 
@@ -95,6 +96,14 @@ pub fn run(initial_rom: Option<PathBuf>, language: Option<String>) {
             commands::open_rom,
             commands::pick_rom,
             commands::play,
+            commands::create_playlist,
+            commands::rename_playlist,
+            commands::delete_playlist,
+            commands::add_to_playlist,
+            commands::remove_from_playlist,
+            commands::move_in_playlist,
+            commands::play_entry,
+            commands::relink_entry,
             commands::toggle,
             commands::stop,
             commands::seek,
@@ -115,8 +124,9 @@ pub fn run(initial_rom: Option<PathBuf>, language: Option<String>) {
                 let app = handle.state::<App>();
                 let mut s = app.lock();
                 s.reload_themes();
+                s.reload_playlists();
                 if let Some(path) = initial_rom {
-                    s.load_rom(&path);
+                    s.open_rom(&path);
                 }
             }
             std::thread::spawn(move || loop {

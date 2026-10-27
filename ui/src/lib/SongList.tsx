@@ -93,7 +93,7 @@ export default memo(function SongList({
 });
 
 /** How long the song plays with the current loop setting, with the details on hover. */
-function Duration({
+export function Duration({
   t,
   length,
   loopCount,
