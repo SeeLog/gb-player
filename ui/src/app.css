@@ -155,6 +155,46 @@
   --knob: #e8e9f5;
 }
 
+/* Nebula: a night of deep violet and indigo with a sunset sheen (violet, magenta, orange, gold;
+   BASE_SHEENS in lib/theme.ts) over what the accent fills, as on a holo card; the dark
+   counterpart of Prism. Text in the accent is a pale pink; what else it marks (edges, meters,
+   rows, the app's mark) is in accent-2, a magenta, the meters ending in gold. The LCD is a pale
+   lavender, and the mini player's body clear purple. */
+[data-palette="nebula"] {
+  color-scheme: dark;
+  --backdrop: #0a0618;
+  --bg: #160f2e99;
+  --panel: #1b1338cc;
+  --panel-2: #241a47cc;
+  --line: #34275f;
+  --text: #efe8ff;
+  --muted: #b3a6dc;
+  --faint: #9e90cc;
+  --accent: #ffb0d6;
+  --accent-2: #d84bb5;
+  --accent-ink: #1b0f2e;
+  /* The meters run from the magenta to a gold, the gold at the tip. */
+  --meter-start: #d84bb5;
+  --meter-end: #ffb347;
+  --lcd-hi: #e6dffa;
+  --lcd: #d8cff2;
+  --lcd-lo: #c8bde8;
+  --lcd-ink: #21163f;
+  --lcd-grid: rgba(33, 22, 63, 0.15);
+  --bezel: #2c2257;
+  --overlay: rgba(255, 255, 255, 0.05);
+  --danger: #ff8a7a;
+  /* The body of the mini player (clear purple plastic), the frame around its screen, and its
+     A and B buttons. */
+  --shell: #6b4fb88f;
+  --shell-ink: #2c2244;
+  --shell-frame: #1f1d26;
+  --key: #34313c;
+  --key-ink: #d7d3e0;
+  /* The knobs of the sliders and switches. */
+  --knob: #f4eeff;
+}
+
 /* Prism: cool greys, white knobs, a silver LCD, and a pearly, iridescent sheen on what
    the accent fills (BASE_SHEENS in lib/theme.ts). Text in the accent is a deep sapphire, which
    reads on the panels; everything else the accent marks (edges, meters, rows, the app's mark) is

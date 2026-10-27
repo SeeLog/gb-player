@@ -36,6 +36,8 @@ export const TOKENS = [
 export const BASE_SHEENS: Record<string, Sheen> = {
   // Pearly and iridescent: mint, aqua, lavender, pink and a little cream.
   prism: { colors: ["#bdf3e4", "#b2e4f7", "#d2c8fb", "#f8cbe4", "#fbe7c6"], angle: 115 },
+  // A sunset: violet, magenta, orange and gold.
+  nebula: { colors: ["#a58bff", "#e36cc4", "#ff9a6b", "#ffd27a"], angle: 115 },
 };
 
 /** The sheen a theme shows: its own, or else its base's. */

@@ -10,11 +10,12 @@ use serde::{Deserialize, Serialize};
 use crate::i18n::Text;
 
 /// The built-in palettes as (id, name); the first is the default.
-pub const BUILTIN: [(&str, &str); 5] = [
+pub const BUILTIN: [(&str, &str); 6] = [
     ("dmg", "DMG"),
     ("pocket", "Pocket"),
     ("color", "Color"),
     ("prism", "Prism"),
+    ("nebula", "Nebula"),
     ("light", "Light"),
 ];
 
@@ -62,10 +63,10 @@ pub const TOKENS: [&str; 25] = [
 /// The consoles the mini player can be drawn as: the first model and the colour one.
 pub const CONSOLES: [&str; 2] = ["dmg", "gbc"];
 
-/// The console a theme without one is drawn as: the colour model for the color and prism
-/// palettes.
+/// The console a theme without one is drawn as: the colour model for the color, prism and
+/// nebula palettes.
 fn default_console(base: &str) -> String {
-    if matches!(base, "color" | "prism") {
+    if matches!(base, "color" | "prism" | "nebula") {
         "gbc"
     } else {
         "dmg"
@@ -630,6 +631,7 @@ mod tests {
         assert_eq!(console("base = \"color\"\n", &mut warnings), "gbc");
         assert_eq!(console("base = \"pocket\"\n", &mut warnings), "dmg");
         assert_eq!(console("base = \"prism\"\n", &mut warnings), "gbc");
+        assert_eq!(console("base = \"nebula\"\n", &mut warnings), "gbc");
         // A palette that was renamed is still found by its old name.
         let old = parse(Path::new("x.toml"), "base = \"clear\"\n", &t, &mut warnings).unwrap();
         assert_eq!((old.base.as_str(), old.console.as_str()), ("prism", "gbc"));
