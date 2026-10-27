@@ -2,7 +2,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { Background, Library, Shuffle, Tick } from "./types";
+import type { Background, Library, Relink, Shuffle, Tick } from "./types";
 
 export const api = {
   library: () => invoke<Library>("library"),
@@ -16,7 +16,8 @@ export const api = {
     invoke<string>("create_playlist", { name, rom: rom ?? "", songs }),
   renamePlaylist: (id: string, name: string) => invoke<void>("rename_playlist", { id, name }),
   /** Asks first; resolves to whether it was deleted. */
-  deletePlaylist: (id: string, name: string) => invoke<boolean>("delete_playlist", { id, name }),
+  /** Deletes at once: ask first (see actions.ts). */
+  deletePlaylist: (id: string) => invoke<void>("delete_playlist", { id }),
   addToPlaylist: (id: string, rom: string, songs: number[]) =>
     invoke<void>("add_to_playlist", { id, rom, songs }),
   removeFromPlaylist: (id: string, positions: number[]) =>
@@ -27,7 +28,10 @@ export const api = {
   /** The ROM whose songs are shown (or were, before the playlist), and the playlist shown. */
   setView: (rom: string | null, playlist: string | null) =>
     invoke<void>("set_view", { rom, playlist }),
-  relinkEntry: (id: string, position: number) => invoke<void>("relink_entry", { id, position }),
+  /** Lets the user pick the file; see actions.ts for the rest. */
+  relinkEntry: (id: string, position: number) => invoke<Relink>("relink_entry", { id, position }),
+  relinkEntryTo: (id: string, position: number, path: string) =>
+    invoke<Relink>("relink_entry_to", { id, position, path }),
   toggle: () => invoke<void>("toggle"),
   stop: () => invoke<void>("stop"),
   skip: (delta: number) => invoke<void>("skip", { delta }),
@@ -36,6 +40,8 @@ export const api = {
   setAutoNext: (autoNext: boolean) => invoke<void>("set_auto_next", { autoNext }),
   setShuffle: (shuffle: Shuffle) => invoke<void>("set_shuffle", { shuffle }),
   setVolume: (volume: number) => invoke<void>("set_volume", { volume }),
+  setChannelVolume: (channel: number, volume: number) =>
+    invoke<void>("set_channel_volume", { channel, volume }),
   setMuted: (channel: number, muted: boolean) => invoke<void>("set_muted", { channel, muted }),
   setTheme: (theme: string) => invoke<void>("set_theme", { theme }),
   saveTheme: (

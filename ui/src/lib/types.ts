@@ -77,6 +77,8 @@ export interface Library {
   autoNext: boolean;
   shuffle: Shuffle;
   volume: number;
+  /** The volume of each channel, from 0 to 1. */
+  channelVolumes: [number, number, number, number];
   muted: [boolean, boolean, boolean, boolean];
   /** The id of the chosen theme. */
   theme: string;
@@ -103,3 +105,11 @@ export interface Tick {
   levels: [number, number, number, number];
   scope: number[];
 }
+
+/** How pointing a playlist entry at a file went (see app/src/gui/commands.rs). */
+export type Relink =
+  | { kind: "done" }
+  | { kind: "cancelled" }
+  | { kind: "failed"; message: string }
+  /** A different ROM than the entry's: taken only once the user agrees. */
+  | { kind: "mismatch"; message: string; path: string };

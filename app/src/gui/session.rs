@@ -300,6 +300,7 @@ impl Session {
         next.volume = self.settings.volume;
         for (ch, &m) in self.muted.iter().enumerate() {
             next.set_muted(ch, m);
+            next.set_channel_volume(ch, self.settings.channel_volumes[ch]);
         }
         let old = self
             .player
@@ -649,6 +650,12 @@ impl Session {
         self.with_player(|p| p.volume = volume);
     }
 
+    pub fn set_channel_volume(&mut self, channel: usize, volume: f32) {
+        let volume = volume.clamp(0.0, 1.0);
+        self.settings.channel_volumes[channel] = volume;
+        self.with_player(|p| p.set_channel_volume(channel, volume));
+    }
+
     pub fn set_muted(&mut self, channel: usize, muted: bool) {
         self.muted[channel] = muted;
         self.with_player(|p| p.set_muted(channel, muted));
@@ -724,6 +731,7 @@ impl Session {
             auto_next: self.settings.auto_next,
             shuffle: self.settings.shuffle,
             volume: self.settings.volume,
+            channel_volumes: self.settings.channel_volumes,
             muted: self.muted,
             theme: if self.themes.iter().any(|t| t.id == self.settings.theme) {
                 self.settings.theme.clone()

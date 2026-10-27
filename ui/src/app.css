@@ -174,15 +174,9 @@
   }
 
   button:focus-visible,
-  input:focus-visible,
-  select:focus-visible {
+  input:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
-  }
-
-  select option {
-    /* Menus are drawn on their own, so give them a solid colour. */
-    background: var(--backdrop);
   }
 }
 
@@ -203,23 +197,21 @@
   background: transparent;
 }
 
-/* The volume slider: a filled track up to --v and a round thumb. */
-.volume-slider {
-  -webkit-appearance: none;
-  appearance: none;
-  height: 6px;
-  border-radius: 3px;
-  background: linear-gradient(90deg, var(--accent) var(--v), var(--panel-2) var(--v));
-  box-shadow: inset 0 0 0 1px var(--line);
-  cursor: pointer;
+/* The colour picker of the theme editor (react-colorful), sized to the panel and rounded like
+   the rest. */
+.color-picker.react-colorful {
+  width: 176px;
+  height: 150px;
 }
-.volume-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: var(--text);
-  border: 0;
+.color-picker .react-colorful__saturation {
+  border-radius: 6px 6px 0 0;
+}
+.color-picker .react-colorful__last-control {
+  border-radius: 0 0 6px 6px;
+}
+.color-picker .react-colorful__pointer {
+  width: 18px;
+  height: 18px;
 }
 
 /* A theme or language change fades the whole window over (see App.tsx). */

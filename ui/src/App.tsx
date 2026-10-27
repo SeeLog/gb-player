@@ -10,6 +10,8 @@ import { menuFor, wantsNativeMenu, type MenuActions } from "./lib/menus";
 import PlaylistView from "./lib/PlaylistView";
 import Select from "./lib/Select";
 import Tip, { Tooltips } from "./lib/Tip";
+import { Dialogs } from "./lib/Dialog";
+import { Toasts } from "./lib/Toasts";
 import Sidebar, { type View } from "./lib/Sidebar";
 import SongList from "./lib/SongList";
 import NowPlaying from "./lib/NowPlaying";
@@ -192,12 +194,13 @@ export default function App() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const typing =
-        e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement;
+      const typing = e.target instanceof HTMLInputElement;
       // Menus and drop-down lists take their own keys (arrows, Space, Escape).
       const inPopup =
         e.target instanceof Element &&
-        !!e.target.closest('[data-base-ui-focusable], [role="combobox"]');
+        !!e.target.closest(
+          '[data-base-ui-focusable], [role="combobox"], [role="alertdialog"], [role="radio"], [role="switch"]',
+        );
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "o") {
         e.preventDefault();
         pickRom();
@@ -387,6 +390,8 @@ export default function App() {
 
         <ContextMenu menu={menu} onClose={closeMenu} />
         <Tooltips />
+        <Dialogs />
+        <Toasts />
 
         {drop.shown && (
           <div

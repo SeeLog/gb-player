@@ -58,7 +58,7 @@ const hex2 = (n: number) =>
     .toString(16)
     .padStart(2, "0");
 
-/** Any CSS colour as `#rrggbb` (for `<input type="color">`) and its alpha from 0 to 1. */
+/** Any CSS colour as `#rrggbb` (for the colour picker) and its alpha from 0 to 1. */
 export function splitColor(color: string): { hex: string; alpha: number } {
   canvas ??= document.createElement("canvas").getContext("2d");
   if (!canvas) return { hex: "#000000", alpha: 1 };

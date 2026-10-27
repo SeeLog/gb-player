@@ -97,6 +97,8 @@ pub struct LibraryView {
     pub auto_next: bool,
     pub shuffle: Shuffle,
     pub volume: f32,
+    /// The volume of each channel, from 0 to 1.
+    pub channel_volumes: [f32; 4],
     pub muted: [bool; 4],
     pub theme: String,
     pub themes: Vec<Theme>,

@@ -1,6 +1,7 @@
 // A playlist in the middle column. Songs from any ROM; a song whose ROM is missing is greyed
 // out and asks for the file when clicked. Drag a song to move it, Delete removes it.
 import { memo, useEffect, useRef, useState, type PointerEvent } from "react";
+import { locateEntry } from "./actions";
 import { api } from "./api";
 import type { Translate } from "./format";
 import type { Library, PlaylistView as Playlist } from "./types";
@@ -46,7 +47,7 @@ export default memo(function PlaylistView({
   }, [position]);
 
   function activate(i: number) {
-    if (list.entries[i].missing) api.relinkEntry(list.id, i);
+    if (list.entries[i].missing) locateEntry(list.id, i, t);
     else api.playEntry(list.id, i);
   }
 

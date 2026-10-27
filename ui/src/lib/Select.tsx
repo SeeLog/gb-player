@@ -16,6 +16,7 @@ export default function Select({
   options,
   onChange,
   label,
+  tip = true,
   icon,
   disabled,
   className,
@@ -25,6 +26,8 @@ export default function Select({
   onChange: (value: string) => void;
   /** Its name, for the tooltip and screen readers. */
   label: string;
+  /** Whether hovering shows its name (not when a label next to it says it already). */
+  tip?: boolean;
   /** Shown before the value. */
   icon?: ReactNode;
   disabled?: boolean;
@@ -39,7 +42,7 @@ export default function Select({
       disabled={disabled}
       modal={false}
     >
-      <Tip text={label}>
+      <Tip text={tip ? label : undefined}>
         <Base.Trigger
           className={`${className ?? ""} cursor-pointer data-disabled:cursor-default data-disabled:opacity-60`}
           aria-label={label}

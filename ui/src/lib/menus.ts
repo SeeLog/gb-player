@@ -3,7 +3,9 @@
 // playback elsewhere. Text fields keep the WebView's Cut / Copy / Paste.
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { RESTART_AFTER, api, previous } from "./api";
+import { deletePlaylist, locateEntry } from "./actions";
 import type { MenuItem } from "./ContextMenu";
+import { notify } from "./Toasts";
 import type { Translate } from "./format";
 import type { Library } from "./types";
 import { tickStore } from "./tick";
@@ -104,7 +106,7 @@ function entryItems(id: string, position: number, library: Library, t: Translate
   const current = tick?.queue?.playlist === id && tick.queue.position === position;
   return [
     entry.missing
-      ? { label: t("playlist_locate"), onSelect: () => api.relinkEntry(id, position) }
+      ? { label: t("playlist_locate"), onSelect: () => locateEntry(id, position, t) }
       : current && tick?.state === "playing"
         ? { label: t("pause"), onSelect: () => api.toggle() }
         : {
@@ -112,7 +114,7 @@ function entryItems(id: string, position: number, library: Library, t: Translate
             onSelect: () =>
               current && tick?.state === "paused" ? api.toggle() : api.playEntry(id, position),
           },
-    { label: t("copy_title"), onSelect: () => copyText(entry.title) },
+    { label: t("copy_title"), onSelect: () => copyText(entry.title, t) },
     "separator",
     {
       label: t("playlist_remove"),
@@ -141,7 +143,7 @@ function playlistItems(
     },
     "separator",
     { label: t("playlist_rename"), onSelect: () => actions.renamePlaylist(id) },
-    { label: t("playlist_delete"), onSelect: () => api.deletePlaylist(id, name) },
+    { label: t("playlist_delete"), onSelect: () => deletePlaylist(id, name, t) },
   ];
 }
 
@@ -174,7 +176,7 @@ function songItems(rom: string, index: number, title: string, t: Translate): Men
           onSelect: () =>
             current && tick?.state === "paused" ? api.toggle() : api.play(rom, index),
         },
-    { label: t("copy_title"), onSelect: () => copyText(title) },
+    { label: t("copy_title"), onSelect: () => copyText(title, t) },
   ];
 }
 
@@ -201,7 +203,8 @@ function playbackItems(hasRom: boolean, t: Translate, actions: MenuActions): Men
   ];
 }
 
-async function copyText(text: string) {
+/** Copy a song's title, and say so. */
+async function copyText(text: string, t: Translate) {
   try {
     await navigator.clipboard.writeText(text);
   } catch {
@@ -213,4 +216,5 @@ async function copyText(text: string) {
     document.execCommand("copy");
     area.remove();
   }
+  notify(t("title_copied"));
 }

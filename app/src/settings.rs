@@ -11,6 +11,8 @@ pub struct Settings {
     /// `None` follows the OS language.
     pub language: Option<String>,
     pub volume: f32,
+    /// The volume of each channel (pulse 1, pulse 2, wave, noise), from 0 to 1.
+    pub channel_volumes: [f32; 4],
     /// Loops before fading out; `None` loops forever.
     pub loop_count: Option<u32>,
     /// Whether a finished song is followed by the next one.
@@ -82,6 +84,7 @@ impl Default for Settings {
         Settings {
             language: None,
             volume: 0.8,
+            channel_volumes: [1.0; 4],
             loop_count: None,
             auto_next: true,
             shuffle: Shuffle::Off,
@@ -136,6 +139,7 @@ mod tests {
         let s = Settings {
             language: Some("ja".into()),
             volume: 0.5,
+            channel_volumes: [1.0, 0.5, 0.25, 0.0],
             loop_count: Some(2),
             auto_next: false,
             shuffle: Shuffle::All,
@@ -160,6 +164,7 @@ mod tests {
         assert_eq!(back, s);
         let partial: Settings = toml::from_str("volume = 0.25").unwrap();
         assert_eq!(partial.volume, 0.25);
+        assert_eq!(partial.channel_volumes, [1.0; 4]);
         assert_eq!(partial.loop_count, None);
         assert!(partial.auto_next);
         assert_eq!(partial.theme, "dmg");

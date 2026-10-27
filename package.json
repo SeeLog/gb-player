@@ -13,6 +13,7 @@
     "@base-ui/react": "^1.9.0",
     "@tauri-apps/api": "^2",
     "react": "^19.3.1",
+    "react-colorful": "^5.8.1",
     "react-dom": "^19.3.1"
   },
   "devDependencies": {

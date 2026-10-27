@@ -3,10 +3,11 @@
 //! [`Session`]: super::session::Session
 
 use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
+use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
-use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+use tauri_plugin_dialog::DialogExt;
 
 use super::playlists;
 use super::views::LibraryView;
@@ -49,19 +50,6 @@ fn pick_rom_file(handle: &AppHandle) -> Option<PathBuf> {
         .add_filter(ROM_FILTER.0, ROM_FILTER.1)
         .blocking_pick_file();
     picked.and_then(|f| f.into_path().ok())
-}
-
-/// Ask a yes/no question; returns whether the user agreed.
-fn confirm(handle: &AppHandle, message: String, ok: &str, cancel: &str) -> bool {
-    handle
-        .dialog()
-        .message(message)
-        .kind(MessageDialogKind::Warning)
-        .buttons(MessageDialogButtons::OkCancelCustom(
-            ok.to_string(),
-            cancel.to_string(),
-        ))
-        .blocking_show()
 }
 
 /// Let the user pick ROMs and open them; returns the id of the last one that could be opened.
@@ -112,27 +100,12 @@ pub fn rename_playlist(handle: AppHandle, app: State<'_, App>, id: String, name:
     emit_library(&handle, &s);
 }
 
-/// Delete a playlist once the user has agreed; returns whether it was deleted.
+/// Delete a playlist (the UI has asked the user first).
 #[tauri::command]
-pub async fn delete_playlist(handle: AppHandle, id: String, name: String) -> bool {
-    let (message, ok, cancel) = {
-        let app = handle.state::<App>();
-        let s = app.lock();
-        let t = s.text();
-        (
-            t.fmt("playlist_delete_confirm", &[("name", &name)]),
-            t.get("playlist_delete").to_string(),
-            t.get("cancel").to_string(),
-        )
-    };
-    if !confirm(&handle, message, &ok, &cancel) {
-        return false;
-    }
-    let app = handle.state::<App>();
+pub fn delete_playlist(handle: AppHandle, app: State<'_, App>, id: String) {
     let mut s = app.lock();
     s.delete_playlist(&id);
     emit_library(&handle, &s);
-    true
 }
 
 #[tauri::command]
@@ -188,56 +161,79 @@ pub fn set_view(app: State<'_, App>, rom: Option<String>, playlist: Option<Strin
     app.lock().set_view(rom, playlist);
 }
 
-/// Let the user point an entry whose ROM is missing at its file. A file holding a different
-/// ROM than the one the entry was made from is taken only once the user agrees.
+/// How pointing a playlist entry at a file went. The UI shows the messages and asks about a
+/// mismatch in its own dialogs.
+#[derive(Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum Relink {
+    Done,
+    /// No file was picked, or the entry is gone.
+    Cancelled,
+    /// The file could not be read.
+    Failed {
+        message: String,
+    },
+    /// The file holds a different ROM than the one the entry was made from; taken only once the
+    /// user agrees, by [`relink_entry_to`] with `path`.
+    Mismatch {
+        message: String,
+        path: PathBuf,
+    },
+}
+
+/// Let the user point an entry whose ROM is missing at its file.
 #[tauri::command]
-pub async fn relink_entry(handle: AppHandle, id: String, position: usize) {
-    let Some(entry) = handle.state::<App>().lock().entry(&id, position) else {
-        return;
-    };
+pub async fn relink_entry(handle: AppHandle, id: String, position: usize) -> Relink {
+    if handle.state::<App>().lock().entry(&id, position).is_none() {
+        return Relink::Cancelled;
+    }
     let Some(path) = pick_rom_file(&handle) else {
-        return;
+        return Relink::Cancelled;
     };
-    let data = match gb_music::read_rom(&path) {
+    relink(&handle, &id, position, &path, false)
+}
+
+/// Point an entry at `path` even though it holds a different ROM (the user agreed to it).
+#[tauri::command]
+pub async fn relink_entry_to(
+    handle: AppHandle,
+    id: String,
+    position: usize,
+    path: PathBuf,
+) -> Relink {
+    relink(&handle, &id, position, &path, true)
+}
+
+fn relink(handle: &AppHandle, id: &str, position: usize, path: &Path, anyway: bool) -> Relink {
+    let app = handle.state::<App>();
+    let Some(entry) = app.lock().entry(id, position) else {
+        return Relink::Cancelled;
+    };
+    let data = match gb_music::read_rom(path) {
         Ok(d) => d,
         Err(e) => {
-            let message = {
-                let app = handle.state::<App>();
-                let s = app.lock();
-                s.text()
-                    .fmt("err_read", &[("path", &path.display()), ("error", &e)])
-            };
-            handle
-                .dialog()
-                .message(message)
-                .kind(MessageDialogKind::Error)
-                .blocking_show();
-            return;
+            let message = app
+                .lock()
+                .text()
+                .fmt("err_read", &[("path", &path.display()), ("error", &e)]);
+            return Relink::Failed { message };
         }
     };
     let hash = playlists::hash(&data);
-    if hash != entry.hash {
-        let (message, ok, cancel) = {
-            let app = handle.state::<App>();
-            let s = app.lock();
-            let t = s.text();
-            (
-                t.fmt(
-                    "playlist_relink_mismatch",
-                    &[("game", &entry.game), ("path", &path.display())],
-                ),
-                t.get("playlist_relink_anyway").to_string(),
-                t.get("cancel").to_string(),
-            )
+    if hash != entry.hash && !anyway {
+        let message = app.lock().text().fmt(
+            "playlist_relink_mismatch",
+            &[("game", &entry.game), ("path", &path.display())],
+        );
+        return Relink::Mismatch {
+            message,
+            path: path.to_path_buf(),
         };
-        if !confirm(&handle, message, &ok, &cancel) {
-            return;
-        }
     }
-    let app = handle.state::<App>();
     let mut s = app.lock();
-    s.relink(&id, position, &entry.hash, &path, &hash);
-    emit_library(&handle, &s);
+    s.relink(id, position, &entry.hash, path, &hash);
+    emit_library(handle, &s);
+    Relink::Done
 }
 
 #[tauri::command]
@@ -287,6 +283,14 @@ pub fn set_auto_next(handle: AppHandle, app: State<'_, App>, auto_next: bool) {
 #[tauri::command]
 pub fn set_volume(app: State<'_, App>, volume: f32) {
     app.lock().set_volume(volume);
+}
+
+#[tauri::command]
+pub fn set_channel_volume(app: State<'_, App>, channel: usize, volume: f32) {
+    if channel >= 4 {
+        return;
+    }
+    app.lock().set_channel_volume(channel, volume);
 }
 
 #[tauri::command]

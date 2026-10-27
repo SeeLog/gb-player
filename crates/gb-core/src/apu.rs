@@ -334,6 +334,8 @@ pub struct Apu {
     frame_step: u8,
     /// Channels muted by the user (not by the game).
     pub mute: [bool; 4],
+    /// The volume of each channel set by the user, from 0 to 1, on top of the game's.
+    pub gain: [f32; 4],
 
     sample_rate: u32,
     // Fixed point (16.16) cycle accounting for resampling.
@@ -364,6 +366,7 @@ impl Apu {
             frame_timer: 0,
             frame_step: 0,
             mute: [false; 4],
+            gain: [1.0; 4],
             sample_rate: 0,
             cycles_per_sample: 0,
             sample_clock: 0,
@@ -651,8 +654,9 @@ impl Apu {
                     continue;
                 }
                 // DAC: digital 0..15 maps linearly onto an analog -1..1 range.
-                let a = 1.0 - d as f32 / 7.5;
-                let lv = self.levels[i].max(d as f32 / 15.0);
+                let gain = self.gain[i];
+                let a = (1.0 - d as f32 / 7.5) * gain;
+                let lv = self.levels[i].max(d as f32 / 15.0 * gain);
                 self.levels[i] = lv;
                 if nr51 & (0x10 << i) != 0 {
                     l += a;
@@ -707,6 +711,31 @@ mod tests {
         let peak = s.iter().fold(0.0f32, |m, v| m.max(v.abs()));
         assert!(peak > 0.1, "peak {peak}");
         assert_eq!(apu.read(0xFF26) & 1, 1);
+    }
+
+    #[test]
+    fn channel_gain_scales_its_output() {
+        let peak = |gain: f32| {
+            let mut apu = Apu::new(48_000);
+            apu.gain[0] = gain;
+            apu.write(0xFF26, 0x80);
+            apu.write(0xFF24, 0x77);
+            apu.write(0xFF25, 0xFF);
+            apu.write(0xFF12, 0xF0);
+            apu.write(0xFF13, 0x00);
+            apu.write(0xFF14, 0x87);
+            apu.step(CPU_CLOCK / 10);
+            let s = apu.take_samples();
+            (
+                s.iter().fold(0.0f32, |m, v| m.max(v.abs())),
+                apu.take_levels()[0],
+            )
+        };
+        let (full, full_level) = peak(1.0);
+        let (half, half_level) = peak(0.5);
+        assert!((half / full - 0.5).abs() < 0.01, "{half} / {full}");
+        assert!((half_level / full_level - 0.5).abs() < 0.01);
+        assert_eq!(peak(0.0), (0.0, 0.0));
     }
 
     #[test]

@@ -217,6 +217,15 @@ impl Player {
         self.machine.mem.apu.mute[channel]
     }
 
+    /// Set the volume of a channel, from 0 to 1, on top of the game's.
+    pub fn set_channel_volume(&mut self, channel: usize, volume: f32) {
+        self.machine.mem.apu.gain[channel] = volume.clamp(0.0, 1.0);
+    }
+
+    pub fn channel_volume(&self, channel: usize) -> f32 {
+        self.machine.mem.apu.gain[channel]
+    }
+
     /// Peak level of each channel since the last call, for meters.
     pub fn take_levels(&mut self) -> [f32; 4] {
         std::mem::take(&mut self.levels)
@@ -227,11 +236,12 @@ impl Player {
             return;
         };
         let sample_rate = self.machine.mem.apu.sample_rate();
-        let mute = self.machine.mem.apu.mute;
+        let (mute, gain) = (self.machine.mem.apu.mute, self.machine.mem.apu.gain);
         // A fresh machine gives every song the same clean starting state.
         self.machine =
             Machine::new(self.rom.to_vec(), sample_rate).expect("ROM was already validated");
         self.machine.mem.apu.mute = mute;
+        self.machine.mem.apu.gain = gain;
         self.current = Some(index);
         self.plays += 1;
         self.frame = 0;
@@ -429,6 +439,7 @@ impl Player {
         let mut machine = seek.machine;
         machine.mem.apu.set_output_enabled(true);
         machine.mem.apu.mute = self.machine.mem.apu.mute;
+        machine.mem.apu.gain = self.machine.mem.apu.gain;
         machine.mem.apu.take_samples();
         machine.mem.apu.take_levels();
         self.machine = machine;

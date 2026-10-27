@@ -3,11 +3,16 @@
 // progress (position), the LCD and transport (song and state), and nothing else; the meters and
 // the oscilloscope update from animation frames.
 import { memo, useEffect, useRef, useState } from "react";
+import { Radio } from "@base-ui/react/radio";
+import { RadioGroup } from "@base-ui/react/radio-group";
+import { Slider } from "@base-ui/react/slider";
+import { Switch } from "@base-ui/react/switch";
 import { RESTART_AFTER, api, previous } from "./api";
 import { describe, fmtTime, type Translate } from "./format";
 import type { Length, Library, Shuffle, SongView } from "./types";
 import Icon from "./Icon";
 import Scope from "./Scope";
+import VolumeSlider from "./Slider";
 import Tip from "./Tip";
 import { tickStore, useTick } from "./tick";
 
@@ -49,17 +54,14 @@ export default memo(function NowPlaying({ library, t }: { library: Library; t: T
           value={library.loopCount}
           onChange={(n) => api.setLoopCount(n)}
         />
-        <label className="group mt-1 flex cursor-pointer items-center gap-2.5 text-[13px] text-muted hover:text-text">
-          <input
-            type="checkbox"
-            role="switch"
+        <label className="mt-1 flex cursor-pointer items-center gap-2.5 text-[13px] text-muted hover:text-text">
+          <Switch.Root
             checked={library.autoNext}
-            onChange={(e) => api.setAutoNext(e.currentTarget.checked)}
-            className="peer pointer-events-none absolute opacity-0"
-          />
-          <span className="relative h-5 w-[34px] flex-none rounded-[10px] border border-line bg-panel-2 transition-colors peer-checked:border-accent peer-checked:bg-accent peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent peer-checked:[&>span]:translate-x-3.5 peer-checked:[&>span]:bg-accent-ink">
-            <span className="absolute top-0.5 left-0.5 size-3.5 rounded-full bg-muted transition-[transform,background-color]" />
-          </span>
+            onCheckedChange={(on) => api.setAutoNext(on)}
+            className="flex h-5 w-[34px] flex-none rounded-[10px] border border-line bg-panel-2 p-[2px] transition-colors data-checked:border-accent data-checked:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent motion-reduce:transition-none"
+          >
+            <Switch.Thumb className="size-3.5 rounded-full bg-muted transition-[translate,background-color] data-checked:translate-x-3.5 data-checked:bg-accent-ink motion-reduce:transition-none" />
+          </Switch.Root>
           <span>{t("auto_next")}</span>
         </label>
       </div>
@@ -85,20 +87,14 @@ export default memo(function NowPlaying({ library, t }: { library: Library; t: T
       <div className="flex items-center gap-2.5 text-muted">
         <Icon name="volume" size={18} />
         <Tip text={t("volume")}>
-          <input
-            type="range"
-            min="0"
-            max="1"
-            step="0.01"
+          <VolumeSlider
             value={volume}
-            onChange={(e) => {
-              const v = e.currentTarget.valueAsNumber;
+            onChange={(v) => {
               setVolume(v);
               api.setVolume(v);
             }}
-            aria-label={t("volume")}
-            className="volume-slider flex-1"
-            style={{ "--v": `${volume * 100}%` } as React.CSSProperties}
+            label={t("volume")}
+            className="flex-1"
           />
         </Tip>
         <span className="num w-7 text-right text-xs">{Math.round(volume * 100)}</span>
@@ -168,13 +164,16 @@ function positionAt(length: Length, frac: number, lap: number) {
 
 /** Seconds that the arrow keys move the playhead by. */
 const SEEK_STEP = 5;
+/** How long the playhead waits for a seek to get there, in milliseconds. */
+const SEEK_GIVE_UP = 10_000;
 
 // Re-renders on every tick, so it is kept small.
 function Progress({ library, t }: { library: Library; t: Translate }) {
   const song = useSong(library);
   const tickPosition = useTick((tick) => tick?.position ?? 0);
-  const bar = useRef<HTMLDivElement>(null);
-  // Where the playhead is being dragged to, and then sought to until a tick gets there.
+  const ended = useTick((tick) => tick?.state !== "playing" && tick?.state !== "paused");
+  // Where the playhead is being dragged to, and then sought to until a tick gets there. A seek
+  // far into a song takes a while, and the song keeps playing from where it was meanwhile.
   const [held, setHeld] = useState<number | null>(null);
   const dragging = useRef(false);
   const release = useRef(0);
@@ -182,6 +181,10 @@ function Progress({ library, t }: { library: Library; t: Translate }) {
     if (held !== null && !dragging.current && Math.abs(tickPosition - held) < 0.5) setHeld(null);
   }, [tickPosition, held]);
   useEffect(() => setHeld(null), [song?.index]);
+  // A song that ends or fails never gets there.
+  useEffect(() => {
+    if (ended && !dragging.current) setHeld(null);
+  }, [ended]);
   useEffect(() => () => clearTimeout(release.current), []);
 
   const position = held ?? tickPosition;
@@ -193,87 +196,74 @@ function Progress({ library, t }: { library: Library; t: Translate }) {
   const seek = (secs: number) => {
     setHeld(Math.max(secs, 0));
     api.seek(Math.max(secs, 0));
-    // Let go of the playhead even if the song never gets there (it ended, or failed).
+    // Let go of the playhead in the end, whatever happens.
     clearTimeout(release.current);
-    release.current = window.setTimeout(() => setHeld(null), 1000);
+    release.current = window.setTimeout(() => setHeld(null), SEEK_GIVE_UP);
   };
-  const pointAt = (e: React.PointerEvent) => {
-    const rect = bar.current!.getBoundingClientRect();
-    const frac = Math.min(Math.max((e.clientX - rect.left) / rect.width, 0), 1);
-    return positionAt(length!, frac, lap);
-  };
+  const at = (frac: number) => positionAt(length!, frac, lap);
 
   return (
     <div>
-      <div
-        ref={bar}
-        role={progress ? "slider" : undefined}
-        tabIndex={progress ? 0 : undefined}
-        aria-label={t("seek")}
-        aria-valuemin={0}
-        aria-valuenow={progress ? Math.round(position) : undefined}
-        aria-valuetext={progress ? fmtTime(position) : undefined}
-        className={`group relative h-2 rounded shadow-[inset_0_0_0_1px_var(--line)] outline-offset-4 focus-visible:outline-2 focus-visible:outline-accent ${
-          song && !progress
-            ? "bg-[repeating-linear-gradient(-45deg,var(--panel-2)_0_6px,var(--line)_6px_12px)]"
-            : "bg-panel-2"
-        } ${progress ? "cursor-pointer touch-none before:absolute before:-inset-y-2 before:inset-x-0" : ""}`}
-        onPointerDown={(e) => {
-          if (!progress || e.button !== 0) return;
-          e.currentTarget.setPointerCapture(e.pointerId);
-          dragging.current = true;
-          clearTimeout(release.current);
-          setHeld(pointAt(e));
-        }}
-        onPointerMove={(e) => {
-          if (dragging.current) setHeld(pointAt(e));
-        }}
-        onPointerUp={(e) => {
-          if (!dragging.current) return;
-          dragging.current = false;
-          seek(pointAt(e));
-        }}
-        onPointerCancel={() => {
-          dragging.current = false;
-          setHeld(null);
-        }}
-        onKeyDown={(e) => {
-          if (!progress) return;
-          const step = { ArrowLeft: -SEEK_STEP, ArrowRight: SEEK_STEP }[e.key];
-          if (step === undefined && e.key !== "Home") return;
-          // Not the previous / next song of the window's arrow keys.
-          e.preventDefault();
-          e.stopPropagation();
-          seek(e.key === "Home" ? 0 : position + step!);
-        }}
-      >
-        {progress && (
-          <>
-            {progress.loopStart !== null && (
-              <>
-                <div
-                  className="absolute inset-y-0 left-0 rounded-l bg-overlay"
-                  style={{ width: `${progress.loopStart * 100}%` }}
-                />
-                <Tip text={t("loop_point")}>
+      {progress ? (
+        <Slider.Root
+          value={progress.frac}
+          min={0}
+          max={1}
+          step={0.0001}
+          onValueChange={(frac) => {
+            dragging.current = true;
+            clearTimeout(release.current);
+            setHeld(at(frac as number));
+          }}
+          onValueCommitted={(frac) => {
+            dragging.current = false;
+            seek(at(frac as number));
+          }}
+        >
+          {/* The control is taller than the bar, so it is easy to grab. */}
+          <Slider.Control className="group -my-2 flex cursor-pointer touch-none items-center py-2 select-none">
+            <Slider.Track className="h-2 w-full rounded bg-panel-2 shadow-[inset_0_0_0_1px_var(--line)]">
+              {progress.loopStart !== null && (
+                <>
                   <div
-                    className="absolute -top-1 -bottom-1 -ml-px w-0.5 rounded-[1px] bg-text opacity-60"
-                    style={{ left: `${progress.loopStart * 100}%` }}
+                    className="absolute inset-y-0 left-0 rounded-l bg-overlay"
+                    style={{ width: `${progress.loopStart * 100}%` }}
                   />
-                </Tip>
-              </>
-            )}
-            <div
-              className="absolute inset-y-0 left-0 rounded bg-accent"
-              style={{ width: `${progress.frac * 100}%` }}
-            />
-            <div
-              className="absolute top-1/2 -mt-[7px] -ml-[7px] size-3.5 rounded-full bg-text shadow-[0_0_0_3px_color-mix(in_srgb,var(--accent)_40%,transparent)] transition-transform group-hover:scale-115"
-              style={{ left: `${progress.frac * 100}%` }}
-            />
-          </>
-        )}
-      </div>
+                  <Tip text={t("loop_point")}>
+                    <div
+                      className="absolute -top-1 -bottom-1 -ml-px w-0.5 rounded-[1px] bg-text opacity-60"
+                      style={{ left: `${progress.loopStart * 100}%` }}
+                    />
+                  </Tip>
+                </>
+              )}
+              <Slider.Indicator className="rounded bg-accent" />
+              <Slider.Thumb
+                aria-label={t("seek")}
+                getAriaValueText={() => fmtTime(position)}
+                // Before the slider's own keys: seconds at a time, not the bar's own steps.
+                onKeyDownCapture={(e) => {
+                  const step = { ArrowLeft: -SEEK_STEP, ArrowRight: SEEK_STEP }[e.key];
+                  if (step === undefined && e.key !== "Home") return;
+                  e.stopPropagation();
+                  e.preventDefault();
+                  seek(e.key === "Home" ? 0 : position + step!);
+                }}
+                className="size-3.5 rounded-full bg-text shadow-[0_0_0_3px_color-mix(in_srgb,var(--accent)_40%,transparent)] transition-transform group-hover:scale-115 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-accent motion-reduce:transition-none"
+              />
+            </Slider.Track>
+          </Slider.Control>
+        </Slider.Root>
+      ) : (
+        // No song, or one whose length is not known yet (striped): nothing to seek in.
+        <div
+          className={`h-2 rounded shadow-[inset_0_0_0_1px_var(--line)] ${
+            song
+              ? "bg-[repeating-linear-gradient(-45deg,var(--panel-2)_0_6px,var(--line)_6px_12px)]"
+              : "bg-panel-2"
+          }`}
+        />
+      )}
       <div className="mt-2 flex items-center gap-2 text-xs">
         <span className="num">{fmtTime(position)}</span>
         {progress && progress.lap > 0 ? (
@@ -367,45 +357,67 @@ function Channels({ library, t }: { library: Library; t: Translate }) {
     return () => cancelAnimationFrame(frame);
   }, []);
 
+  // Kept here while a slider is dragged, as the whole volume is (the Rust side does not send
+  // the library back for it).
+  const [volumes, setVolumes] = useState(library.channelVolumes);
+  useEffect(() => setVolumes(library.channelVolumes), [library.channelVolumes]);
+
   return (
     <div className="grid grid-cols-2 gap-2">
       {CHANNELS.map((key, ch) => {
         const muted = library.muted[ch];
         return (
-          <Tip key={key} text={t("toggle_mute")}>
-            <button
-              className={`flex flex-col gap-2 rounded-[9px] border border-line bg-panel-2 px-2.5 py-[9px] text-left hover:border-faint ${
-                muted ? "opacity-45" : ""
-              }`}
-              onClick={() => api.setMuted(ch, !muted)}
-              aria-pressed={!muted}
-            >
-              <span className={`flex items-center gap-[7px] text-xs font-semibold ${muted ? "line-through" : ""}`}>
-                <span
-                  className={`size-2 rounded-full ${
-                    muted ? "bg-faint" : "bg-accent shadow-[0_0_6px_var(--accent)]"
-                  }`}
-                />
-                {t(key)}
-              </span>
-              {/* bg as it looks over the backdrop, whatever is under the meter. */}
-              <span className="relative h-1.5 overflow-hidden rounded-[3px] [background:linear-gradient(var(--bg),var(--bg)),var(--backdrop)]">
-                <span
-                  ref={(el) => {
-                    levels.current[ch] = el;
-                  }}
-                  className="absolute inset-0 origin-left bg-[linear-gradient(90deg,var(--accent-2),var(--accent))] transition-transform duration-[60ms] ease-linear"
-                  style={{ transform: "scaleX(0)" }}
-                />
-                <span
-                  ref={(el) => {
-                    peaks.current[ch] = el;
-                  }}
-                  className="absolute inset-0 before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-text before:opacity-70"
-                />
-              </span>
-            </button>
-          </Tip>
+          <div
+            key={key}
+            className={`flex flex-col gap-1 rounded-[9px] border border-line bg-panel-2 px-2.5 pt-[9px] pb-1 hover:border-faint ${
+              muted ? "opacity-45" : ""
+            }`}
+          >
+            <Tip text={t("toggle_mute")}>
+              <button
+                className="flex flex-col gap-2 text-left"
+                onClick={() => api.setMuted(ch, !muted)}
+                aria-pressed={!muted}
+              >
+                <span className="flex items-center gap-[7px] text-xs font-semibold">
+                  <span
+                    className={`size-2 rounded-full ${
+                      muted ? "bg-faint" : "bg-accent shadow-[0_0_6px_var(--accent)]"
+                    }`}
+                  />
+                  <span className={`flex-1 ${muted ? "line-through" : ""}`}>{t(key)}</span>
+                  <span className="num text-[11px] font-normal text-faint">
+                    {Math.round(volumes[ch] * 100)}
+                  </span>
+                </span>
+                {/* bg as it looks over the backdrop, whatever is under the meter. */}
+                <span className="relative h-1.5 overflow-hidden rounded-[3px] [background:linear-gradient(var(--bg),var(--bg)),var(--backdrop)]">
+                  <span
+                    ref={(el) => {
+                      levels.current[ch] = el;
+                    }}
+                    className="absolute inset-0 origin-left bg-[linear-gradient(90deg,var(--accent-2),var(--accent))] transition-transform duration-[60ms] ease-linear"
+                    style={{ transform: "scaleX(0)" }}
+                  />
+                  <span
+                    ref={(el) => {
+                      peaks.current[ch] = el;
+                    }}
+                    className="absolute inset-0 before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-text before:opacity-70"
+                  />
+                </span>
+              </button>
+            </Tip>
+            <VolumeSlider
+              value={volumes[ch]}
+              onChange={(v) => {
+                setVolumes((all) => all.map((old, i) => (i === ch ? v : old)) as typeof all);
+                api.setChannelVolume(ch, v);
+              }}
+              label={t("channel_volume", { name: t(key) })}
+              small
+            />
+          </div>
         );
       })}
     </div>
@@ -440,10 +452,12 @@ function Segmented<T>({
   const follow = "230ms cubic-bezier(0.5, 0, 0.2, 1) 20ms";
 
   return (
-    <div
+    // The options go by their place in the row, as a value may be null.
+    <RadioGroup
+      value={index}
+      onValueChange={(i) => onChange(options[i as number].value)}
       className="relative grid rounded-[9px] border border-line bg-panel-2 p-[3px]"
       style={{ gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))` }}
-      role="radiogroup"
       aria-label={label}
     >
       {index >= 0 && (
@@ -461,18 +475,16 @@ function Segmented<T>({
       )}
       {options.map((o, i) => (
         <Tip key={String(o.value)} text={o.title}>
-          <button
-            role="radio"
-            aria-checked={i === index}
-            className={`relative h-[30px] rounded-md font-semibold transition-colors duration-150 ${
+          <Radio.Root
+            value={i}
+            className={`relative grid h-[30px] cursor-pointer place-items-center rounded-md font-semibold transition-colors duration-150 outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${
               small ? "text-[13px]" : ""
             } ${i === index ? "text-accent-ink" : "text-muted hover:text-text"}`}
-            onClick={() => onChange(o.value)}
           >
             {o.text}
-          </button>
+          </Radio.Root>
         </Tip>
       ))}
-    </div>
+    </RadioGroup>
   );
 }

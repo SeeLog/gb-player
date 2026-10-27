@@ -14,6 +14,9 @@ import {
   type Draft,
 } from "./theme";
 import Tip from "./Tip";
+import ColorPicker from "./ColorPicker";
+import Select from "./Select";
+import Slider from "./Slider";
 
 const heading = "mb-0.5 text-[11px] font-bold tracking-[0.08em] uppercase text-faint";
 // Class lists are combined only where they set different properties, so no utility overrides
@@ -29,6 +32,9 @@ const primaryButton = `${buttonBase} h-8 px-3.5 border-accent bg-accent text-acc
 const iconButton =
   "grid place-items-center rounded-[7px] text-muted enabled:hover:bg-panel-2 enabled:hover:text-text disabled:opacity-25";
 const setting = "grid grid-cols-[72px_1fr_44px] items-center gap-2 text-xs text-muted";
+/** Lays out a drop-down's value and arrow, and marks it while its list is open. */
+const choice = "flex items-center justify-between gap-1.5 text-left data-popup-open:border-accent";
+const FITS: Background["fit"][] = ["cover", "contain", "tile"];
 const mono = "font-[ui-monospace,'Cascadia_Mono',Consolas,monospace] text-xs";
 
 export default function ThemeEditor({
@@ -57,7 +63,13 @@ export default function ThemeEditor({
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    // Escape in an open list or menu closes just that.
+    const onKey = (e: KeyboardEvent) => {
+      const inPopup =
+        e.target instanceof Element &&
+        e.target.closest('[data-base-ui-focusable], [role="alertdialog"]');
+      if (e.key === "Escape" && !inPopup) onClose();
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
@@ -156,20 +168,17 @@ export default function ThemeEditor({
       </div>
 
       <div className="-mx-1.5 flex flex-1 flex-col gap-[18px] overflow-y-auto px-1.5">
-        <label className={`${heading} flex flex-col gap-1`}>
+        <div className={`${heading} flex flex-col gap-1`}>
           <span>{t("theme_base")}</span>
-          <select
-            className={field}
+          <Select
+            className={`${field} ${choice}`}
+            label={t("theme_base")}
+            tip={false}
             value={draft.base}
-            onChange={(e) => setDraft({ ...draft, base: e.currentTarget.value })}
-          >
-            {builtins.map((th) => (
-              <option key={th.id} value={th.id}>
-                {th.name}
-              </option>
-            ))}
-          </select>
-        </label>
+            options={builtins.map((th) => ({ value: th.id, label: th.name }))}
+            onChange={(base) => setDraft({ ...draft, base })}
+          />
+        </div>
 
         <section className="flex flex-col gap-1.5">
           <h3 className={heading}>{t("theme_background")}</h3>
@@ -197,46 +206,37 @@ export default function ThemeEditor({
                   {t("theme_bg_opaque")}
                 </p>
               )}
-              <label className={setting}>
+              <div className={setting}>
                 <span>{t("theme_fit")}</span>
-                <select
-                  className="col-span-2 h-7 rounded-[7px] border border-line bg-panel-2 px-1.5 text-text outline-none"
+                <Select
+                  className={`col-span-2 h-7 rounded-[7px] border border-line bg-panel-2 px-1.5 text-text outline-none ${choice}`}
+                  label={t("theme_fit")}
+                  tip={false}
                   value={bg.fit}
-                  onChange={(e) =>
-                    setBackground({ fit: e.currentTarget.value as Background["fit"] })
-                  }
-                >
-                  <option value="cover">{t("theme_fit_cover")}</option>
-                  <option value="contain">{t("theme_fit_contain")}</option>
-                  <option value="tile">{t("theme_fit_tile")}</option>
-                </select>
-              </label>
-              <label className={setting}>
+                  options={FITS.map((fit) => ({ value: fit, label: t(`theme_fit_${fit}`) }))}
+                  onChange={(fit) => setBackground({ fit: fit as Background["fit"] })}
+                />
+              </div>
+              <div className={setting}>
                 <span>{t("theme_blur")}</span>
-                <input
-                  type="range"
-                  min="0"
-                  max="40"
-                  step="1"
+                <Slider
                   value={bg.blur}
-                  onChange={(e) => setBackground({ blur: e.currentTarget.valueAsNumber })}
-                  className="w-full accent-accent"
+                  max={40}
+                  step={1}
+                  onChange={(blur) => setBackground({ blur })}
+                  label={t("theme_blur")}
                 />
                 <span className="num text-right">{bg.blur}px</span>
-              </label>
-              <label className={setting}>
+              </div>
+              <div className={setting}>
                 <span>{t("theme_dim")}</span>
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  step="1"
-                  value={Math.round(bg.dim * 100)}
-                  onChange={(e) => setBackground({ dim: e.currentTarget.valueAsNumber / 100 })}
-                  className="w-full accent-accent"
+                <Slider
+                  value={bg.dim}
+                  onChange={(dim) => setBackground({ dim })}
+                  label={t("theme_dim")}
                 />
                 <span className="num text-right">{Math.round(bg.dim * 100)}%</span>
-              </label>
+              </div>
             </>
           )}
         </section>
@@ -257,25 +257,17 @@ export default function ThemeEditor({
                   <span className={`${mono} ${set ? "font-bold text-text" : "text-muted"}`}>
                     {token}
                   </span>
-                  <input
-                    type="color"
-                    value={parts.hex}
-                    onChange={(e) => setPart(token, { hex: e.currentTarget.value })}
-                    aria-label={token}
-                    className="h-[26px] w-[30px] cursor-pointer rounded-md border border-line bg-panel-2 p-0.5"
+                  <ColorPicker
+                    hex={parts.hex}
+                    onChange={(hex) => setPart(token, { hex })}
+                    label={token}
                   />
                   <Tip text={`${t("theme_opacity")} ${Math.round(parts.alpha * 100)}%`}>
-                    <input
-                      type="range"
-                      min="0"
-                      max="100"
-                      step="1"
-                      value={Math.round(parts.alpha * 100)}
-                      onChange={(e) =>
-                        setPart(token, { alpha: e.currentTarget.valueAsNumber / 100 })
-                      }
-                      aria-label={`${token} ${t("theme_opacity")}`}
-                      className="w-full accent-accent"
+                    <Slider
+                      value={parts.alpha}
+                      onChange={(alpha) => setPart(token, { alpha })}
+                      label={`${token} ${t("theme_opacity")}`}
+                      small
                     />
                   </Tip>
                   <input
