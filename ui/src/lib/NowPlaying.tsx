@@ -140,20 +140,96 @@ function progressOf(length: Length | null, position: number) {
   return null;
 }
 
+/** The position (seconds) a point `frac` along the bar stands for: in the loop, the same lap as
+ * now, so that seeking within a later lap keeps the loop count going. */
+function positionAt(length: Length, frac: number, lap: number) {
+  if (length.kind === "loops") {
+    const p = frac * (length.intro + length.period);
+    return p < length.intro || lap === 0 ? p : p + (lap - 1) * length.period;
+  }
+  return length.kind === "ends" ? frac * length.at : 0;
+}
+
+/** Seconds that the arrow keys move the playhead by. */
+const SEEK_STEP = 5;
+
 // Re-renders on every tick, so it is kept small.
 function Progress({ library, t }: { library: Library; t: Translate }) {
   const song = useSong(library);
-  const position = useTick((tick) => tick?.position ?? 0);
+  const tickPosition = useTick((tick) => tick?.position ?? 0);
+  const bar = useRef<HTMLDivElement>(null);
+  // Where the playhead is being dragged to, and then sought to until a tick gets there.
+  const [held, setHeld] = useState<number | null>(null);
+  const dragging = useRef(false);
+  const release = useRef(0);
+  useEffect(() => {
+    if (held !== null && !dragging.current && Math.abs(tickPosition - held) < 0.5) setHeld(null);
+  }, [tickPosition, held]);
+  useEffect(() => setHeld(null), [song?.index]);
+  useEffect(() => () => clearTimeout(release.current), []);
+
+  const position = held ?? tickPosition;
   const length = song?.length ?? null;
   const progress = song ? progressOf(length, position) : null;
+  // The lap the song is in, not the one the playhead is dragged into.
+  const lap = progressOf(length, tickPosition)?.lap ?? 0;
+
+  const seek = (secs: number) => {
+    setHeld(Math.max(secs, 0));
+    api.seek(Math.max(secs, 0));
+    // Let go of the playhead even if the song never gets there (it ended, or failed).
+    clearTimeout(release.current);
+    release.current = window.setTimeout(() => setHeld(null), 1000);
+  };
+  const pointAt = (e: React.PointerEvent) => {
+    const rect = bar.current!.getBoundingClientRect();
+    const frac = Math.min(Math.max((e.clientX - rect.left) / rect.width, 0), 1);
+    return positionAt(length!, frac, lap);
+  };
+
   return (
     <div>
       <div
-        className={`relative h-2 rounded shadow-[inset_0_0_0_1px_var(--line)] ${
+        ref={bar}
+        role={progress ? "slider" : undefined}
+        tabIndex={progress ? 0 : undefined}
+        aria-label={t("seek")}
+        aria-valuemin={0}
+        aria-valuenow={progress ? Math.round(position) : undefined}
+        aria-valuetext={progress ? fmtTime(position) : undefined}
+        className={`group relative h-2 rounded shadow-[inset_0_0_0_1px_var(--line)] outline-offset-4 focus-visible:outline-2 focus-visible:outline-accent ${
           song && !progress
             ? "bg-[repeating-linear-gradient(-45deg,var(--panel-2)_0_6px,var(--line)_6px_12px)]"
             : "bg-panel-2"
-        }`}
+        } ${progress ? "cursor-pointer touch-none before:absolute before:-inset-y-2 before:inset-x-0" : ""}`}
+        onPointerDown={(e) => {
+          if (!progress || e.button !== 0) return;
+          e.currentTarget.setPointerCapture(e.pointerId);
+          dragging.current = true;
+          clearTimeout(release.current);
+          setHeld(pointAt(e));
+        }}
+        onPointerMove={(e) => {
+          if (dragging.current) setHeld(pointAt(e));
+        }}
+        onPointerUp={(e) => {
+          if (!dragging.current) return;
+          dragging.current = false;
+          seek(pointAt(e));
+        }}
+        onPointerCancel={() => {
+          dragging.current = false;
+          setHeld(null);
+        }}
+        onKeyDown={(e) => {
+          if (!progress) return;
+          const step = { ArrowLeft: -SEEK_STEP, ArrowRight: SEEK_STEP }[e.key];
+          if (step === undefined && e.key !== "Home") return;
+          // Not the previous / next song of the window's arrow keys.
+          e.preventDefault();
+          e.stopPropagation();
+          seek(e.key === "Home" ? 0 : position + step!);
+        }}
       >
         {progress && (
           <>
@@ -175,7 +251,7 @@ function Progress({ library, t }: { library: Library; t: Translate }) {
               style={{ width: `${progress.frac * 100}%` }}
             />
             <div
-              className="absolute top-1/2 -mt-[7px] -ml-[7px] size-3.5 rounded-full bg-text shadow-[0_0_0_3px_color-mix(in_srgb,var(--accent)_40%,transparent)]"
+              className="absolute top-1/2 -mt-[7px] -ml-[7px] size-3.5 rounded-full bg-text shadow-[0_0_0_3px_color-mix(in_srgb,var(--accent)_40%,transparent)] transition-transform group-hover:scale-115"
               style={{ left: `${progress.frac * 100}%` }}
             />
           </>

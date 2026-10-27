@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::PoisonError;
 
 use gb_music::songdb::{Names, LANGUAGES};
-use gb_music::{frames_to_secs, read_rom, PlayState, Player, Song, SongLength};
+use gb_music::{frames_to_secs, read_rom, PlayState, Player, Song, SongLength, FRAME_RATE};
 
 use super::views::{LanguageView, LengthView, LibraryView, SongView, TickView};
 use crate::analyzer::Analyzer;
@@ -191,6 +191,17 @@ impl Session {
 
     pub fn stop(&self) {
         self.with_player(|p| p.stop());
+    }
+
+    /// Continue the current song from `secs` seconds in. The machine is run up to there
+    /// without holding on to the player, so the audio keeps playing meanwhile.
+    pub fn seek(&self, secs: f64) {
+        let frame = (secs.max(0.0) * FRAME_RATE) as u32;
+        let Some(mut seek) = self.with_player(|p| p.begin_seek(frame)).flatten() else {
+            return;
+        };
+        seek.run();
+        self.with_player(|p| p.finish_seek(seek));
     }
 
     /// Play the song `delta` places away from the current one, wrapping around the list.

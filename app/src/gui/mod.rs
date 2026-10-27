@@ -97,6 +97,7 @@ pub fn run(initial_rom: Option<PathBuf>, language: Option<String>) {
             commands::play,
             commands::toggle,
             commands::stop,
+            commands::seek,
             commands::skip,
             commands::set_loop_count,
             commands::set_auto_next,

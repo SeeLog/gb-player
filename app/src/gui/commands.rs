@@ -60,6 +60,11 @@ pub fn stop(app: State<'_, App>) {
 }
 
 #[tauri::command]
+pub fn seek(app: State<'_, App>, secs: f64) {
+    app.lock().seek(secs);
+}
+
+#[tauri::command]
 pub fn skip(app: State<'_, App>, delta: i64) {
     app.lock().skip(delta);
 }

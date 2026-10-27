@@ -37,6 +37,7 @@ impl std::fmt::Display for CallError {
 
 impl std::error::Error for CallError {}
 
+#[derive(Clone)]
 pub struct Memory {
     pub cart: Cartridge,
     pub apu: Apu,
@@ -116,7 +117,9 @@ impl Bus for Memory {
     }
 }
 
-/// A Game Boy reduced to what a sound driver needs: CPU, memory, cartridge and APU.
+/// A Game Boy reduced to what a sound driver needs: CPU, memory, cartridge and APU. A clone
+/// is a snapshot of the whole machine (about 170 KiB; the ROM is shared).
+#[derive(Clone)]
 pub struct Machine {
     pub cpu: Cpu,
     pub mem: Memory,

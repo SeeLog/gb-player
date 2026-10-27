@@ -17,4 +17,4 @@ pub use analysis::{analyze, ANALYSIS_FRAMES};
 pub use driver::{Driver, Engine, Song};
 pub use gb_core::read_rom;
 pub use length::{frames_to_secs, SongLength, FRAME_RATE};
-pub use player::{LoadError, PlayState, Player};
+pub use player::{LoadError, PlayState, Player, Seek};

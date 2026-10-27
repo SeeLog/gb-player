@@ -50,6 +50,7 @@ gb-player --lang en pokemon.gb           # 言語を指定して起動(既定は
 `--info` / `--wav` は bun なしの `cargo run --release -- --info pokemon.gb` でも動きます。
 
 GUIのキー操作: Space 再生/一時停止、← → 前/次の曲、Ctrl+O ROMを開く、Ctrl+F 検索。
+シークバーはクリックかドラッグで再生位置を動かせ、フォーカス中は ← → で5秒ずつ移動します。
 言語・音量・ループ・テーマの設定は `%APPDATA%\gb-player\settings.toml`(Linux/macOSは `~/.config/gb-player/settings.toml`)に保存されます。
 ウィンドウの位置と大きさも次回の起動に引き継がれます。
 

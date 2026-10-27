@@ -4,6 +4,7 @@ use std::fmt;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MbcKind {
@@ -93,8 +94,10 @@ impl Header {
     }
 }
 
+/// Cloning is cheap apart from the cartridge RAM: the ROM is shared.
+#[derive(Clone)]
 pub struct Cartridge {
-    rom: Vec<u8>,
+    rom: Arc<[u8]>,
     ram: Vec<u8>,
     pub header: Header,
     rom_bank: usize,
@@ -115,7 +118,7 @@ impl Cartridge {
         let header = Header::parse(&rom)?;
         let rom_bank_count = rom.len().div_ceil(0x4000).max(2);
         Ok(Cartridge {
-            rom,
+            rom: rom.into(),
             // Allocate the maximum so that games never write out of bounds.
             ram: vec![0; 0x20000],
             header,

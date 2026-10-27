@@ -12,6 +12,7 @@ export const api = {
   toggle: () => invoke<void>("toggle"),
   stop: () => invoke<void>("stop"),
   skip: (delta: number) => invoke<void>("skip", { delta }),
+  seek: (secs: number) => invoke<void>("seek", { secs }),
   setLoopCount: (count: number | null) => invoke<void>("set_loop_count", { count }),
   setAutoNext: (autoNext: boolean) => invoke<void>("set_auto_next", { autoNext }),
   setVolume: (volume: number) => invoke<void>("set_volume", { volume }),

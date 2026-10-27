@@ -322,6 +322,7 @@ impl Noise {
     }
 }
 
+#[derive(Clone)]
 pub struct Apu {
     regs: [u8; 0x20],
     power: bool,
