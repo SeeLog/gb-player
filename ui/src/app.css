@@ -22,6 +22,11 @@
   --color-bezel: var(--bezel);
   --color-overlay: var(--overlay);
   --color-danger: var(--danger);
+  --color-shell: var(--shell);
+  --color-shell-ink: var(--shell-ink);
+  --color-shell-frame: var(--shell-frame);
+  --color-key: var(--key);
+  --color-key-ink: var(--key-ink);
   --font-sans: var(--font);
 }
 
@@ -70,6 +75,12 @@
   --bezel: #1c2a1e;
   --overlay: rgba(255, 255, 255, 0.05);
   --danger: #e36b5f;
+  /* The body of the mini player, the frame around its screen, and its A and B buttons. */
+  --shell: #c4c2bb;
+  --shell-ink: #2f3672;
+  --shell-frame: #8e8d9b;
+  --key: #982a5b;
+  --key-ink: #f1e4ea;
 }
 
 [data-palette="pocket"] {
@@ -93,6 +104,12 @@
   --bezel: #2a2c2f;
   --overlay: rgba(255, 255, 255, 0.05);
   --danger: #e36b5f;
+  /* The body of the mini player, the frame around its screen, and its A and B buttons. */
+  --shell: #b8bbc0;
+  --shell-ink: #2b2e35;
+  --shell-frame: #7a7d86;
+  --key: #4b4f58;
+  --key-ink: #e2e4e8;
 }
 
 [data-palette="color"] {
@@ -116,6 +133,13 @@
   --bezel: #262a52;
   --overlay: rgba(255, 255, 255, 0.05);
   --danger: #ff7a6b;
+  /* The body of the mini player (see-through, as clear plastic), the frame around its screen,
+     and its A and B buttons. */
+  --shell: #ebebf080;
+  --shell-ink: #25252d;
+  --shell-frame: #1f1d26;
+  --key: #34313c;
+  --key-ink: #d7d3e0;
 }
 
 [data-palette="light"] {
@@ -139,6 +163,24 @@
   --bezel: #c9c6bb;
   --overlay: rgba(0, 0, 0, 0.06);
   --danger: #b8322a;
+  /* The body of the mini player, the frame around its screen, and its A and B buttons. */
+  --shell: #eceae4;
+  --shell-ink: #3a4070;
+  --shell-frame: #a9a8b4;
+  --key: #982a5b;
+  --key-ink: #f6ecf0;
+}
+
+/* The mini player draws no backdrop: the window is transparent, so the desktop shows around the
+   console and through a see-through shell. "normal" so the page has no dark canvas. Outside the
+   base layer, so it wins over the palettes. */
+:root[data-mini] {
+  color-scheme: normal;
+  background: transparent;
+}
+
+:root[data-mini] body {
+  background: transparent;
 }
 
 @layer base {

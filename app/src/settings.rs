@@ -32,6 +32,43 @@ pub struct Settings {
     pub last_entry: Option<SavedEntry>,
     /// The id of the playlist shown instead of the ROM's songs.
     pub open_playlist: Option<String>,
+    pub mini: Mini,
+}
+
+/// The mini player: the window shrunk to a strip with the song and the transport.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Mini {
+    /// Whether the window is the mini player.
+    pub on: bool,
+    /// Whether the mini player stays above other windows.
+    pub on_top: bool,
+    /// Where the mini player was (its size is fixed).
+    pub bounds: Option<Bounds>,
+    /// Where the full window was before it became the mini player, to go back to.
+    pub full: Option<Bounds>,
+}
+
+impl Default for Mini {
+    fn default() -> Mini {
+        Mini {
+            on: false,
+            on_top: true,
+            bounds: None,
+            full: None,
+        }
+    }
+}
+
+/// The place and size of a window, in physical pixels.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct Bounds {
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+    #[serde(default)]
+    pub maximized: bool,
 }
 
 /// What Next (and a finished song) plays.
@@ -95,6 +132,7 @@ impl Default for Settings {
             last_song: None,
             last_entry: None,
             open_playlist: None,
+            mini: Mini::default(),
         }
     }
 }
@@ -159,6 +197,24 @@ mod tests {
                 position: 2,
             }),
             open_playlist: Some("a1".into()),
+            mini: Mini {
+                on: true,
+                on_top: false,
+                bounds: Some(Bounds {
+                    x: -1200,
+                    y: 40,
+                    width: 288,
+                    height: 468,
+                    maximized: false,
+                }),
+                full: Some(Bounds {
+                    x: 10,
+                    y: 20,
+                    width: 1040,
+                    height: 760,
+                    maximized: true,
+                }),
+            },
         };
         let back: Settings = toml::from_str(&toml::to_string(&s).unwrap()).unwrap();
         assert_eq!(back, s);
@@ -193,6 +249,8 @@ theme = \"gbp\"
         assert_eq!(old.shuffle, Shuffle::Off);
         assert_eq!(old.last_song, None);
         assert_eq!(old.open_playlist, None);
+        assert!(!old.mini.on);
+        assert!(old.mini.on_top);
     }
 
     fn song(index: usize, key: Option<&str>) -> Song {

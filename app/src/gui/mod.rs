@@ -3,6 +3,7 @@
 //! [`session`].
 
 mod commands;
+mod mini;
 mod playlists;
 mod session;
 mod shuffle;
@@ -12,7 +13,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
-use tauri::{AppHandle, Emitter, Manager, RunEvent};
+use tauri::{AppHandle, Emitter, Manager, RunEvent, WindowEvent};
 use tauri_plugin_window_state::StateFlags;
 
 use crate::audio::{AudioOut, Scope, SharedPlayer, SCOPE_LEN};
@@ -118,12 +119,22 @@ pub fn run(initial_rom: Option<PathBuf>, language: Option<String>) {
             commands::set_volume,
             commands::set_channel_volume,
             commands::set_muted,
+            commands::set_mini,
+            commands::set_mini_on_top,
             commands::set_language,
             commands::set_theme,
             commands::save_theme,
             commands::theme_image,
             commands::pick_theme_image,
         ])
+        .on_window_event(|window, event| {
+            // The window is gone by the time the app exits: keep where the mini player is now.
+            if let WindowEvent::CloseRequested { .. } = event {
+                if let Some(window) = window.get_webview_window(window.label()) {
+                    mini::remember(&window, window.state::<App>().lock().mini());
+                }
+            }
+        })
         .setup(move |a| {
             let handle = a.handle().clone();
             {
@@ -132,6 +143,16 @@ pub fn run(initial_rom: Option<PathBuf>, language: Option<String>) {
                 s.reload_themes();
                 s.reload_playlists();
                 s.open_at_start(initial_rom.as_deref());
+                // The window starts hidden (see tauri.conf.json), so the full window does not
+                // flash up before it becomes the mini player.
+                if let Some(window) = handle.get_webview_window("main") {
+                    if s.mini().on {
+                        if let Err(e) = mini::show_mini(&window, s.mini()) {
+                            eprintln!("{e}");
+                        }
+                    }
+                    let _ = window.show();
+                }
             }
             std::thread::spawn(move || loop {
                 std::thread::sleep(TICK);

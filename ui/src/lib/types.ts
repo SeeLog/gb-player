@@ -34,8 +34,13 @@ export interface Theme {
   /** Token (CSS custom property without `--`) to colour. */
   colors: Record<string, string>;
   background: Background | null;
+  /** The console the mini player is drawn as. */
+  console: Console;
   custom: boolean;
 }
+
+/** The first model, or the colour one. */
+export type Console = "dmg" | "gbc";
 
 /** An image drawn behind the window, under the `bg` colour. */
 export interface Background {
@@ -86,6 +91,10 @@ export interface Library {
   playlists: PlaylistView[];
   /** The playlist shown when the app was last closed. */
   openPlaylist: string | null;
+  /** Whether the window is the mini player. */
+  mini: boolean;
+  /** Whether the mini player stays above other windows. */
+  miniOnTop: boolean;
   error: string | null;
 }
 

@@ -21,7 +21,7 @@ function Glyph({ d }: { d: string }) {
   );
 }
 
-export default function WindowControls({ t }: { t: Translate }) {
+export default function WindowControls({ t, onMini }: { t: Translate; onMini: () => void }) {
   const [maximized, setMaximized] = useState(false);
 
   useEffect(() => {
@@ -36,6 +36,11 @@ export default function WindowControls({ t }: { t: Translate }) {
   const toggle = maximized ? t("window_restore") : t("window_maximize");
   return (
     <div className="flex self-stretch">
+      <Tip text={`${t("mini_player")} (Ctrl+M)`}>
+        <button className={button} onClick={onMini} aria-label={t("mini_player")}>
+          <Glyph d="M0.5 0.5h9v9h-9zM4.5 5.5h3v2h-3z" />
+        </button>
+      </Tip>
       <Tip text={t("window_minimize")}>
         <button
           className={button}

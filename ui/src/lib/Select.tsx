@@ -20,6 +20,7 @@ export default function Select({
   icon,
   disabled,
   className,
+  valueClassName,
 }: {
   value: string;
   options: Option[];
@@ -33,6 +34,8 @@ export default function Select({
   disabled?: boolean;
   /** Classes for the button that opens the list. */
   className?: string;
+  /** Classes for the chosen value shown on the button. */
+  valueClassName?: string;
 }) {
   return (
     <Base.Root
@@ -48,7 +51,7 @@ export default function Select({
           aria-label={label}
         >
           {icon}
-          <Base.Value />
+          <Base.Value className={valueClassName} />
           <Base.Icon className="-mr-1 text-muted">
             <Icon name="chevron" size={16} />
           </Base.Icon>

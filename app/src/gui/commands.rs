@@ -6,12 +6,12 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Manager, State, WebviewWindow};
 use tauri_plugin_dialog::DialogExt;
 
-use super::playlists;
 use super::views::LibraryView;
 use super::{emit_library, App};
+use super::{mini, playlists};
 use crate::i18n::Text;
 use crate::settings::Shuffle;
 use crate::themes::{self, Background};
@@ -303,6 +303,41 @@ pub fn set_muted(handle: AppHandle, app: State<'_, App>, channel: usize, muted: 
     emit_library(&handle, &s);
 }
 
+/// Turn the window into the mini player, or back into the full window.
+#[tauri::command]
+pub fn set_mini(
+    handle: AppHandle,
+    app: State<'_, App>,
+    window: WebviewWindow,
+    on: bool,
+) -> Result<(), String> {
+    let mut s = app.lock();
+    let result = mini::set(&window, s.mini(), on);
+    s.save_settings();
+    emit_library(&handle, &s);
+    result.map_err(|e| e.to_string())
+}
+
+/// Keep the mini player above other windows, or not.
+#[tauri::command]
+pub fn set_mini_on_top(
+    handle: AppHandle,
+    app: State<'_, App>,
+    window: WebviewWindow,
+    on: bool,
+) -> Result<(), String> {
+    let mut s = app.lock();
+    s.mini().on_top = on;
+    let result = if s.mini().on {
+        window.set_always_on_top(on)
+    } else {
+        Ok(())
+    };
+    s.save_settings();
+    emit_library(&handle, &s);
+    result.map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub fn set_language(handle: AppHandle, app: State<'_, App>, language: String) {
     let mut s = app.lock();
@@ -326,9 +361,10 @@ pub fn save_theme(
     base: String,
     colors: BTreeMap<String, String>,
     background: Option<Background>,
+    console: String,
 ) -> Result<String, String> {
     let mut s = app.lock();
-    let id = s.save_theme(&name, &base, colors, background)?;
+    let id = s.save_theme(&name, &base, colors, background, &console)?;
     emit_library(&handle, &s);
     Ok(id)
 }

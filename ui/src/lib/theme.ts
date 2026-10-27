@@ -1,7 +1,7 @@
 // Applying themes to the page; the palettes themselves are in app.css and app/src/themes.rs.
 
 import { api } from "./api";
-import type { Background } from "./types";
+import type { Background, Console } from "./types";
 
 /** The colour tokens, the CSS custom properties without `--` (mirrors `TOKENS` in themes.rs). */
 export const TOKENS = [
@@ -24,7 +24,77 @@ export const TOKENS = [
   "bezel",
   "overlay",
   "danger",
+  "shell",
+  "shell-ink",
+  "shell-frame",
+  "key",
+  "key-ink",
 ] as const;
+
+/** Ready-made colours for the mini player's body (shell, shell-ink, shell-frame, key, key-ink),
+ * picked in the theme editor; the name is a key of the UI text. */
+export const BODY_COLORS: { name: string; colors: Record<string, string> }[] = [
+  {
+    name: "body_gray",
+    colors: {
+      shell: "#c4c2bb",
+      "shell-ink": "#2f3672",
+      "shell-frame": "#8e8d9b",
+      key: "#982a5b",
+      "key-ink": "#f1e4ea",
+    },
+  },
+  {
+    name: "body_silver",
+    colors: {
+      shell: "#b8bbc0",
+      "shell-ink": "#2b2e35",
+      "shell-frame": "#7a7d86",
+      key: "#4b4f58",
+      "key-ink": "#e2e4e8",
+    },
+  },
+  {
+    name: "body_white",
+    colors: {
+      shell: "#eceae4",
+      "shell-ink": "#3a4070",
+      "shell-frame": "#a9a8b4",
+      key: "#982a5b",
+      "key-ink": "#f6ecf0",
+    },
+  },
+  {
+    name: "body_purple",
+    colors: {
+      shell: "#6a4bb0",
+      "shell-ink": "#efe9ff",
+      "shell-frame": "#1f1d26",
+      key: "#34313c",
+      "key-ink": "#d7d3e0",
+    },
+  },
+  {
+    name: "body_clear",
+    colors: {
+      shell: "#ebebf080",
+      "shell-ink": "#25252d",
+      "shell-frame": "#1f1d26",
+      key: "#34313c",
+      "key-ink": "#d7d3e0",
+    },
+  },
+  {
+    name: "body_clear_purple",
+    colors: {
+      shell: "#6b4fb88f",
+      "shell-ink": "#2c2244",
+      "shell-frame": "#1f1d26",
+      key: "#34313c",
+      "key-ink": "#d7d3e0",
+    },
+  },
+];
 
 /** Show `base` with `colors` laid over it, dropping the colours set before. */
 export function applyTheme(base: string, colors: Record<string, string>) {
@@ -90,6 +160,7 @@ export interface Draft {
   base: string;
   colors: Record<string, string>;
   background: Background | null;
+  console: Console;
 }
 
 const images = new Map<string, Promise<string>>();

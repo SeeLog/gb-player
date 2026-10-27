@@ -105,6 +105,10 @@ pub struct LibraryView {
     pub playlists: Vec<PlaylistView>,
     /// The playlist that was shown when the app was last closed, to show it again.
     pub open_playlist: Option<String>,
+    /// Whether the window is the mini player.
+    pub mini: bool,
+    /// Whether the mini player stays above other windows.
+    pub mini_on_top: bool,
     pub error: Option<String>,
 }
 

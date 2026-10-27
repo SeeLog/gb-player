@@ -2,7 +2,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { Background, Library, Relink, Shuffle, Tick } from "./types";
+import type { Background, Console, Library, Relink, Shuffle, Tick } from "./types";
 
 export const api = {
   library: () => invoke<Library>("library"),
@@ -49,10 +49,14 @@ export const api = {
     base: string,
     colors: Record<string, string>,
     background: Background | null,
-  ) => invoke<string>("save_theme", { name, base, colors, background }),
+    console: Console,
+  ) => invoke<string>("save_theme", { name, base, colors, background, console }),
   themeImage: (image: string) => invoke<string>("theme_image", { image }),
   pickThemeImage: () => invoke<string | null>("pick_theme_image"),
   setLanguage: (language: string) => invoke<void>("set_language", { language }),
+  /** Turn the window into the mini player, or back into the full window. */
+  setMini: (on: boolean) => invoke<void>("set_mini", { on }),
+  setMiniOnTop: (on: boolean) => invoke<void>("set_mini_on_top", { on }),
 };
 
 export const onLibrary = (f: (l: Library) => void): Promise<UnlistenFn> =>

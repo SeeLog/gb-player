@@ -17,7 +17,7 @@ use super::views::{
 use crate::analyzer::Analyzer;
 use crate::audio::{Scope, SharedPlayer};
 use crate::i18n::Text;
-use crate::settings::{SavedEntry, SavedSong, Settings, Shuffle};
+use crate::settings::{Mini, SavedEntry, SavedSong, Settings, Shuffle};
 use crate::themes::{self, Background, Theme};
 
 /// Output samples sent with each tick for the oscilloscope.
@@ -682,8 +682,9 @@ impl Session {
         base: &str,
         colors: BTreeMap<String, String>,
         background: Option<Background>,
+        console: &str,
     ) -> Result<String, String> {
-        let id = themes::save(name, base, colors, background, &self.text)?;
+        let id = themes::save(name, base, colors, background, console, &self.text)?;
         self.reload_themes();
         self.settings.theme = id.clone();
         self.settings.save();
@@ -692,6 +693,11 @@ impl Session {
 
     pub fn save_settings(&mut self) {
         self.remember();
+    }
+
+    /// The mini player settings, for [`super::mini`] to change; saved with the rest.
+    pub fn mini(&mut self) -> &mut Mini {
+        &mut self.settings.mini
     }
 
     pub fn library(&self) -> LibraryView {
@@ -749,6 +755,8 @@ impl Session {
                 .open_playlist
                 .clone()
                 .filter(|id| self.playlist(id).is_some()),
+            mini: self.settings.mini.on,
+            mini_on_top: self.settings.mini.on_top,
             error: {
                 let errors: Vec<&str> = self
                     .error

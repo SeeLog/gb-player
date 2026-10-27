@@ -2,9 +2,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
 import type { Translate } from "./format";
-import type { Background, Library } from "./types";
+import type { Background, Console, Library } from "./types";
 import Icon from "./Icon";
 import {
+  BODY_COLORS,
   TOKENS,
   forgetImage,
   isColor,
@@ -35,6 +36,7 @@ const setting = "grid grid-cols-[72px_1fr_44px] items-center gap-2 text-xs text-
 /** Lays out a drop-down's value and arrow, and marks it while its list is open. */
 const choice = "flex items-center justify-between gap-1.5 text-left data-popup-open:border-accent";
 const FITS: Background["fit"][] = ["cover", "contain", "tile"];
+const CONSOLES: Console[] = ["dmg", "gbc"];
 const mono = "font-[ui-monospace,'Cascadia_Mono',Consolas,monospace] text-xs";
 
 export default function ThemeEditor({
@@ -131,7 +133,7 @@ export default function ThemeEditor({
     setSaving(true);
     setError(null);
     try {
-      await api.saveTheme(draft.name, draft.base, draft.colors, draft.background);
+      await api.saveTheme(draft.name, draft.base, draft.colors, draft.background, draft.console);
       onClose();
     } catch (e) {
       setError(String(e));
@@ -239,6 +241,55 @@ export default function ThemeEditor({
               </div>
             </>
           )}
+        </section>
+
+        <section className="flex flex-col gap-1.5">
+          <h3 className={heading}>{t("mini_player")}</h3>
+          <div className={setting}>
+            <span>{t("mini_console")}</span>
+            <Select
+              className={`col-span-2 h-7 rounded-[7px] border border-line bg-panel-2 px-1.5 text-text outline-none ${choice}`}
+              label={t("mini_console")}
+              tip={false}
+              value={draft.console}
+              options={CONSOLES.map((c) => ({ value: c, label: t(`console_${c}`) }))}
+              onChange={(console) => setDraft({ ...draft, console: console as Console })}
+            />
+          </div>
+          <div className={setting}>
+            <span>{t("mini_body")}</span>
+            {/* Each sets all the body's colours at once; they can be changed one by one below. */}
+            <div className="col-span-2 flex flex-wrap gap-1.5">
+              {BODY_COLORS.map((preset) => {
+                const chosen = Object.entries(preset.colors).every(
+                  ([token, color]) => value(token).toLowerCase() === color,
+                );
+                return (
+                  <Tip key={preset.name} text={t(preset.name)}>
+                    <button
+                      className={`grid size-7 place-items-center rounded-full border-2 ${
+                        chosen ? "border-accent" : "border-line hover:border-faint"
+                      }`}
+                      style={{
+                        // A clear body over a checkerboard, so it reads as see-through.
+                        background: `linear-gradient(${preset.colors.shell}, ${preset.colors.shell}), repeating-conic-gradient(#999 0 25%, #ddd 0 50%) 0 0 / 8px 8px`,
+                      }}
+                      onClick={() =>
+                        setDraft({ ...draft, colors: { ...draft.colors, ...preset.colors } })
+                      }
+                      aria-label={t(preset.name)}
+                      aria-pressed={chosen}
+                    >
+                      <span
+                        className="size-2.5 rounded-full"
+                        style={{ background: preset.colors.key }}
+                      />
+                    </button>
+                  </Tip>
+                );
+              })}
+            </div>
+          </div>
         </section>
 
         <section className="flex flex-col gap-1.5">

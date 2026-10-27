@@ -11,6 +11,7 @@ import { RESTART_AFTER, api, previous } from "./api";
 import { describe, fmtTime, type Translate } from "./format";
 import type { Length, Library, Shuffle, SongView } from "./types";
 import Icon from "./Icon";
+import Marquee from "./Marquee";
 import Scope from "./Scope";
 import VolumeSlider from "./Slider";
 import Tip from "./Tip";
@@ -24,7 +25,7 @@ const label = "text-xs font-bold tracking-[0.08em] uppercase text-muted";
 const round =
   "grid size-[42px] place-items-center rounded-full border border-line bg-panel-2 text-text hover:border-faint";
 
-function useSong(library: Library): SongView | undefined {
+export function useSong(library: Library): SongView | undefined {
   const rom = useTick((tick) => tick?.rom ?? null);
   const current = useTick((tick) => tick?.current ?? null);
   if (current === null) return undefined;
@@ -118,12 +119,13 @@ function Lcd({ library, t, volume }: { library: Library; t: Translate; volume: n
         <span className="num">{song ? `#${String(song.index + 1).padStart(2, "0")}` : "--"}</span>
         <span className="tracking-[0.08em] uppercase">{t(`state_${state}`)}</span>
       </div>
-      {/* A new element for each song, so the name comes in afresh even mid-way through the last. */}
+      {/* A new element for each song, so the name comes in afresh even mid-way through the last,
+          and a long one starts scrolling from its beginning. */}
       <Tip key={song ? `${rom}:${song.index}` : ""} text={song?.title}>
         <div
-          className="mt-0.5 animate-[lcd-in_180ms_ease-out] truncate text-lg font-bold motion-reduce:animate-none"
+          className="mt-0.5 animate-[lcd-in_180ms_ease-out] text-lg font-bold motion-reduce:animate-none"
         >
-          {song?.title ?? t("not_playing")}
+          <Marquee text={song?.title ?? t("not_playing")} />
         </div>
       </Tip>
       <div className="mt-1.5 h-[72px]">
@@ -167,8 +169,45 @@ const SEEK_STEP = 5;
 /** How long the playhead waits for a seek to get there, in milliseconds. */
 const SEEK_GIVE_UP = 10_000;
 
-// Re-renders on every tick, so it is kept small.
-function Progress({ library, t }: { library: Library; t: Translate }) {
+/** The bar's look: on the panel, or drawn in LCD ink on the mini player's screen. */
+const BAR = {
+  panel: {
+    track: "h-2 rounded bg-panel-2 shadow-[inset_0_0_0_1px_var(--line)]",
+    intro: "rounded-l bg-overlay",
+    mark: "-top-1 -bottom-1 rounded-[1px] bg-text opacity-60",
+    fill: "rounded bg-accent",
+    thumb:
+      "size-3.5 rounded-full bg-text shadow-[0_0_0_3px_color-mix(in_srgb,var(--accent)_40%,transparent)]",
+    empty: "bg-panel-2",
+    analysing: "bg-[repeating-linear-gradient(-45deg,var(--panel-2)_0_6px,var(--line)_6px_12px)]",
+    lap: "gap-1 rounded-[10px] bg-accent/18 px-[7px] py-px text-accent",
+    introBadge: "gap-1 rounded-[10px] bg-panel-2 px-[7px] py-px text-muted",
+  },
+  lcd: {
+    track: "h-1.5 bg-lcd-ink/15",
+    intro: "bg-lcd-ink/10",
+    mark: "-top-0.5 -bottom-0.5 bg-lcd-ink",
+    fill: "bg-lcd-ink",
+    thumb: "size-2.5 bg-lcd-ink",
+    empty: "bg-lcd-ink/15",
+    analysing:
+      "bg-[repeating-linear-gradient(-45deg,transparent_0_4px,color-mix(in_srgb,var(--lcd-ink)_20%,transparent)_4px_8px)]",
+    lap: "gap-0.5 font-bold",
+    introBadge: "font-bold opacity-70",
+  },
+};
+
+// Re-renders on every tick, so it is kept small. `lcd` draws it in one line on the mini
+// player's screen, the time beside the bar.
+export function Progress({
+  library,
+  t,
+  lcd = false,
+}: {
+  library: Library;
+  t: Translate;
+  lcd?: boolean;
+}) {
   const song = useSong(library);
   const tickPosition = useTick((tick) => tick?.position ?? 0);
   const ended = useTick((tick) => tick?.state !== "playing" && tick?.state !== "paused");
@@ -202,10 +241,28 @@ function Progress({ library, t }: { library: Library; t: Translate }) {
   };
   const at = (frac: number) => positionAt(length!, frac, lap);
 
+  const bar = lcd ? BAR.lcd : BAR.panel;
+  const lapBadge =
+    progress && progress.lap > 0 ? (
+      <span className={`inline-flex items-center whitespace-nowrap ${bar.lap}`}>
+        <Icon name="repeat" size={lcd ? 11 : 13} />
+        {t("loop_lap", { n: progress.lap })}
+      </span>
+    ) : (
+      progress &&
+      progress.loopStart !== null && (
+        <span className={`inline-flex items-center whitespace-nowrap ${bar.introBadge}`}>
+          {t("intro")}
+        </span>
+      )
+    );
+
   return (
-    <div>
+    <div className={lcd ? "flex items-center gap-2 text-[10px]" : undefined}>
+      {lcd && <span className="num flex-none font-bold">{fmtTime(position)}</span>}
       {progress ? (
         <Slider.Root
+          className={lcd ? "min-w-0 flex-1" : undefined}
           value={progress.frac}
           min={0}
           max={1}
@@ -222,22 +279,22 @@ function Progress({ library, t }: { library: Library; t: Translate }) {
         >
           {/* The control is taller than the bar, so it is easy to grab. */}
           <Slider.Control className="group -my-2 flex cursor-pointer touch-none items-center py-2 select-none">
-            <Slider.Track className="h-2 w-full rounded bg-panel-2 shadow-[inset_0_0_0_1px_var(--line)]">
+            <Slider.Track className={`w-full ${bar.track}`}>
               {progress.loopStart !== null && (
                 <>
                   <div
-                    className="absolute inset-y-0 left-0 rounded-l bg-overlay"
+                    className={`absolute inset-y-0 left-0 ${bar.intro}`}
                     style={{ width: `${progress.loopStart * 100}%` }}
                   />
                   <Tip text={t("loop_point")}>
                     <div
-                      className="absolute -top-1 -bottom-1 -ml-px w-0.5 rounded-[1px] bg-text opacity-60"
+                      className={`absolute -ml-px w-0.5 ${bar.mark}`}
                       style={{ left: `${progress.loopStart * 100}%` }}
                     />
                   </Tip>
                 </>
               )}
-              <Slider.Indicator className="rounded bg-accent" />
+              <Slider.Indicator className={bar.fill} />
               <Slider.Thumb
                 aria-label={t("seek")}
                 getAriaValueText={() => fmtTime(position)}
@@ -249,39 +306,25 @@ function Progress({ library, t }: { library: Library; t: Translate }) {
                   e.preventDefault();
                   seek(e.key === "Home" ? 0 : position + step!);
                 }}
-                className="size-3.5 rounded-full bg-text shadow-[0_0_0_3px_color-mix(in_srgb,var(--accent)_40%,transparent)] transition-transform group-hover:scale-115 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-accent motion-reduce:transition-none"
+                className={`${bar.thumb} transition-transform group-hover:scale-115 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-accent motion-reduce:transition-none`}
               />
             </Slider.Track>
           </Slider.Control>
         </Slider.Root>
       ) : (
         // No song, or one whose length is not known yet (striped): nothing to seek in.
-        <div
-          className={`h-2 rounded shadow-[inset_0_0_0_1px_var(--line)] ${
-            song
-              ? "bg-[repeating-linear-gradient(-45deg,var(--panel-2)_0_6px,var(--line)_6px_12px)]"
-              : "bg-panel-2"
-          }`}
-        />
+        <div className={`${bar.track} ${lcd ? "flex-1" : ""} ${song ? bar.analysing : bar.empty}`} />
       )}
-      <div className="mt-2 flex items-center gap-2 text-xs">
-        <span className="num">{fmtTime(position)}</span>
-        {progress && progress.lap > 0 ? (
-          <span className="inline-flex items-center gap-1 rounded-[10px] bg-accent/18 px-[7px] py-px text-accent">
-            <Icon name="repeat" size={13} />
-            {t("loop_lap", { n: progress.lap })}
-          </span>
-        ) : (
-          progress &&
-          progress.loopStart !== null && (
-            <span className="inline-flex items-center gap-1 rounded-[10px] bg-panel-2 px-[7px] py-px text-muted">
-              {t("intro")}
-            </span>
-          )
-        )}
-        <span className="flex-1" />
-        <span className="num text-muted">{song ? describe(t, length) : ""}</span>
-      </div>
+      {lcd ? (
+        lapBadge
+      ) : (
+        <div className="mt-2 flex items-center gap-2 text-xs">
+          <span className="num">{fmtTime(position)}</span>
+          {lapBadge}
+          <span className="flex-1" />
+          <span className="num text-muted">{song ? describe(t, length) : ""}</span>
+        </div>
+      )}
     </div>
   );
 }

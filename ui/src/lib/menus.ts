@@ -152,6 +152,7 @@ async function windowItems(t: Translate): Promise<MenuItem[]> {
   const [onTop, maximized] = await Promise.all([win.isAlwaysOnTop(), win.isMaximized()]);
   return [
     { label: t("always_on_top"), checked: onTop, onSelect: () => win.setAlwaysOnTop(!onTop) },
+    { label: t("mini_player"), shortcut: "Ctrl+M", onSelect: () => api.setMini(true) },
     "separator",
     { label: t("window_minimize"), onSelect: () => win.minimize() },
     {

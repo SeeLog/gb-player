@@ -18,7 +18,7 @@ pub const BUILTIN: [(&str, &str); 4] = [
 ];
 
 /// The colour tokens a theme may set, the CSS custom properties without the leading `--`.
-pub const TOKENS: [&str; 19] = [
+pub const TOKENS: [&str; 24] = [
     "backdrop",
     "bg",
     "panel",
@@ -38,7 +38,20 @@ pub const TOKENS: [&str; 19] = [
     "bezel",
     "overlay",
     "danger",
+    "shell",
+    "shell-ink",
+    "shell-frame",
+    "key",
+    "key-ink",
 ];
+
+/// The consoles the mini player can be drawn as: the first model and the colour one.
+pub const CONSOLES: [&str; 2] = ["dmg", "gbc"];
+
+/// The console a theme without one is drawn as: the colour model for the color palette.
+fn default_console(base: &str) -> String {
+    if base == "color" { "gbc" } else { "dmg" }.to_string()
+}
 
 /// Ids of custom themes start with this, so they never clash with the built-in ones.
 const CUSTOM_PREFIX: &str = "custom:";
@@ -51,6 +64,8 @@ pub struct Theme {
     pub base: String,
     pub colors: BTreeMap<String, String>,
     pub background: Option<Background>,
+    /// The console the mini player is drawn as, one of [`CONSOLES`].
+    pub console: String,
     pub custom: bool,
 }
 
@@ -100,6 +115,8 @@ struct ThemeFile {
     colors: BTreeMap<String, String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     background: Option<Background>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    console: Option<String>,
 }
 
 pub fn dir() -> Option<PathBuf> {
@@ -285,6 +302,14 @@ fn parse(path: &Path, text: &str, t: &Text, warnings: &mut Vec<String>) -> Optio
         }
         None => BUILTIN[0].0.to_string(),
     };
+    let console = match parsed.console {
+        Some(c) if CONSOLES.contains(&c.as_str()) => c,
+        Some(c) => {
+            warnings.push(t.fmt("theme_bad_console", &[("file", &file), ("console", &c)]));
+            default_console(&base)
+        }
+        None => default_console(&base),
+    };
     Some(Theme {
         id: format!("{CUSTOM_PREFIX}{stem}"),
         name: parsed.name.filter(|n| !n.trim().is_empty()).unwrap_or(stem),
@@ -293,6 +318,7 @@ fn parse(path: &Path, text: &str, t: &Text, warnings: &mut Vec<String>) -> Optio
         background: parsed
             .background
             .and_then(|b| clean_background(b, &file, t, warnings)),
+        console,
         custom: true,
     })
 }
@@ -307,6 +333,7 @@ pub fn load(t: &Text) -> (Vec<Theme>, Vec<String>) {
             base: id.to_string(),
             colors: BTreeMap::new(),
             background: None,
+            console: default_console(id),
             custom: false,
         })
         .collect();
@@ -370,6 +397,7 @@ pub fn save(
     base: &str,
     colors: BTreeMap<String, String>,
     background: Option<Background>,
+    console: &str,
     t: &Text,
 ) -> Result<String, String> {
     let dir = dir().ok_or_else(|| t.get("theme_no_dir").to_string())?;
@@ -380,6 +408,7 @@ pub fn save(
         base: Some(if is_builtin(base) { base } else { BUILTIN[0].0 }.to_string()),
         colors: clean_colors(colors, &stem, t, &mut warnings),
         background: background.and_then(|b| clean_background(b, &stem, t, &mut warnings)),
+        console: CONSOLES.contains(&console).then(|| console.to_string()),
     };
     if !warnings.is_empty() {
         return Err(warnings.join("\n"));
@@ -444,7 +473,34 @@ mod tests {
         assert_eq!(theme.colors.len(), 2);
         assert_eq!(theme.colors["backdrop"], "#123");
         assert_eq!(theme.colors["bg"], "#000");
+        assert_eq!(theme.console, "dmg");
         assert_eq!(warnings.len(), 3);
+    }
+
+    #[test]
+    fn console_comes_from_the_file_or_the_base() {
+        let t = Text::new("en");
+        let mut warnings = Vec::new();
+        let path = Path::new("x.toml");
+        let console = |text: &str, warnings: &mut Vec<String>| {
+            parse(path, text, &t, warnings).unwrap().console
+        };
+        assert_eq!(console("base = \"color\"\n", &mut warnings), "gbc");
+        assert_eq!(console("base = \"pocket\"\n", &mut warnings), "dmg");
+        assert_eq!(
+            console("base = \"pocket\"\nconsole = \"gbc\"\n", &mut warnings),
+            "gbc"
+        );
+        assert_eq!(
+            console("base = \"color\"\nconsole = \"dmg\"\n", &mut warnings),
+            "dmg"
+        );
+        assert!(warnings.is_empty());
+        assert_eq!(
+            console("base = \"color\"\nconsole = \"nope\"\n", &mut warnings),
+            "gbc"
+        );
+        assert_eq!(warnings.len(), 1);
     }
 
     #[test]

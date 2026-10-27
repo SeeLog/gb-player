@@ -14,6 +14,7 @@ import { Dialogs } from "./lib/Dialog";
 import { Toasts } from "./lib/Toasts";
 import Sidebar, { type View } from "./lib/Sidebar";
 import SongList from "./lib/SongList";
+import MiniPlayer from "./lib/MiniPlayer";
 import NowPlaying from "./lib/NowPlaying";
 import ThemeEditor from "./lib/ThemeEditor";
 import WindowControls from "./lib/WindowControls";
@@ -22,8 +23,10 @@ import { tickStore } from "./lib/tick";
 import { useLeaving } from "./lib/leaving";
 
 const headerControl =
-  "flex h-[30px] items-center gap-1.5 rounded-lg border border-line bg-panel-2 text-text hover:border-faint";
+  "flex h-[30px] flex-none items-center gap-1.5 rounded-lg border border-line bg-panel-2 whitespace-nowrap text-text hover:border-faint";
 const headerButton = `${headerControl} px-2.5`;
+/** The words on the header's buttons, left out when the window is narrow (the icons stay). */
+const headerLabel = "max-[1000px]:hidden";
 
 export default function App() {
   const [library, setLibrary] = useState<Library | null>(null);
@@ -159,9 +162,19 @@ export default function App() {
       base: theme.base,
       colors: { ...theme.colors },
       background: theme.background && { ...theme.background },
+      console: theme.console,
     });
   }
   const closeEditor = useCallback(() => setDraft(null), []);
+  // The mini player has no room for the editor. It draws no backdrop, so the desktop shows
+  // around the console (the window is transparent).
+  const mini = !!library?.mini;
+  useEffect(() => {
+    if (mini) setDraft(null);
+  }, [mini]);
+  useLayoutEffect(() => {
+    document.documentElement.toggleAttribute("data-mini", mini);
+  }, [mini]);
 
   // Our right-click menu in place of the WebView's. Shift+right-click in a dev build still gives
   // the WebView's, for Inspect.
@@ -179,7 +192,8 @@ export default function App() {
       const target = e.target as Element;
       if ((import.meta.env.DEV && e.shiftKey) || wantsNativeMenu(target)) return;
       e.preventDefault();
-      if (target.closest('[role="menu"]')) return;
+      // The mini player is too small for a menu: its buttons are all there is.
+      if (target.closest('[role="menu"]') || latest.current.library?.mini) return;
       const items = await menuFor(
         target,
         latest.current.library,
@@ -207,6 +221,10 @@ export default function App() {
       } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
         e.preventDefault();
         search.current?.focus();
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "m") {
+        e.preventDefault();
+        const library = latest.current.library;
+        if (library) api.setMini(!library.mini);
       } else if (typing) {
         if (e.key === "Escape") (e.target as HTMLElement).blur();
       } else if (inPopup) {
@@ -226,7 +244,7 @@ export default function App() {
 
   return (
     <>
-      {background && backgroundUrl && (
+      {!mini && background && backgroundUrl && (
         <div className="fixed inset-0 overflow-hidden" aria-hidden="true">
           <div
             className="absolute bg-center"
@@ -242,83 +260,87 @@ export default function App() {
         </div>
       )}
 
-      <div className="relative flex h-full flex-col bg-bg">
+      <div className={`relative flex h-full flex-col ${mini ? "" : "bg-bg"}`}>
         {/* The window has no system frame: this bar is the title bar (drag it, double-click
             it). Only the bar itself drags, so clicks on its text fall through to it. */}
-        <header
-          data-tauri-drag-region
-          className="flex h-10 flex-none items-center gap-2.5 border-b border-line bg-panel pl-3"
-        >
-          <div
+        {!mini && (
+          <header
             data-tauri-drag-region
-            className="flex items-center gap-2 font-bold tracking-[0.02em] *:pointer-events-none"
+            className="flex h-10 flex-none items-center gap-2.5 border-b border-line bg-panel pl-3"
           >
-            <span
-              className="size-[22px] rounded-md [background:radial-gradient(circle_at_50%_50%,var(--accent)_0_5px,transparent_5.5px),var(--accent-ink)] shadow-[inset_0_0_0_2px_var(--accent)]"
-              aria-hidden="true"
-            />
-            <span>GB Player</span>
-          </div>
-          {shownRom && view.kind === "rom" && (
-            <Tip text={shownRom.path}>
-              <div
-                data-tauri-drag-region
-                className="flex min-w-0 items-baseline gap-2 border-l border-line pl-3.5 *:pointer-events-none"
-              >
-                {shownRom.game && <span className="truncate font-semibold">{shownRom.game}</span>}
-                <span className="rounded border border-line bg-panel-2 px-1.5 py-px text-[11px] text-muted">
-                  {shownRom.title}
-                </span>
-                <span className="whitespace-nowrap text-muted">
-                  {t("song_count", { n: shownRom.songs.length })}
-                </span>
-              </div>
-            </Tip>
-          )}
-          <div data-tauri-drag-region className="flex-1 self-stretch" />
-          <Tip text="Ctrl+O">
-            <button className={headerButton} onClick={pickRom}>
-              <Icon name="open" size={18} />
-              <span>{t("open_rom")}</span>
-            </button>
-          </Tip>
-          {library && (
-            <>
-              <Select
-                className={headerButton}
-                label={t("theme")}
-                icon={<Icon name="palette" size={18} />}
-                value={library.theme}
-                options={library.themes.map((th) => ({ value: th.id, label: th.name }))}
-                onChange={(id) => api.setTheme(id)}
-                disabled={!!draft}
+            <div
+              data-tauri-drag-region
+              className="flex flex-none items-center gap-2 font-bold tracking-[0.02em] whitespace-nowrap *:pointer-events-none"
+            >
+              <span
+                className="size-[22px] rounded-md [background:radial-gradient(circle_at_50%_50%,var(--accent)_0_5px,transparent_5.5px),var(--accent-ink)] shadow-[inset_0_0_0_2px_var(--accent)]"
+                aria-hidden="true"
               />
-              <Tip text={draft ? t("theme_close") : t("edit_theme")}>
-                <button
-                  className={`${headerControl} w-[30px] justify-center ${
-                    draft ? "border-accent! text-accent" : ""
-                  }`}
-                  onClick={editTheme}
-                  aria-label={t("edit_theme")}
-                  aria-pressed={!!draft}
+              <span>GB Player</span>
+            </div>
+            {shownRom && view.kind === "rom" && (
+              <Tip text={shownRom.path}>
+                <div
+                  data-tauri-drag-region
+                  className="flex min-w-0 items-baseline gap-2 overflow-hidden border-l border-line pl-3.5 *:pointer-events-none"
                 >
-                  <Icon name="edit" size={18} />
-                </button>
+                  {shownRom.game && <span className="truncate font-semibold">{shownRom.game}</span>}
+                  <span className="flex-none rounded border border-line bg-panel-2 px-1.5 py-px text-[11px] whitespace-nowrap text-muted">
+                    {shownRom.title}
+                  </span>
+                  <span className="flex-none whitespace-nowrap text-muted">
+                    {t("song_count", { n: shownRom.songs.length })}
+                  </span>
+                </div>
               </Tip>
-              <Select
-                className={headerButton}
-                label={t("language")}
-                icon={<Icon name="globe" size={18} />}
-                value={library.language}
-                options={library.languages.map((l) => ({ value: l.code, label: l.name }))}
-                onChange={(code) => api.setLanguage(code)}
-              />
-            </>
-          )}
-          <WindowControls t={t} />
-        </header>
+            )}
+            <div data-tauri-drag-region className="flex-1 self-stretch" />
+            <Tip text={`${t("open_rom")} (Ctrl+O)`}>
+              <button className={headerButton} onClick={pickRom} aria-label={t("open_rom")}>
+                <Icon name="open" size={18} />
+                <span className={headerLabel}>{t("open_rom")}</span>
+              </button>
+            </Tip>
+            {library && (
+              <>
+                <Select
+                  className={headerButton}
+                  label={t("theme")}
+                  icon={<Icon name="palette" size={18} />}
+                  valueClassName={`max-w-[12em] truncate ${headerLabel}`}
+                  value={library.theme}
+                  options={library.themes.map((th) => ({ value: th.id, label: th.name }))}
+                  onChange={(id) => api.setTheme(id)}
+                  disabled={!!draft}
+                />
+                <Tip text={draft ? t("theme_close") : t("edit_theme")}>
+                  <button
+                    className={`${headerControl} w-[30px] justify-center ${
+                      draft ? "border-accent! text-accent" : ""
+                    }`}
+                    onClick={editTheme}
+                    aria-label={t("edit_theme")}
+                    aria-pressed={!!draft}
+                  >
+                    <Icon name="edit" size={18} />
+                  </button>
+                </Tip>
+                <Select
+                  className={headerButton}
+                  label={t("language")}
+                  icon={<Icon name="globe" size={18} />}
+                  valueClassName={headerLabel}
+                  value={library.language}
+                  options={library.languages.map((l) => ({ value: l.code, label: l.name }))}
+                  onChange={(code) => api.setLanguage(code)}
+                />
+              </>
+            )}
+            <WindowControls t={t} onMini={() => api.setMini(true)} />
+          </header>
+        )}
 
-        {errorText && (
+        {!mini && errorText && (
           <div
             role="alert"
             className="border-b border-danger/35 bg-danger/16 px-4 py-2 whitespace-pre-wrap text-danger"
@@ -327,7 +349,9 @@ export default function App() {
           </div>
         )}
 
-        {library && (hasRom || library.playlists.length > 0) ? (
+        {library?.mini ? (
+          <MiniPlayer library={library} t={t} />
+        ) : library && (hasRom || library.playlists.length > 0) ? (
           <main className="grid min-h-0 flex-1 grid-cols-[200px_minmax(0,1fr)_380px]">
             <Sidebar
               library={library}
