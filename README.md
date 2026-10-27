@@ -49,7 +49,7 @@ gb-player --lang en pokemon.gb           # 言語を指定して起動(既定は
 
 `--info` / `--wav` は bun なしの `cargo run --release -- --info pokemon.gb` でも動きます。
 
-GUIのキー操作: Space 再生/一時停止、← → 前/次の曲、Ctrl+O ROMを開く、Ctrl+F 検索。
+GUIのキー操作: Space 再生/一時停止、← → 前/次の曲、Ctrl+O ROMを開く、Ctrl+F 検索、Ctrl+M ミニプレイヤーと切り替え。
 シークバーはクリックかドラッグで再生位置を動かせ、フォーカス中は ← → で5秒ずつ移動します。
 言語・音量・ループ・テーマの設定は `%APPDATA%\gb-player\settings.toml`(Linux/macOSは `~/.config/gb-player/settings.toml`)に保存されます。
 ウィンドウの位置と大きさも次回の起動に引き継がれます。
@@ -68,10 +68,33 @@ ROMはいくつでも同時に開けます(ファイル選択で複数選ぶか�
 ROMのパスとファイルのハッシュで保存されます。ROMを移動して見つからなくなった曲はグレーで表示され、
 クリックするとファイルを選び直せます(ハッシュが違うROMを選ぶと確認が出ます。勝手にファイルを探し回ることはしません)。
 
+## ミニプレイヤー
+
+右上のボタン(最小化の左)か Ctrl+M、タイトルバーの右クリックの「ミニプレイヤー」で、ウィンドウが携帯ゲーム機の形の
+小さなプレイヤーになります。画面に曲名・波形・再生位置が出て、ボタンで操作できます。
+
+- 十字キーの ← → で前/次の曲、↑ ↓ で音量
+- A で再生/一時停止、B で停止
+- SELECT でシャッフルの切り替え、START(か Ctrl+M)で元の大きさに戻る
+- 上のピンで常に手前に表示するかを切り替え
+
+ミニプレイヤーの位置と、元のウィンドウの位置・大きさはそれぞれ覚えていて、ミニプレイヤーのまま閉じると次もミニプレイヤーで
+起動します。本体の形(初代型かカラー型か)と色はテーマで決まり、本体の色を半透明にすると中の部品と、縁から後ろの画面が透けて見えます。
+
 ## テーマ
 
-画面右上のパレットのメニューで配色を切り替えられます。内蔵は DMG(初代の4階調の緑)/ Pocket(グレー)/
-Color(紺と黄)/ Light(明るい背景)の4つです。
+画面右上のパレットのメニューで配色を切り替えられます。内蔵は次の6つです。
+
+| テーマ | 配色 | ミニプレイヤー |
+|---|---|---|
+| DMG | 初代の4階調の緑 | 初代型・グレー |
+| Pocket | グレー | 初代型・シルバー |
+| Color | 紺と黄 | カラー型・黄色 |
+| Prism | 明るいグレーにパールのような虹色の光沢 | カラー型・クリア |
+| Nebula | 深い紫に夕焼けのような虹色の光沢 | カラー型・クリアパープル |
+| Daylight | 明るい背景に初代の緑 | 初代型・ホワイト |
+
+以前の名前の `clear` と `light` は、それぞれ Prism と Daylight として読み込みます。
 
 隣の鉛筆ボタンでテーマエディタが開き、色を変えるとその場で画面に反映されます。「名前を付けて保存…」で
 `%APPDATA%\gb-player\themes\<名前>.toml`(Linux/macOSは `~/.config/gb-player/themes/`)に保存され、メニューに追加されます。
@@ -79,7 +102,8 @@ Color(紺と黄)/ Light(明るい背景)の4つです。
 
 ```toml
 name = "夜のマサラタウン"   # 省略するとファイル名
-base = "color"              # 元にする内蔵テーマ: dmg / pocket / color / light
+base = "color"              # 元にする内蔵テーマ: dmg / pocket / color / prism / nebula / daylight
+console = "gbc"             # ミニプレイヤーの本体: dmg(初代型)/ gbc(カラー型)。省略すると base に合わせる
 [colors]                    # 変えたい色だけ書く(書かなかった色は base のまま)
 bg = "#0b0d1e"
 accent = "#ff8fb1"
@@ -91,7 +115,14 @@ image = "images/sky.png"    # themes フォルダ内のファイル(png / jpg / 
 fit = "cover"               # cover(全体を覆う)/ contain(全体を表示)/ tile(並べる)
 blur = 6                    # ぼかし(0〜40 px)
 dim = 0.2                   # 暗さ(0〜1)
+
+[sheen]                     # 光沢(省略すると base のまま。colors = [] で光沢なし)
+angle = 115                 # グラデーションの角度(度)
+colors = ["#bdf3e4", "#d2c8fb", "#f8cbe4"]   # 8色まで
 ```
+
+光沢があると、差し色で塗る部分(再生ボタンや選んでいる項目など)にそのグラデーションがかかります。
+差し色(`accent`)は文字だけに使い、縁やメーター、リストのハイライトは `accent-2` の色になります。
 
 重なり方は奥から `backdrop`(背景画像があるときは画像)→ `bg` → パネル類です。内蔵テーマの `bg` と
 `panel` `panel-2` は最初から半透明で、`backdrop` の上に重なると不透明な色と同じ見た目になるように
@@ -99,7 +130,9 @@ dim = 0.2                   # 暗さ(0〜1)
 (エディタに注意が出ます)。エディタの「画像を選ぶ…」で選んだ画像は `themes\images\` にコピーされます。
 
 色の名前は `backdrop` `bg` `panel` `panel-2` `line` `text` `muted` `faint` `accent` `accent-2` `accent-ink`
-`lcd-hi` `lcd` `lcd-lo` `lcd-ink` `lcd-grid` `bezel` `overlay` `danger` です。値は `#rgb` / `#rrggbb` /
+`lcd-hi` `lcd` `lcd-lo` `lcd-ink` `lcd-grid` `bezel` `overlay` `danger` `knob`(スライダーとスイッチのつまみ)、
+ミニプレイヤーの `shell`(本体)`shell-ink`(本体の文字)`shell-frame`(画面の枠)`key`(A・Bボタン)`key-ink`
+(ボタンの文字)です。値は `#rgb` / `#rrggbb` /
 `#rrggbbaa` か、数値だけの `rgb()` `rgba()` `hsl()` `hsla()` に限ります。知らない名前や色でない値は無視され、
 画面上部に警告が出ます。
 
