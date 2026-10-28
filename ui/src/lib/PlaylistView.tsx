@@ -89,9 +89,6 @@ export default memo(function PlaylistView({
     <section className="flex min-h-0 flex-col border-r border-line">
       <div className="mx-4 mt-3 mb-2 flex h-9 items-center gap-3">
         <h2 className="min-w-0 truncate text-base font-semibold">{list.name}</h2>
-        <span className="whitespace-nowrap text-muted">
-          {t("song_count", { n: list.entries.length })}
-        </span>
         <div className="flex-1" />
         <button
           className="flex h-[30px] items-center gap-1.5 rounded-lg bg-accent px-3 font-semibold text-accent-ink hover:brightness-108 disabled:opacity-50"

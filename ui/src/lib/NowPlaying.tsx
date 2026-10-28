@@ -22,7 +22,6 @@ const LOOP_COUNTS: (number | null)[] = [null, 1, 2, 3];
 const SHUFFLES: Shuffle[] = ["off", "list", "all"];
 const PROFILES: Profile[] = ["line", "gbcSpeaker"];
 
-const label = "text-xs font-bold tracking-[0.08em] uppercase text-muted";
 const round =
   "grid size-[42px] place-items-center rounded-full border border-line bg-panel-2 text-text hover:border-faint";
 
@@ -44,84 +43,79 @@ export default memo(function NowPlaying({ library, t }: { library: Library; t: T
       <Failure />
       <Transport t={t} />
 
-      <div className="flex flex-col gap-2">
-        <div className={label}>{t("loop_label")}</div>
-        <Segmented
-          label={t("loop_label")}
-          options={LOOP_COUNTS.map((n) => ({
-            value: n,
-            text: n === null ? "∞" : `×${n}`,
-            title: n === null ? t("loop_forever") : t("loop_playlist", { n }),
-          }))}
-          value={library.loopCount}
-          onChange={(n) => api.setLoopCount(n)}
-        />
-        <Toggle checked={library.autoNext} onChange={(on) => api.setAutoNext(on)}>
-          {t("auto_next")}
-        </Toggle>
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <div className={`${label} flex items-center gap-1.5`}>
-          <Icon name="shuffle" size={14} />
-          {t("shuffle")}
-        </div>
-        <Segmented
-          label={t("shuffle")}
-          options={SHUFFLES.map((mode) => ({
-            value: mode,
-            text: t(`shuffle_${mode}`),
-            title: t(`shuffle_${mode}_hint`),
-          }))}
-          value={library.shuffle}
-          onChange={(mode) => api.setShuffle(mode)}
-          small
-        />
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <div className={label}>{t("output")}</div>
-        <Segmented
-          label={t("output")}
-          options={PROFILES.map((profile) => ({
-            value: profile,
-            text: t(`output_${profile}`),
-            title: t(`output_${profile}_hint`),
-          }))}
-          value={library.profile}
-          onChange={(profile) => api.setProfile(profile, library.speakerNoise)}
-          small
-        />
-        {library.profile !== "line" && (
-          <Toggle
-            checked={library.speakerNoise}
-            onChange={(on) => api.setProfile(library.profile, on)}
-          >
-            {t("speaker_noise")}
-          </Toggle>
-        )}
-      </div>
-
-      <div className="flex items-center gap-2.5 text-muted">
-        <Icon name="volume" size={18} />
-        <Tip text={t("volume")}>
-          <VolumeSlider
-            value={volume}
-            onChange={(v) => {
-              setVolume(v);
-              api.setVolume(v);
-            }}
-            label={t("volume")}
-            className="flex-1"
+      {/* Each setting is a row led by its icon, with what goes with it right under it. */}
+      <div className="flex flex-col gap-2.5">
+        <Row icon="repeat" label={t("loop_label")}>
+          <Segmented
+            label={t("loop_label")}
+            options={LOOP_COUNTS.map((n) => ({
+              value: n,
+              text: n === null ? "∞" : `×${n}`,
+              title: n === null ? t("loop_forever") : t("loop_playlist", { n }),
+            }))}
+            value={library.loopCount}
+            onChange={(n) => api.setLoopCount(n)}
           />
-        </Tip>
-        <span className="num w-7 text-right text-xs">{Math.round(volume * 100)}</span>
+          <Toggle checked={library.autoNext} onChange={(on) => api.setAutoNext(on)}>
+            {t("auto_next")}
+          </Toggle>
+        </Row>
+
+        <Row icon="shuffle" label={t("shuffle")}>
+          <Segmented
+            label={t("shuffle")}
+            options={SHUFFLES.map((mode) => ({
+              value: mode,
+              text: t(`shuffle_${mode}`),
+              title: t(`shuffle_${mode}_hint`),
+            }))}
+            value={library.shuffle}
+            onChange={(mode) => api.setShuffle(mode)}
+            small
+          />
+        </Row>
+
+        <Row icon="speaker" label={t("output")}>
+          <Segmented
+            label={t("output")}
+            options={PROFILES.map((profile) => ({
+              value: profile,
+              text: t(`output_${profile}`),
+              title: t(`output_${profile}_hint`),
+            }))}
+            value={library.profile}
+            onChange={(profile) => api.setProfile(profile, library.speakerNoise)}
+            small
+          />
+          {library.profile !== "line" && (
+            <Toggle
+              checked={library.speakerNoise}
+              onChange={(on) => api.setProfile(library.profile, on)}
+            >
+              {t("speaker_noise")}
+            </Toggle>
+          )}
+        </Row>
+
+        <Row icon="volume" label={t("volume")} center>
+          <div className="flex items-center gap-2.5">
+            <VolumeSlider
+              value={volume}
+              onChange={(v) => {
+                setVolume(v);
+                api.setVolume(v);
+              }}
+              label={t("volume")}
+              className="flex-1"
+            />
+            <span className="num w-7 text-right text-xs text-muted">
+              {Math.round(volume * 100)}
+            </span>
+          </div>
+        </Row>
       </div>
 
-      <div className="flex flex-col gap-2">
-        <div className={label}>{t("channels")}</div>
-        <Channels library={library} t={t} />
-      </div>
+      <Channels library={library} t={t} />
     </aside>
   );
 });
@@ -138,13 +132,12 @@ function Lcd({ library, t, volume }: { library: Library; t: Translate; volume: n
       </div>
       {/* A new element for each song, so the name comes in afresh even mid-way through the last,
           and a long one starts scrolling from its beginning. */}
-      <Tip key={song ? `${rom}:${song.index}` : ""} text={song?.title}>
-        <div
-          className="mt-0.5 animate-[lcd-in_180ms_ease-out] text-lg font-bold motion-reduce:animate-none"
-        >
-          <Marquee text={song?.title ?? t("not_playing")} />
-        </div>
-      </Tip>
+      <div
+        key={song ? `${rom}:${song.index}` : ""}
+        className="mt-0.5 animate-[lcd-in_180ms_ease-out] text-lg font-bold motion-reduce:animate-none"
+      >
+        <Marquee text={song?.title ?? t("not_playing")} />
+      </div>
       <div className="mt-1.5 h-[72px]">
         <Scope volume={volume} />
       </div>
@@ -198,7 +191,6 @@ const BAR = {
     empty: "bg-panel-2",
     analysing: "bg-[repeating-linear-gradient(-45deg,var(--panel-2)_0_6px,var(--line)_6px_12px)]",
     lap: "gap-1 rounded-[10px] bg-accent/18 px-[7px] py-px text-accent",
-    introBadge: "gap-1 rounded-[10px] bg-panel-2 px-[7px] py-px text-muted",
   },
   lcd: {
     track: "h-1.5 bg-lcd-ink/15",
@@ -210,7 +202,6 @@ const BAR = {
     analysing:
       "bg-[repeating-linear-gradient(-45deg,transparent_0_4px,color-mix(in_srgb,var(--lcd-ink)_20%,transparent)_4px_8px)]",
     lap: "gap-0.5 font-bold",
-    introBadge: "font-bold opacity-70",
   },
 };
 
@@ -259,20 +250,20 @@ export function Progress({
   const at = (frac: number) => positionAt(length!, frac, lap);
 
   const bar = lcd ? BAR.lcd : BAR.panel;
-  const lapBadge =
-    progress && progress.lap > 0 ? (
-      <span className={`inline-flex items-center whitespace-nowrap ${bar.lap}`}>
-        <Icon name="repeat" size={lcd ? 11 : 13} />
-        {t("loop_lap", { n: progress.lap })}
-      </span>
-    ) : (
-      progress &&
-      progress.loopStart !== null && (
-        <span className={`inline-flex items-center whitespace-nowrap ${bar.introBadge}`}>
-          {t("intro")}
-        </span>
-      )
-    );
+  // The bar's shading shows the intro, so only the laps after it are counted.
+  const lapBadge = progress && progress.lap > 0 && (
+    <span className={`inline-flex items-center whitespace-nowrap ${bar.lap}`}>
+      <Icon name="repeat" size={lcd ? 11 : 13} />
+      {t("loop_lap", { n: progress.lap })}
+    </span>
+  );
+  // What the end of the bar stands for, with the intro and loop lengths on hover.
+  const end =
+    length?.kind === "loops"
+      ? fmtTime(length.intro + length.period)
+      : length?.kind === "ends"
+        ? fmtTime(length.at)
+        : null;
 
   return (
     <div className={lcd ? "flex items-center gap-2 text-[10px]" : undefined}>
@@ -339,7 +330,13 @@ export function Progress({
           <span className="num">{fmtTime(position)}</span>
           {lapBadge}
           <span className="flex-1" />
-          <span className="num text-muted">{song ? describe(t, length) : ""}</span>
+          {song && end ? (
+            <Tip text={length?.kind === "loops" ? describe(t, length) : undefined}>
+              <span className="num text-muted">{end}</span>
+            </Tip>
+          ) : (
+            <span className="text-muted">{song ? describe(t, length) : ""}</span>
+          )}
         </div>
       )}
     </div>
@@ -435,7 +432,7 @@ function Channels({ library, t }: { library: Library; t: Translate }) {
               muted ? "opacity-45" : ""
             }`}
           >
-            <Tip text={t("toggle_mute")}>
+            <Tip text={muted ? t("unmute") : t("mute")}>
               <button
                 className="flex flex-col gap-2 text-left"
                 onClick={() => api.setMuted(ch, !muted)}
@@ -448,9 +445,6 @@ function Channels({ library, t }: { library: Library; t: Translate }) {
                     }`}
                   />
                   <span className={`flex-1 ${muted ? "line-through" : ""}`}>{t(key)}</span>
-                  <span className="num text-[11px] font-normal text-faint">
-                    {Math.round(volumes[ch] * 100)}
-                  </span>
                 </span>
                 {/* bg as it looks over the backdrop, whatever is under the meter. */}
                 <span className="relative h-1.5 overflow-hidden rounded-[3px] [background:linear-gradient(var(--bg),var(--bg)),var(--backdrop)]">
@@ -482,6 +476,31 @@ function Channels({ library, t }: { library: Library; t: Translate }) {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+// A setting's icon (named by its tip), and the setting beside it. The icon is level with the first
+// control, a segmented one unless `center`.
+function Row({
+  icon,
+  label,
+  center = false,
+  children,
+}: {
+  icon: string;
+  label: string;
+  center?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <div className={`flex gap-2.5 ${center ? "items-center" : "items-start"}`}>
+      <Tip text={label}>
+        <span className={`grid w-[18px] flex-none place-items-center text-muted ${center ? "" : "h-9"}`}>
+          <Icon name={icon} size={18} />
+        </span>
+      </Tip>
+      <div className="flex min-w-0 flex-1 flex-col gap-2">{children}</div>
     </div>
   );
 }

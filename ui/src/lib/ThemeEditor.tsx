@@ -188,11 +188,11 @@ export default function ThemeEditor({
 
         <section className="flex flex-col gap-1.5">
           <h3 className={heading}>{t("theme_background")}</h3>
-          <Tip text={bg?.image}>
-            <span className="truncate text-xs text-muted">
-              {bg?.image ?? t("theme_no_image")}
-            </span>
-          </Tip>
+          {bg && (
+            <Tip text={bg.image}>
+              <span className="truncate text-xs text-muted">{bg.image}</span>
+            </Tip>
+          )}
           <div className="flex items-center gap-1.5">
             <button className={smallButton} onClick={pickImage}>
               {t("theme_choose_image")}
@@ -410,14 +410,12 @@ function SheenSection({
   return (
     <section className="flex flex-col gap-1.5">
       <h3 className={heading}>{t("theme_sheen")}</h3>
-      <div
-        className="grid h-6 place-items-center rounded-[7px] border border-line text-xs text-muted"
-        style={{ background: colors.length > 0 ? sheenGradient(shown) : undefined }}
-      >
-        {colors.length === 0 && t("theme_sheen_none")}
-      </div>
       {colors.length > 0 ? (
         <>
+          <div
+            className="h-6 rounded-[7px] border border-line"
+            style={{ background: sheenGradient(shown) }}
+          />
           <div className="flex flex-wrap items-center gap-1.5">
             {colors.map((color, i) => {
               const parts = splitColor(color);

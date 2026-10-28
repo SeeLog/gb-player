@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { flushSync } from "react-dom";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { api, onLibrary, onTick, previous } from "./lib/api";
-import { translator } from "./lib/format";
+import { translator, type Translate } from "./lib/format";
 import type { Library } from "./lib/types";
 import ContextMenu, { type MenuState } from "./lib/ContextMenu";
 import Icon from "./lib/Icon";
@@ -279,22 +279,6 @@ export default function App() {
               />
               <span>GB Player</span>
             </div>
-            {shownRom && view.kind === "rom" && (
-              <Tip text={shownRom.path}>
-                <div
-                  data-tauri-drag-region
-                  className="flex min-w-0 items-baseline gap-2 overflow-hidden border-l border-line pl-3.5 *:pointer-events-none"
-                >
-                  {shownRom.game && <span className="truncate font-semibold">{shownRom.game}</span>}
-                  <span className="flex-none rounded border border-line bg-panel-2 px-1.5 py-px text-[11px] whitespace-nowrap text-muted">
-                    {shownRom.title}
-                  </span>
-                  <span className="flex-none whitespace-nowrap text-muted">
-                    {t("song_count", { n: shownRom.songs.length })}
-                  </span>
-                </div>
-              </Tip>
-            )}
             <div data-tauri-drag-region className="flex-1 self-stretch" />
             <Tip text={`${t("open_rom")} (Ctrl+O)`}>
               <button className={headerButton} onClick={pickRom} aria-label={t("open_rom")}>
@@ -383,33 +367,19 @@ export default function App() {
               // A new list for each ROM: the search starts empty (the sort carries over).
               <SongList key={shownRom.id} library={library} rom={shownRom} t={t} search={search} />
             ) : (
-              <div className="flex flex-col items-center justify-center gap-4 border-r border-line text-muted">
-                <p>{t("drop_hint")}</p>
-                <button
-                  className="flex items-center gap-2 rounded-[10px] bg-accent px-[18px] py-2.5 font-semibold text-accent-ink hover:brightness-108"
-                  onClick={pickRom}
-                >
-                  <Icon name="open" size={18} />
-                  <span>{t("open_rom")}</span>
-                </button>
+              <div className="flex flex-col items-center justify-center gap-3 border-r border-line">
+                <OpenPrompt t={t} onOpen={pickRom} />
               </div>
             )}
             <NowPlaying library={library} t={t} />
           </main>
         ) : (
-          <div className="flex flex-1 flex-col items-center justify-center gap-[18px] text-muted">
+          <div className="flex flex-1 flex-col items-center justify-center gap-3">
             <div
               aria-hidden="true"
-              className="h-[136px] w-[120px] rounded-[10px_10px_18px_10px] border border-line opacity-90 [background:linear-gradient(var(--lcd),var(--lcd))_50%_30%/76px_56px_no-repeat,repeating-linear-gradient(90deg,var(--line)_0_6px,transparent_6px_10px)_50%_6px/70px_10px_no-repeat,var(--panel-2)]"
+              className="mb-2 h-[136px] w-[120px] rounded-[10px_10px_18px_10px] border border-line opacity-90 [background:linear-gradient(var(--lcd),var(--lcd))_50%_30%/76px_56px_no-repeat,repeating-linear-gradient(90deg,var(--line)_0_6px,transparent_6px_10px)_50%_6px/70px_10px_no-repeat,var(--panel-2)]"
             />
-            <p>{t("drop_hint")}</p>
-            <button
-              className="flex items-center gap-2 rounded-[10px] bg-accent px-[18px] py-2.5 font-semibold text-accent-ink hover:brightness-108"
-              onClick={pickRom}
-            >
-              <Icon name="open" size={18} />
-              <span>{t("open_rom")}</span>
-            </button>
+            <OpenPrompt t={t} onOpen={pickRom} />
           </div>
         )}
 
@@ -442,6 +412,22 @@ export default function App() {
           </div>
         )}
       </div>
+    </>
+  );
+}
+
+/** Where there is nothing to show: the button to open a ROM, and the file types under it. */
+function OpenPrompt({ t, onOpen }: { t: Translate; onOpen: () => void }) {
+  return (
+    <>
+      <button
+        className="flex items-center gap-2 rounded-[10px] bg-accent px-[18px] py-2.5 font-semibold text-accent-ink hover:brightness-108"
+        onClick={onOpen}
+      >
+        <Icon name="open" size={18} />
+        <span>{t("open_rom")}</span>
+      </button>
+      <p className="text-xs text-muted">{t("drop_hint")}</p>
     </>
   );
 }

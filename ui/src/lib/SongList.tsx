@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { api } from "./api";
-import { fmtDuration, playTime, playTimeDetail, type Translate } from "./format";
+import { describe, fmtDuration, playTime, type Translate } from "./format";
 import type { Length, Library, RomView, SongView as Song } from "./types";
 import Icon from "./Icon";
 import { useTick } from "./tick";
@@ -191,7 +191,7 @@ export default memo(function SongList({
   );
 });
 
-/** How long the song plays with the current loop setting, with the details on hover. */
+/** How long the song plays with the current loop setting, with the intro and loop on hover. */
 export function Duration({
   t,
   length,
@@ -204,15 +204,8 @@ export function Duration({
   if (!length) return <span className="text-xs text-faint italic">{t("analyzing")}</span>;
   const secs = playTime(length, loopCount);
   return (
-    <Tip text={playTimeDetail(t, length, loopCount)}>
-      <span className="flex items-center gap-2">
-        {length.kind === "ends" && (
-          <span className="rounded border border-line px-1.5 text-[10px] leading-4 text-muted">
-            {t("no_loop")}
-          </span>
-        )}
-        <span className="num text-xs text-muted">{secs === null ? "—" : fmtDuration(secs)}</span>
-      </span>
+    <Tip text={length.kind === "ends" ? undefined : describe(t, length)}>
+      <span className="num text-xs text-muted">{secs === null ? "—" : fmtDuration(secs)}</span>
     </Tip>
   );
 }

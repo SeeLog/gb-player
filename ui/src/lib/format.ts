@@ -42,17 +42,6 @@ export function playTime(length: Length, loopCount: number | null): number | nul
   }
 }
 
-/** The tooltip for `playTime`: the intro and loop lengths and what the total covers. */
-export function playTimeDetail(t: Translate, length: Length, loopCount: number | null): string {
-  const detail = describe(t, length);
-  if (length.kind !== "loops") return detail;
-  const total =
-    loopCount === null
-      ? t("duration_one_pass")
-      : t("duration_with_fade", { n: Math.max(loopCount, 1), fade: FADE_SECS });
-  return `${detail}\n${total}`;
-}
-
 export function describe(t: Translate, length: Length | null): string {
   if (!length) return t("analyzing");
   switch (length.kind) {

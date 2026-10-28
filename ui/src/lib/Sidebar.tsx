@@ -76,7 +76,7 @@ export default memo(function Sidebar({
                 className={`${item} pr-8 ${view.kind === "rom" && rom.id === shownRom ? on : "hover:bg-hover"}`}
                 onClick={() => showRom(rom.id)}
               >
-                <span className="flex-1 truncate">{name}</span>
+                <span className="line-clamp-2 flex-1">{name}</span>
                 {playingRom === rom.id ? (
                   <span className="eq inline-flex h-3 items-end gap-0.5 group-hover:invisible group-focus-within:invisible" aria-hidden="true">
                     <i />
@@ -133,7 +133,7 @@ export default memo(function Sidebar({
             onClick={() => setView({ kind: "playlist", id: list.id })}
             onDoubleClick={() => setRenaming(list.id)}
           >
-            <span className="flex-1 truncate">{list.name}</span>
+            <span className="line-clamp-2 flex-1">{list.name}</span>
             {playingList === list.id ? (
               <span className="eq inline-flex h-3 items-end gap-0.5" aria-hidden="true">
                 <i />
