@@ -4,6 +4,7 @@
 
 use std::fmt;
 use std::fs::File;
+use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 
 use symphonia::core::audio::SampleBuffer;
@@ -62,8 +63,28 @@ pub struct Track {
     pub artist: Option<String>,
     number: Option<u32>,
     disc: Option<u32>,
-    /// How long it plays, in frames; [`SongLength::Unknown`] when the file does not say.
+    /// How long it plays, in frames: up to its loop and then the loop, or to its end;
+    /// [`SongLength::Unknown`] when the file does not say.
     pub length: SongLength,
+    /// The loop written in the file, if any.
+    pub looping: Option<Loop>,
+}
+
+/// A part of a file that repeats, in samples from its start.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Loop {
+    pub start: u64,
+    /// The first sample after the loop.
+    pub end: u64,
+}
+
+impl Loop {
+    /// `start..end`, if it is a loop within the file's `n_frames` (an end past them is the
+    /// file's end).
+    fn new(start: u64, end: u64, n_frames: Option<u64>) -> Option<Loop> {
+        let end = n_frames.map_or(end, |n| end.min(n));
+        (start < end).then_some(Loop { start, end })
+    }
 }
 
 /// Read the tags and the length of an audio file.
@@ -100,6 +121,44 @@ pub fn probe(path: &Path) -> Result<Track, TrackError> {
             .map(|t| t.value.to_string().trim().to_string())
             .filter(|s| !s.is_empty())
     };
+    let custom = |name: &str| {
+        tags.iter()
+            .flat_map(|r| r.tags())
+            .find(|t| {
+                let key = t.key.strip_prefix("TXXX:").unwrap_or(&t.key);
+                key.eq_ignore_ascii_case(name)
+            })
+            .and_then(|t| t.value.to_string().trim().parse::<u64>().ok())
+    };
+    // RPG Maker's tags, which other tools use too: LOOPSTART, and LOOPLENGTH or LOOPEND;
+    // without either, the loop runs to the end of the file. A WAV file may have a sampler
+    // loop instead.
+    let looping = match custom("LOOPSTART") {
+        Some(start) => {
+            let end = match (custom("LOOPLENGTH"), custom("LOOPEND")) {
+                (Some(len), _) => start.saturating_add(len),
+                (None, Some(end)) => end,
+                (None, None) => n_frames.unwrap_or(0),
+            };
+            Loop::new(start, end, n_frames)
+        }
+        None => wav_loop(path).and_then(|l| Loop::new(l.start, l.end, n_frames)),
+    }
+    .filter(|_| params.sample_rate.is_some());
+    let length = match (looping, params.sample_rate, secs) {
+        (Some(l), Some(rate), _) => {
+            let frames = |samples: u64| (samples as f64 / rate as f64 * FRAME_RATE).round() as u32;
+            let intro = frames(l.start);
+            SongLength::Loops {
+                intro,
+                period: frames(l.end).saturating_sub(intro).max(1),
+            }
+        }
+        (_, _, Some(s)) if s > 0.0 => SongLength::Ends {
+            at: (s * FRAME_RATE).round() as u32,
+        },
+        _ => SongLength::Unknown,
+    };
     // "3/12" and the like: the number before the total.
     let number = |key| {
         let s = tag(key)?;
@@ -116,13 +175,51 @@ pub fn probe(path: &Path) -> Result<Track, TrackError> {
         artist: tag(StandardTagKey::Artist).or_else(|| tag(StandardTagKey::AlbumArtist)),
         number: number(StandardTagKey::TrackNumber),
         disc: number(StandardTagKey::DiscNumber),
-        length: match secs {
-            Some(s) if s > 0.0 => SongLength::Ends {
-                at: (s * FRAME_RATE).round() as u32,
-            },
-            _ => SongLength::Unknown,
-        },
+        length,
+        looping,
     })
+}
+
+/// The first loop of a WAV file's sampler chunk (`smpl`).
+fn wav_loop(path: &Path) -> Option<Loop> {
+    if !path
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("wav"))
+    {
+        return None;
+    }
+    let mut f = File::open(path).ok()?;
+    let mut riff = [0u8; 12];
+    f.read_exact(&mut riff).ok()?;
+    if &riff[..4] != b"RIFF" || &riff[8..] != b"WAVE" {
+        return None;
+    }
+    let u32_at = |b: &[u8], at: usize| -> Option<u32> {
+        Some(u32::from_le_bytes(b.get(at..at + 4)?.try_into().ok()?))
+    };
+    loop {
+        let mut head = [0u8; 8];
+        f.read_exact(&mut head).ok()?;
+        let size = u32_at(&head, 4)?;
+        if &head[..4] != b"smpl" {
+            // Chunks are padded to an even size.
+            f.seek(SeekFrom::Current(size as i64 + (size & 1) as i64))
+                .ok()?;
+            continue;
+        }
+        let mut chunk = vec![0u8; size.min(4096) as usize];
+        f.read_exact(&mut chunk).ok()?;
+        // Nine fields, the number of loops among them, then the loops: an id, a type, the
+        // first and the last sample, ...
+        if u32_at(&chunk, 28)? == 0 {
+            return None;
+        }
+        let (start, last) = (u32_at(&chunk, 44)?, u32_at(&chunk, 48)?);
+        return Some(Loop {
+            start: start as u64,
+            end: last as u64 + 1,
+        });
+    }
 }
 
 /// The audio files of a folder.
@@ -201,7 +298,12 @@ pub struct TrackDecoder {
     decoder: Box<dyn Decoder>,
     track: u32,
     time_base: Option<TimeBase>,
+    sample_rate: Option<u32>,
     out_rate: u32,
+    /// The loop, in time stamps: from its end, decoding goes on from its start.
+    looping: Option<Loop>,
+    /// Frames decoded since the start, or since the last jump back to the loop.
+    since_jump: u64,
     resampler: Option<Resampler>,
     /// Resampled samples not read yet.
     ready: Vec<f32>,
@@ -224,7 +326,10 @@ impl TrackDecoder {
             decoder,
             track,
             time_base: params.time_base,
+            sample_rate: params.sample_rate,
             out_rate: out_rate.max(1),
+            looping: None,
+            since_jump: 0,
             resampler: None,
             ready: Vec::new(),
             skip_to: 0,
@@ -242,27 +347,71 @@ impl TrackDecoder {
         n / 2
     }
 
+    /// Repeat `looping` (in samples) over and over, instead of ending.
+    pub fn set_loop(&mut self, looping: Option<Loop>) {
+        let ts = |samples: u64| match (self.time_base, self.sample_rate) {
+            (Some(tb), Some(rate)) if (tb.numer, tb.denom) != (1, rate) => {
+                tb.calc_timestamp(Time::from(samples as f64 / rate as f64))
+            }
+            _ => samples,
+        };
+        self.looping = looping.map(|l| Loop {
+            start: ts(l.start),
+            end: ts(l.end),
+        });
+    }
+
     /// Continue from `secs` seconds in.
     pub fn seek(&mut self, secs: f64) -> Result<(), TrackError> {
         let time = Time::from(secs.max(0.0));
-        let to = SeekTo::Time {
-            time,
-            track_id: Some(self.track),
+        let mut ts = self.time_base.map_or(0, |tb| tb.calc_timestamp(time));
+        // Past the loop (by rounding, or the loops played): the same point of the loop.
+        if let Some(l) = self.looping.filter(|l| ts >= l.end) {
+            ts = l.start + (ts - l.start) % (l.end - l.start);
+        }
+        self.go_to(ts)?;
+        self.resampler = None;
+        self.ready.clear();
+        self.ended = false;
+        Ok(())
+    }
+
+    /// Decode on from the time stamp `ts`; what was decoded before stays in the resampler.
+    fn go_to(&mut self, ts: u64) -> Result<(), TrackError> {
+        let to = SeekTo::TimeStamp {
+            ts,
+            track_id: self.track,
         };
         match self.format.seek(SeekMode::Accurate, to) {
             Ok(seeked) => self.skip_to = seeked.required_ts,
             // A file that cannot seek is decoded again from its start, dropping what comes
             // before.
             Err(_) => {
-                *self = TrackDecoder::open(&self.path, self.out_rate)?;
-                self.skip_to = self.time_base.map_or(0, |tb| tb.calc_timestamp(time));
+                let fresh = TrackDecoder::open(&self.path, self.out_rate)?;
+                (self.format, self.decoder) = (fresh.format, fresh.decoder);
+                self.skip_to = ts;
             }
         }
         self.decoder.reset();
-        self.resampler = None;
-        self.ready.clear();
-        self.ended = false;
+        self.since_jump = 0;
         Ok(())
+    }
+
+    /// Go back to the start of the loop, if there is one and it played a little since the
+    /// last time (a loop that plays nothing would never end); returns whether it did.
+    fn jump_back(&mut self) -> bool {
+        match self.looping {
+            Some(l) if self.since_jump > 0 => self.go_to(l.start).is_ok(),
+            _ => false,
+        }
+    }
+
+    /// The resampler has the last of the track: let it ring out.
+    fn end(&mut self) {
+        self.ended = true;
+        if let Some(r) = &mut self.resampler {
+            r.finish(&mut self.ready);
+        }
     }
 
     /// Decode the next packet into `ready`; at the end of the file, let the resampler ring out.
@@ -270,11 +419,10 @@ impl TrackDecoder {
         let packet = match self.format.next_packet() {
             Ok(p) => p,
             // The end of the file, a read error, or a new stream that would need a new decoder
-            // (chained Ogg streams): the track ends here.
+            // (chained Ogg streams): the track ends here, unless it loops.
             Err(_) => {
-                self.ended = true;
-                if let Some(r) = &mut self.resampler {
-                    r.finish(&mut self.ready);
+                if !self.jump_back() {
+                    self.end();
                 }
                 return;
             }
@@ -287,7 +435,7 @@ impl TrackDecoder {
             // A damaged packet is passed over.
             Err(Error::DecodeError(_)) => return,
             Err(_) => {
-                self.ended = true;
+                self.end();
                 return;
             }
         };
@@ -300,11 +448,23 @@ impl TrackDecoder {
         samples.copy_interleaved_ref(decoded);
         let channels = spec.channels.count().max(1);
         let drop = self.skip_to.saturating_sub(packet.ts()).min(frames as u64) as usize;
+        // Up to the end of the loop, when the packet reaches it.
+        let (first, kept) = (packet.ts() + drop as u64, (frames - drop) as u64);
+        let (take, wrap) = match self.looping {
+            Some(l) if first + kept >= l.end => (l.end.saturating_sub(first).min(kept), true),
+            _ => (kept, false),
+        };
+        self.since_jump += take;
         let resampler = match &mut self.resampler {
             Some(r) if r.from == spec.rate => r,
             r => r.insert(Resampler::new(spec.rate, self.out_rate)),
         };
-        for f in samples.samples().chunks(channels).skip(drop) {
+        for f in samples
+            .samples()
+            .chunks(channels)
+            .skip(drop)
+            .take(take as usize)
+        {
             // Mono plays on both sides; beyond two channels, only the front left and right.
             let (l, r) = if channels == 1 {
                 (f[0], f[0])
@@ -314,6 +474,9 @@ impl TrackDecoder {
             resampler.push(l, r);
         }
         resampler.drain(&mut self.ready);
+        if wrap && !self.jump_back() {
+            self.end();
+        }
     }
 }
 

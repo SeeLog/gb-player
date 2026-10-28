@@ -10,7 +10,7 @@ use crate::driver::{Driver, Song};
 use crate::effects::{Chain, Profile};
 use crate::gbs::{self, is_gbs, GbsError};
 use crate::length::{frames_to_secs, SongLength, FRAME_RATE};
-use crate::track::{Track, TrackDecoder, TrackError};
+use crate::track::{Loop, Track, TrackDecoder, TrackError};
 
 #[derive(Debug)]
 pub enum LoadError {
@@ -74,16 +74,19 @@ enum SeekWork {
     },
     File {
         path: PathBuf,
+        looping: Option<Loop>,
         sample_rate: u32,
-        /// The file opened and moved to the frame sought, once [`Seek::run`] has.
-        decoder: Option<Result<TrackDecoder, TrackError>>,
+        /// Where in the file the frame sought is: past the first loop, the same point of the
+        /// loop.
+        secs: f64,
+        /// The file opened and moved there, once [`Seek::run`] has.
+        decoder: Option<Box<Result<TrackDecoder, TrackError>>>,
     },
 }
 
 impl Seek {
     /// Run the machine silently up to the frame sought, or open the file there.
     pub fn run(&mut self) {
-        let secs = frames_to_secs(self.frame);
         match &mut self.work {
             SeekWork::Game {
                 target,
@@ -112,13 +115,18 @@ impl Seek {
             }
             SeekWork::File {
                 path,
+                looping,
                 sample_rate,
+                secs,
                 decoder,
             } => {
-                *decoder = Some(TrackDecoder::open(path, *sample_rate).and_then(|mut d| {
-                    d.seek(secs)?;
-                    Ok(d)
-                }));
+                *decoder = Some(Box::new(TrackDecoder::open(path, *sample_rate).and_then(
+                    |mut d| {
+                        d.set_loop(*looping);
+                        d.seek(*secs)?;
+                        Ok(d)
+                    },
+                )));
             }
         }
     }
@@ -408,7 +416,10 @@ impl Player {
                 self.length = track.length;
                 f.decoder = None;
                 TrackDecoder::open(&track.path, sample_rate)
-                    .map(|d| f.decoder = Some(d))
+                    .map(|mut d| {
+                        d.set_loop(track.looping);
+                        f.decoder = Some(d);
+                    })
                     .map_err(Failure::File)
             }
         };
@@ -480,7 +491,9 @@ impl Player {
                 let want = (at(self.frame + 1) - at(self.frame)) as usize;
                 let mut samples = Vec::with_capacity(want * 2);
                 let mut got = decoder.read(&mut samples, want);
-                if got < want && self.loop_count.is_none() && decoder.seek(0.0).is_ok() {
+                // A file with a loop goes round it by itself (see `TrackDecoder::set_loop`).
+                let whole = self.current.is_some_and(|i| f.tracks[i].looping.is_none());
+                if got < want && whole && self.loop_count.is_none() && decoder.seek(0.0).is_ok() {
                     // Played over and over: on from the start.
                     let more = decoder.read(&mut samples, want - got);
                     if more > 0 {
@@ -529,13 +542,13 @@ impl Player {
         }
     }
 
-    /// The frame at which a game's song stops with the current settings, if it does; a
-    /// jingle's last note rings out for a second. An audio file stops at its end.
+    /// The frame at which the song stops with the current settings, if it does: after the
+    /// fade-out of a looping song; a game's jingle once its last note has rung out for a
+    /// second. An audio file without a loop stops at its end.
     fn end_frame(&self) -> Option<u32> {
-        self.game()?;
         match (self.fade_start(), self.length) {
             (Some(start), _) => Some(start.saturating_add(self.fade_frames())),
-            (_, SongLength::Ends { at }) if self.loop_count.is_some() => {
+            (_, SongLength::Ends { at }) if self.loop_count.is_some() && self.game().is_some() => {
                 Some(at.saturating_add(FRAME_RATE as u32))
             }
             _ => None,
@@ -564,8 +577,10 @@ impl Player {
             Source::Game(g) => g,
             Source::Files(f) => {
                 let track = &f.tracks[current];
-                let frame = match track.length {
-                    SongLength::Ends { at } => frame.min(at.saturating_sub(1)),
+                let frame = match (self.end_frame(), self.length) {
+                    (Some(end), _) | (None, SongLength::Ends { at: end }) => {
+                        frame.min(end.saturating_sub(1))
+                    }
                     _ => frame,
                 };
                 return Some(Seek {
@@ -573,7 +588,9 @@ impl Player {
                     frame,
                     work: SeekWork::File {
                         path: track.path.clone(),
+                        looping: track.looping,
                         sample_rate: self.sample_rate,
+                        secs: frames_to_secs(pass_frame(self.length, frame)),
                         decoder: None,
                     },
                 });
@@ -652,7 +669,7 @@ impl Player {
                     }
                 }
             }
-            (SeekWork::File { decoder, .. }, Source::Files(f)) => match decoder {
+            (SeekWork::File { decoder, .. }, Source::Files(f)) => match decoder.map(|d| *d) {
                 Some(Ok(d)) => {
                     f.decoder = Some(d);
                     None
@@ -989,5 +1006,183 @@ mod tests {
         let mut p = Player::files(vec![track], 48_000);
         p.play(0);
         assert!(matches!(p.state(), PlayState::Failed(Failure::File(_))));
+    }
+
+    /// A mono file at 44.1 kHz whose sample `i` is `i % 30_000`, so that where the output
+    /// comes from can be read back from it.
+    fn ramp(frames: u32) -> Vec<i16> {
+        (0..frames).map(|i| (i % 30_000) as i16).collect()
+    }
+
+    /// The ramp as a WAV file, with a sampler loop from `start` to the sample `last`.
+    fn looped_wav(name: &str, frames: u32, start: u32, last: u32) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("gb-player-{}-{name}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut smpl = vec![0u32; 9];
+        smpl[7] = 1;
+        smpl.extend([0, 0, start, last, 0, 0]);
+        let mut wav = Vec::new();
+        wav.extend_from_slice(b"RIFF");
+        wav.extend_from_slice(&(4 + 24 + 8 + frames * 2 + 8 + 60).to_le_bytes());
+        wav.extend_from_slice(b"WAVEfmt ");
+        for v in [16u32, 1 | 1 << 16, 44_100, 88_200, 2 | 16 << 16] {
+            wav.extend_from_slice(&v.to_le_bytes());
+        }
+        wav.extend_from_slice(b"data");
+        wav.extend_from_slice(&(frames * 2).to_le_bytes());
+        for s in ramp(frames) {
+            wav.extend_from_slice(&s.to_le_bytes());
+        }
+        wav.extend_from_slice(b"smpl");
+        wav.extend_from_slice(&60u32.to_le_bytes());
+        for v in smpl {
+            wav.extend_from_slice(&v.to_le_bytes());
+        }
+        let path = dir.join("loop.wav");
+        std::fs::write(&path, wav).unwrap();
+        path
+    }
+
+    /// The ramp as a FLAC file (verbatim frames of 4096 samples), with Vorbis comments.
+    fn tagged_flac(name: &str, frames: u32, comments: &[&str]) -> PathBuf {
+        assert!(frames.is_multiple_of(4096));
+        let crc8 = |data: &[u8]| {
+            data.iter().fold(0u8, |mut c, &b| {
+                c ^= b;
+                for _ in 0..8 {
+                    c = if c & 0x80 != 0 { c << 1 ^ 0x07 } else { c << 1 };
+                }
+                c
+            })
+        };
+        let crc16 = |data: &[u8]| {
+            data.iter().fold(0u16, |mut c, &b| {
+                c ^= (b as u16) << 8;
+                for _ in 0..8 {
+                    c = if c & 0x8000 != 0 {
+                        c << 1 ^ 0x8005
+                    } else {
+                        c << 1
+                    };
+                }
+                c
+            })
+        };
+        let mut f = b"fLaC".to_vec();
+        // STREAMINFO: block sizes, unknown frame sizes, 44.1 kHz mono 16-bit, the length.
+        f.extend([0, 0, 0, 34, 0x10, 0x00, 0x10, 0x00, 0, 0, 0, 0, 0, 0]);
+        let info: u64 = 44_100 << 44 | 15 << 36 | frames as u64;
+        f.extend(info.to_be_bytes());
+        f.extend([0; 16]);
+        let mut vc = Vec::new();
+        vc.extend(0u32.to_le_bytes());
+        vc.extend((comments.len() as u32).to_le_bytes());
+        for c in comments {
+            vc.extend((c.len() as u32).to_le_bytes());
+            vc.extend(c.as_bytes());
+        }
+        f.push(0x84);
+        f.extend(&(vc.len() as u32).to_be_bytes()[1..]);
+        f.extend(vc);
+        for (n, block) in ramp(frames).chunks(4096).enumerate() {
+            let mut frame = vec![0xFF, 0xF8, 0xC9, 0x08, n as u8];
+            frame.push(crc8(&frame));
+            frame.push(0x02);
+            for s in block {
+                frame.extend(s.to_be_bytes());
+            }
+            frame.extend(crc16(&frame).to_be_bytes());
+            f.extend(frame);
+        }
+        let dir = std::env::temp_dir().join(format!("gb-player-{}-{name}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("loop.flac");
+        std::fs::write(&path, f).unwrap();
+        path
+    }
+
+    /// The output of `p` at the file's rate, read back as the ramp's values.
+    fn ramp_out(p: &mut Player, frames: usize) -> Vec<i32> {
+        let mut out = vec![0.0f32; frames * 2];
+        p.render(&mut out);
+        out.iter()
+            .step_by(2)
+            .map(|s| (s / 0.8 * 32_768.0).round() as i32)
+            .collect()
+    }
+
+    fn file_player_at(path: &std::path::Path, rate: u32) -> Player {
+        let track = crate::track::probe(path).unwrap();
+        let mut p = Player::files(vec![track], rate);
+        p.play(0);
+        p
+    }
+
+    #[test]
+    fn a_file_goes_round_its_loop_without_a_seam() {
+        let (start, end) = (11_025, 33_075);
+        let mut p = file_player_at(&looped_wav("seam", 44_100, start, end - 1), 44_100);
+        assert_eq!(
+            p.length(),
+            SongLength::Loops {
+                intro: 15,
+                period: 30
+            }
+        );
+        let got = ramp_out(&mut p, 120_000);
+        let want: Vec<i32> = (0..end)
+            .chain((0..).flat_map(|_| start..end))
+            .take(120_000)
+            .map(|i| (i % 30_000) as i32)
+            .collect();
+        assert_eq!(got, want);
+        assert_eq!(p.state(), PlayState::Playing);
+    }
+
+    #[test]
+    fn loop_tags_loop_a_file() {
+        let path = tagged_flac("tags", 40_960, &["LOOPSTART=4096", "LOOPLENGTH=20000"]);
+        let mut p = file_player_at(&path, 44_100);
+        let got = ramp_out(&mut p, 60_000);
+        let want: Vec<i32> = (0..24_096)
+            .chain((0..).flat_map(|_| 4096..24_096))
+            .take(60_000)
+            .collect();
+        assert_eq!(got, want);
+        // Without a length, the loop runs to the end of the file.
+        let path = tagged_flac("tags-end", 40_960, &["loopstart=8192"]);
+        let track = crate::track::probe(&path).unwrap();
+        assert_eq!(
+            track.looping,
+            Some(crate::track::Loop {
+                start: 8192,
+                end: 40_960
+            })
+        );
+    }
+
+    #[test]
+    fn a_looped_file_fades_out_after_its_loops() {
+        let mut p = file_player_at(&looped_wav("fade", 44_100, 11_025, 33_074), 48_000);
+        p.loop_count = Some(2);
+        p.fade_secs = 1.0;
+        let mut out = vec![0.0f32; 48_000 * 2 * 4];
+        p.render(&mut out);
+        assert_eq!(p.state(), PlayState::Finished);
+        // Two loops after the intro, then the fade.
+        assert_eq!(p.position_frames(), 15 + 2 * 30 + 59);
+    }
+
+    #[test]
+    fn seeking_past_the_first_loop_lands_in_it() {
+        let (start, end) = (11_025u32, 33_075u32);
+        let mut p = file_player_at(&looped_wav("lap", 44_100, start, end - 1), 44_100);
+        let frame = 15 + 30 * 3 + 10;
+        p.seek(frame);
+        assert_eq!(p.position_frames(), frame);
+        // The same point of the first pass: 25 frames in.
+        let at = (frames_to_secs(25) * 44_100.0) as i32;
+        let first = ramp_out(&mut p, 1)[0];
+        assert!((first - at).abs() <= 1, "{first} vs {at}");
     }
 }
