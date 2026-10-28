@@ -508,7 +508,8 @@ mod tests {
             let en = &loaded.locales["en"];
             for game in &loaded.series.games {
                 assert!(en.games.contains_key(&game.id), "{}: {}", b.series, game.id);
-                for song in &game.songs {
+                // Hidden songs are never listed, so they need no name.
+                for song in game.songs.iter().filter(|s| !s.hidden) {
                     assert!(
                         en.songs.contains_key(&song.key),
                         "{}: {}",

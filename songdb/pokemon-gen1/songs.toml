@@ -5,6 +5,7 @@
 id = "red-green-blue"
 titles = ["POKEMON RED", "POKEMON GREEN", "POKEMON BLUE"]
 songs = [
+    { bank = 1, id = 0xB8, key = "sfx_pokeflute", hidden = true },
     { bank = 1, id = 0xBA, key = "pallet_town" },
     { bank = 1, id = 0xBD, key = "pokecenter" },
     { bank = 1, id = 0xC0, key = "gym" },
@@ -56,6 +57,7 @@ songs = [
 id = "yellow"
 titles = ["POKEMON YELLOW"]
 songs = [
+    { bank = 1, id = 0xB8, key = "sfx_pokeflute", hidden = true },
     { bank = 1, id = 0xBA, key = "pallet_town" },
     { bank = 1, id = 0xBD, key = "pokecenter" },
     { bank = 1, id = 0xC0, key = "gym" },

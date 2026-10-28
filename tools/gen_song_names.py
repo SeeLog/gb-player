@@ -41,19 +41,30 @@ def pretty(label):
 
 
 def gen1(root, banks):
-    """(audio bank ordinal starting at 1, sound ID, label) for every song."""
+    """(audio bank ordinal starting at 1, sound ID, label, hidden) for every song.
+
+    Sound effects whose first channel is a music channel (the Poké Flute plays on channel 3)
+    look like songs to the player, so they are listed too, as hidden."""
     songs = []
     for k in range(1, banks + 1):
         index = 0
+        label = None
         for f in (f"sfxheaders{k}.asm", f"musicheaders{k}.asm"):
             for line in open(f"{root}/audio/headers/{f}"):
                 line = line.split(";")[0].strip()
-                m = re.match(r"^(Music_\w+)::?$", line)
+                m = re.match(r"^((?:Music|SFX)_\w+)::?$", line)
                 if m:
-                    songs.append((k, index, m.group(1)))
+                    label = m.group(1)
                 elif line.startswith("db $ff, $ff, $ff"):
                     index += 1
                 elif line.startswith("channel ") or line.startswith("channel\t"):
+                    if label:
+                        channel = int(line.split()[1].rstrip(","))
+                        if label.startswith("Music_"):
+                            songs.append((k, index, label, False))
+                        elif channel <= 4:
+                            songs.append((k, index, label, True))
+                        label = None
                     index += 1
     return songs
 
@@ -73,7 +84,7 @@ def quote(s):
 
 
 def write_series(out, series, header, games):
-    """games: [(id, header titles, [(bank or None, id, label)])]"""
+    """games: [(id, header titles, [(bank or None, id, label, hidden)])]"""
     os.makedirs(f"{out}/{series}", exist_ok=True)
     titles = {}
     with open(f"{out}/{series}/songs.toml", "w", encoding="utf-8", newline="\n") as f:
@@ -82,11 +93,13 @@ def write_series(out, series, header, games):
             f.write(f"\n[[game]]\nid = {quote(game_id)}\n")
             f.write(f"titles = [{', '.join(quote(t) for t in header_titles)}]\n")
             f.write("songs = [\n")
-            for bank, sid, label in songs:
+            for bank, sid, label, hidden in songs:
                 k = key(label)
-                titles.setdefault(k, pretty(label))
+                if not hidden:
+                    titles.setdefault(k, pretty(label))
                 bank_part = f"bank = {bank}, " if bank is not None else ""
-                f.write(f"    {{ {bank_part}id = 0x{sid:02X}, key = {quote(k)} }},\n")
+                hidden_part = ", hidden = true" if hidden else ""
+                f.write(f"    {{ {bank_part}id = 0x{sid:02X}, key = {quote(k)}{hidden_part} }},\n")
             f.write("]\n")
     with open(f"{out}/{series}/en.toml", "w", encoding="utf-8", newline="\n") as f:
         f.write("# English song titles, from the pret labels.\n\n[games]\n")
@@ -123,7 +136,7 @@ write_series(
     "pokemon-gen2",
     "Pokémon Gold / Silver / Crystal (Game Freak Gen 2 sound engine).",
     [
-        ("gold-silver", ["POKEMON_GLD", "POKEMON_SLV"], [(None, i, l) for i, l in gen2(gold)]),
-        ("crystal", ["PM_CRYSTAL"], [(None, i, l) for i, l in gen2(crystal)]),
+        ("gold-silver", ["POKEMON_GLD", "POKEMON_SLV"], [(None, i, l, False) for i, l in gen2(gold)]),
+        ("crystal", ["PM_CRYSTAL"], [(None, i, l, False) for i, l in gen2(crystal)]),
     ],
 )
