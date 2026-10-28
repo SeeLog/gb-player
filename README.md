@@ -203,3 +203,21 @@ cargo test --workspace
 
 CPUは [SingleStepTests/sm83](https://github.com/SingleStepTests/sm83) のテストベクタでも検証できます
 (`v1/*.json` を置いたディレクトリを `SM83_TESTS_DIR` に指定)。
+
+## ライセンス
+
+gb-player のソースコードは [MIT License](LICENSE) です。
+
+使っているライブラリはそれぞれのライセンスに従います。ほとんどは MIT か Apache-2.0 で、
+音声ファイルのデコードに使う [symphonia](https://github.com/pdeljanov/Symphonia) と、Tauri が使う一部のクレート
+(cssparser など)は MPL-2.0 です。どれも変更せずに使っていて、ソースは crates.io から入手できます。
+ビルドしたアプリを配布するときは、これらのライセンス表示を添えてください。
+
+## 権利表記
+
+gb-player は個人が作った非公式のツールで、任天堂・株式会社ポケモン・株式会社ゲームフリーク・
+株式会社クリーチャーズとは関係ありません。「ポケットモンスター」「ポケモン」「Pokémon」「ゲームボーイ」
+「Game Boy」は各権利者の商標または登録商標です。
+
+ROMやGBSファイル、ゲームの音楽はリポジトリにも配布物にも含みません。手元の正規に入手したソフトから、
+各自で吸い出したものを使ってください。曲名の一覧(`songdb/`)は、曲の識別と表示のための名前だけを収めています。
