@@ -39,11 +39,14 @@ pub struct SongView {
     pub length: Option<LengthView>,
 }
 
-/// An open ROM and its songs.
+/// An open ROM, or a folder of audio files, and its songs.
 #[derive(Debug, Clone, Serialize)]
 pub struct RomView {
-    /// The ROM's [hash](super::playlists::hash), which stays the same between runs.
+    /// The ROM's [hash](super::playlists::hash), or the folder's path's, which stays the same
+    /// between runs.
     pub id: String,
+    /// Whether it is a folder of audio files: its songs have no channels of their own.
+    pub folder: bool,
     pub game: String,
     pub title: String,
     pub path: String,

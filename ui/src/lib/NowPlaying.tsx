@@ -115,7 +115,7 @@ export default memo(function NowPlaying({ library, t }: { library: Library; t: T
         </Row>
       </div>
 
-      <Channels library={library} t={t} />
+      <GameChannels library={library} t={t} />
     </aside>
   );
 });
@@ -383,6 +383,13 @@ function Transport({ t }: { t: Translate }) {
       </Tip>
     </div>
   );
+}
+
+/** The APU's channels, while a game is in the output: audio files have none. */
+function GameChannels({ library, t }: { library: Library; t: Translate }) {
+  const rom = useTick((tick) => tick?.rom ?? null);
+  if (library.roms.find((r) => r.id === rom)?.folder) return null;
+  return <Channels library={library} t={t} />;
 }
 
 // The meters run from accent-2 to accent, or between --meter-start and --meter-end where a

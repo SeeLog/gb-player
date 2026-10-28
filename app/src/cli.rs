@@ -5,6 +5,8 @@
 //!                                               render a song to a WAV file, from the line out
 //!                                               (the default) or a GBC's speaker
 //!
+//! An audio file can stand in for the ROM, as a ROM with that one song.
+//!
 //! `--lang <code>` before the command (handled in main.rs) picks the language of the output
 //! and the song names; the default is the OS language.
 
@@ -14,7 +16,8 @@ use std::path::Path;
 
 use gb_music::songdb::Names;
 use gb_music::{
-    analyze, frames_to_secs, read_rom, PlayState, Player, Profile, SongLength, ANALYSIS_FRAMES,
+    analyze, frames_to_secs, is_audio, read_rom, track, PlayState, Player, Profile, SongLength,
+    ANALYSIS_FRAMES,
 };
 
 use crate::i18n::Text;
@@ -50,9 +53,18 @@ pub fn run(args: &[OsString], language: &str) -> i32 {
 
 /// Load `path` and look up its names in the output language.
 fn load(t: &Text, path: &str) -> Result<(Player, Names), String> {
+    if is_audio(Path::new(path)) {
+        let track = track::probe(Path::new(path)).map_err(|e| format!("{path}: {e}"))?;
+        let names = Names {
+            game: track.album.clone().unwrap_or_default(),
+            songs: vec![track.title.clone()],
+        };
+        return Ok((Player::files(vec![track], RATE), names));
+    }
     let rom = read_rom(Path::new(path)).map_err(|e| format!("{path}: {e}"))?;
     let player = Player::new(rom, RATE).map_err(|e| e.to_string())?;
-    let (names, warnings) = Names::new(player.driver(), t.language());
+    let driver = player.driver().expect("a ROM's player has a driver");
+    let (names, warnings) = Names::new(driver, t.language());
     for warning in warnings {
         eprintln!("{warning}");
     }
@@ -74,13 +86,24 @@ fn secs(frames: u32) -> String {
     format!("{:.2}", frames_to_secs(frames))
 }
 
+/// The length of `song`: analysed for a ROM, as the file says for an audio file.
+fn length_of(player: &Player, song: &gb_music::Song) -> Result<SongLength, String> {
+    match (player.rom(), player.driver()) {
+        (Some(rom), Some(driver)) => {
+            analyze(&rom, driver, song, ANALYSIS_FRAMES).map_err(|e| e.to_string())
+        }
+        _ => Ok(song.length.unwrap_or(SongLength::Unknown)),
+    }
+}
+
 fn info(t: &Text, path: &str) -> Result<(), String> {
     let (player, names) = load(t, path)?;
-    println!("{} ({})", names.game, player.title());
-    println!("engine: {:04X?}", player.driver().engine);
-    let rom = player.rom();
+    println!("{} ({})", names.game, player.title().unwrap_or(path));
+    if let Some(driver) = player.driver() {
+        println!("engine: {:04X?}", driver.engine);
+    }
     for song in player.songs() {
-        let length = analyze(&rom, player.driver(), song, ANALYSIS_FRAMES);
+        let length = length_of(&player, song);
         let desc = match length {
             Ok(SongLength::Loops { intro, period }) => t.fmt(
                 "info_loops",
@@ -127,8 +150,7 @@ fn wav(
         .get(index)
         .ok_or(t.get("err_no_song"))?
         .clone();
-    let length =
-        analyze(&player.rom(), player.driver(), &s, ANALYSIS_FRAMES).map_err(|e| e.to_string())?;
+    let length = length_of(&player, &s)?;
     player.play(index);
     player.loop_count = Some(
         loops

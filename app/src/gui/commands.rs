@@ -9,6 +9,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Manager, State, WebviewWindow};
 use tauri_plugin_dialog::DialogExt;
 
+use super::session::folder_id;
 use super::views::LibraryView;
 use super::{emit_library, App};
 use super::{mini, playlists};
@@ -37,29 +38,39 @@ pub fn close_rom(handle: AppHandle, app: State<'_, App>, id: String) {
     emit_library(&handle, &s);
 }
 
-const ROM_FILTER: (&str, &[&str]) = (
-    "Game Boy ROM / GBS",
-    &["gb", "gbc", "gbs", "GB", "GBC", "GBS"],
-);
+const ROM_EXTENSIONS: &[&str] = &["gb", "gbc", "gbs"];
 
-/// The file dialog for a ROM or GBS file.
-fn pick_rom_file(handle: &AppHandle) -> Option<PathBuf> {
-    let picked = handle
+/// The file dialog, for ROMs, GBS files and audio files: all of them first, then each kind.
+fn file_dialog(handle: &AppHandle) -> tauri_plugin_dialog::FileDialogBuilder<tauri::Wry> {
+    // In both cases, as some file dialogs match them exactly.
+    let cased = |exts: &[&str]| -> Vec<String> {
+        let upper = exts.iter().map(|e| e.to_ascii_uppercase());
+        exts.iter().map(|e| e.to_string()).chain(upper).collect()
+    };
+    let (roms, audio) = (cased(ROM_EXTENSIONS), cased(gb_music::track::EXTENSIONS));
+    fn refs(v: &[String]) -> Vec<&str> {
+        v.iter().map(String::as_str).collect()
+    }
+    let all = [refs(&roms), refs(&audio)].concat();
+    handle
         .dialog()
         .file()
-        .add_filter(ROM_FILTER.0, ROM_FILTER.1)
-        .blocking_pick_file();
+        .add_filter("Game Boy ROM / GBS / Audio", &all)
+        .add_filter("Game Boy ROM / GBS", &refs(&roms))
+        .add_filter("Audio", &refs(&audio))
+}
+
+/// The file dialog for a ROM, GBS or audio file.
+fn pick_rom_file(handle: &AppHandle) -> Option<PathBuf> {
+    let picked = file_dialog(handle).blocking_pick_file();
     picked.and_then(|f| f.into_path().ok())
 }
 
-/// Let the user pick ROMs and open them; returns the id of the last one that could be opened.
+/// Let the user pick ROMs and open them (an audio file opens its folder); returns
+/// the id of the last one that could be opened.
 #[tauri::command]
 pub async fn pick_roms(handle: AppHandle) -> Option<String> {
-    let picked = handle
-        .dialog()
-        .file()
-        .add_filter(ROM_FILTER.0, ROM_FILTER.1)
-        .blocking_pick_files()?;
+    let picked = file_dialog(&handle).blocking_pick_files()?;
     let paths: Vec<PathBuf> = picked
         .into_iter()
         .filter_map(|f| f.into_path().ok())
@@ -209,6 +220,17 @@ fn relink(handle: &AppHandle, id: &str, position: usize, path: &Path, anyway: bo
     let Some(entry) = app.lock().entry(id, position) else {
         return Relink::Cancelled;
     };
+    // A folder is known by its path, so a song that moved is in another folder: nothing to
+    // check it against.
+    if gb_music::is_audio(path) {
+        let Some(hash) = path.parent().map(folder_id) else {
+            return Relink::Cancelled;
+        };
+        let mut s = app.lock();
+        s.relink(id, position, &entry.hash, path, &hash);
+        emit_library(handle, &s);
+        return Relink::Done;
+    }
     let data = match gb_music::read_rom(path) {
         Ok(d) => d,
         Err(e) => {

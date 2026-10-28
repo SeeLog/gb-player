@@ -267,7 +267,7 @@ fn gen2_detect_play_and_loop() {
     let rom = gen2_rom();
     let mut player = Player::new(rom.clone(), 48_000).expect("driver detected");
     assert!(matches!(
-        player.driver().engine,
+        player.driver().unwrap().engine,
         Engine::Gen2 {
             play_music: 0x0280,
             update_sound: 0x0240
@@ -281,7 +281,7 @@ fn gen2_detect_play_and_loop() {
     assert!(peak(&mut player, 1.0) > 0.05);
 
     let song = player.songs()[0].clone();
-    let len = analyze(&rom, player.driver(), &song, 2000).unwrap();
+    let len = analyze(&rom, player.driver().unwrap(), &song, 2000).unwrap();
     assert!(
         matches!(len, SongLength::Loops { period: 256, .. }),
         "{len:?}"
@@ -292,7 +292,7 @@ fn gen2_detect_play_and_loop() {
 fn gen1_detect_play_and_loop() {
     let rom = gen1_rom();
     let mut player = Player::new(rom.clone(), 48_000).expect("driver detected");
-    match player.driver().engine {
+    match player.driver().unwrap().engine {
         Engine::Gen1 {
             play_music,
             audio_rom_bank,
@@ -316,7 +316,7 @@ fn gen1_detect_play_and_loop() {
     assert!(peak(&mut player, 1.0) > 0.05);
 
     let song = player.songs()[1].clone();
-    let len = analyze(&rom, player.driver(), &song, 2000).unwrap();
+    let len = analyze(&rom, player.driver().unwrap(), &song, 2000).unwrap();
     assert!(
         matches!(len, SongLength::Loops { period: 256, .. }),
         "{len:?}"
@@ -483,12 +483,18 @@ fn gbs_files_play_and_loop() {
         let gbs = toy_gbs(tma, tac);
         let mut player = Player::new(gbs, 48_000).expect("GBS loaded");
         assert_eq!(player.songs().len(), 2);
-        assert_eq!(player.driver().game_id, "Toy Tune");
+        assert_eq!(player.driver().unwrap().game_id, "Toy Tune");
         player.play(1);
         assert!(peak(&mut player, 1.0) > 0.05);
         assert_eq!(player.state(), PlayState::Playing);
         let song = player.songs()[1].clone();
-        let len = analyze(&player.rom(), player.driver(), &song, 4000).unwrap();
+        let len = analyze(
+            &player.rom().unwrap(),
+            player.driver().unwrap(),
+            &song,
+            4000,
+        )
+        .unwrap();
         // 4096 Hz / (256 - $BB) is about 59.4 Hz, so with the timer the toy engine's
         // 256-update loop takes a little longer than 256 frames.
         match len {

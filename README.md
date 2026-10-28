@@ -10,6 +10,8 @@ Game Boy / Game Boy Color のROM(.gb / .gbc)を読み込み、ゲーム自身の
 - 出力は「ライン」(音源の出力そのまま)と「GBCスピーカー」から選べる。GBCスピーカーは実機のゲームボーイカラーで測った
   スピーカーの特性と、液晶などから漏れる本体のノイズ(オフにもできる)を再現したモノラルの音
   (測り方と結果は [docs/GBC_SPEAKER.md](docs/GBC_SPEAKER.md))
+- 一般の音声ファイル(WAV・FLAC・MP3・Ogg Vorbis・M4A(AAC/ALAC)・AIFF)も、フォルダ単位で開いて
+  ROMと同じように再生できる。GBCスピーカーの音もかけられる(ループ点は持たないので、無限ループでは曲全体を繰り返す)
 - 曲名とUIは日本語・英語に対応(OSの言語に合わせて自動選択、切り替え可)
 
 ## 対応ソフト
@@ -43,11 +45,12 @@ bun run tauri build                      # Windowsならインストーラ(NSIS)
 ビルドしたexeの使い方:
 
 ```sh
-gb-player                                # GUIを起動(ROMは「ROMを開く…」かドラッグ&ドロップ)
+gb-player                                # GUIを起動(ROMや音声ファイルは「開く…」かドラッグ&ドロップ)
 gb-player pokemon.gb                     # ROMを指定して起動(前回開いていたROMに加えて開く)
 gb-player --info pokemon.gb              # 検出結果と全曲のループ長を表示
 gb-player --wav pokemon.gb 1 out.wav 2   # 1曲目を2ループ+フェードでWAV出力
 gb-player --wav pokemon.gb 1 out.wav 2 gbc-speaker   # 同じく、GBCのスピーカーの音で
+gb-player --wav song.mp3 1 out.wav 1 gbc-speaker     # 音声ファイルをGBCのスピーカーの音に
 gb-player --lang en pokemon.gb           # 言語を指定して起動(既定は前回選んだ言語かOSの言語。GUIの右上でも切り替え可)
 ```
 

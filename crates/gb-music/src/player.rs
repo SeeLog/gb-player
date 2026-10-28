@@ -1,6 +1,7 @@
-//! Real-time song playback on top of a [`Driver`].
+//! Real-time song playback, from a [`Driver`] on the emulated machine or from audio files.
 
 use std::fmt;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use gb_core::{CallError, CartridgeError, Machine};
@@ -8,7 +9,8 @@ use gb_core::{CallError, CartridgeError, Machine};
 use crate::driver::{Driver, Song};
 use crate::effects::{Chain, Profile};
 use crate::gbs::{self, is_gbs, GbsError};
-use crate::length::{SongLength, FRAME_RATE};
+use crate::length::{frames_to_secs, SongLength, FRAME_RATE};
+use crate::track::{Track, TrackDecoder, TrackError};
 
 #[derive(Debug)]
 pub enum LoadError {
@@ -55,60 +57,137 @@ pub struct Seek {
     /// The [`Player::play`] call this seek belongs to.
     play: u64,
     frame: u32,
-    /// The first-pass frame that sounds like `frame`.
-    target: u32,
-    at: u32,
-    machine: Machine,
-    phase: u32,
-    driver: Arc<Driver>,
-    /// Snapshots taken on the way, for the player.
-    snapshots: Vec<Snapshot>,
-    error: Option<CallError>,
+    work: SeekWork,
+}
+
+enum SeekWork {
+    Game {
+        /// The first-pass frame that sounds like the frame sought.
+        target: u32,
+        at: u32,
+        machine: Box<Machine>,
+        phase: u32,
+        driver: Arc<Driver>,
+        /// Snapshots taken on the way, for the player.
+        snapshots: Vec<Snapshot>,
+        error: Option<CallError>,
+    },
+    File {
+        path: PathBuf,
+        sample_rate: u32,
+        /// The file opened and moved to the frame sought, once [`Seek::run`] has.
+        decoder: Option<Result<TrackDecoder, TrackError>>,
+    },
 }
 
 impl Seek {
-    /// Run the machine silently up to the frame sought.
+    /// Run the machine silently up to the frame sought, or open the file there.
     pub fn run(&mut self) {
-        self.machine.mem.apu.set_output_enabled(false);
-        while self.at < self.target {
-            if let Err(e) = self.driver.run_frame(&mut self.machine, &mut self.phase) {
-                self.error = Some(e);
-                return;
+        let secs = frames_to_secs(self.frame);
+        match &mut self.work {
+            SeekWork::Game {
+                target,
+                at,
+                machine,
+                phase,
+                driver,
+                snapshots,
+                error,
+            } => {
+                machine.mem.apu.set_output_enabled(false);
+                while *at < *target {
+                    if let Err(e) = driver.run_frame(machine, phase) {
+                        *error = Some(e);
+                        return;
+                    }
+                    *at += 1;
+                    if at.is_multiple_of(SNAPSHOT_INTERVAL) {
+                        snapshots.push(Snapshot {
+                            frame: *at,
+                            machine: (**machine).clone(),
+                            phase: *phase,
+                        });
+                    }
+                }
             }
-            self.at += 1;
-            if self.at.is_multiple_of(SNAPSHOT_INTERVAL) {
-                self.snapshots.push(Snapshot {
-                    frame: self.at,
-                    machine: self.machine.clone(),
-                    phase: self.phase,
-                });
+            SeekWork::File {
+                path,
+                sample_rate,
+                decoder,
+            } => {
+                *decoder = Some(TrackDecoder::open(path, *sample_rate).and_then(|mut d| {
+                    d.seek(secs)?;
+                    Ok(d)
+                }));
             }
         }
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Why a song stopped playing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Failure {
+    /// The game's sound engine went wrong.
+    Call(CallError),
+    /// The audio file could not be read.
+    File(TrackError),
+}
+
+impl fmt::Display for Failure {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Failure::Call(e) => write!(f, "{e}"),
+            Failure::File(e) => write!(f, "{e}"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PlayState {
     Stopped,
     Playing,
     /// The song finished (after the configured number of loops, or by itself).
     Finished,
-    Failed(CallError),
+    Failed(Failure),
 }
 
-pub struct Player {
+/// Where the songs come from.
+enum Source {
+    /// A game's sound engine on the emulated machine.
+    Game(Box<Game>),
+    /// Audio files, a song each.
+    Files(Box<Files>),
+}
+
+struct Game {
     rom: Arc<[u8]>,
     machine: Machine,
     driver: Arc<Driver>,
+    /// T-cycles since the last update, for timer-driven engines.
+    phase: u32,
+    /// Snapshots of the current song, at most one per frame of its first pass (see
+    /// [`pass_frame`]).
+    snapshots: Vec<Snapshot>,
+}
+
+struct Files {
+    tracks: Vec<Track>,
+    songs: Vec<Song>,
+    /// The current song's file, open at where it plays.
+    decoder: Option<TrackDecoder>,
+}
+
+pub struct Player {
+    source: Source,
+    sample_rate: u32,
     state: PlayState,
     current: Option<usize>,
     /// Counts [`Player::play`] calls, so that a seek can tell it is still for the same song.
     plays: u64,
     frame: u32,
-    /// T-cycles since the last update, for timer-driven engines.
-    phase: u32,
     length: SongLength,
-    /// Number of times to play the looping part before fading out; `None` loops forever.
+    /// Number of times to play the looping part before fading out; `None` loops forever. An
+    /// audio file has no loop of its own: it plays once, or over and over for `None`.
     pub loop_count: Option<u32>,
     pub fade_secs: f32,
     /// Applied after the [`Profile`]'s effects, as the console's volume wheel comes after the
@@ -121,9 +200,6 @@ pub struct Player {
     buf: Vec<f32>,
     buf_pos: usize,
     levels: [f32; 4],
-    /// Snapshots of the current song, at most one per frame of its first pass (see
-    /// [`Player::pass_frame`]).
-    snapshots: Vec<Snapshot>,
 }
 
 impl Player {
@@ -147,15 +223,49 @@ impl Player {
         driver: Driver,
     ) -> Result<Player, LoadError> {
         let machine = Machine::new(rom.clone(), sample_rate)?;
-        Ok(Player {
-            rom: rom.into(),
-            machine,
-            driver: Arc::new(driver),
+        Ok(Player::with_source(
+            Source::Game(Box::new(Game {
+                rom: rom.into(),
+                machine,
+                driver: Arc::new(driver),
+                phase: 0,
+                snapshots: Vec::new(),
+            })),
+            sample_rate,
+        ))
+    }
+
+    /// Play audio files, in the order of `tracks`.
+    pub fn files(tracks: Vec<Track>, sample_rate: u32) -> Player {
+        let songs = tracks
+            .iter()
+            .enumerate()
+            .map(|(index, t)| Song {
+                index,
+                key: t.path.file_name().map(|n| n.to_string_lossy().into_owned()),
+                id: 0,
+                bank: 0,
+                length: Some(t.length),
+            })
+            .collect();
+        Player::with_source(
+            Source::Files(Box::new(Files {
+                tracks,
+                songs,
+                decoder: None,
+            })),
+            sample_rate,
+        )
+    }
+
+    fn with_source(source: Source, sample_rate: u32) -> Player {
+        Player {
+            source,
+            sample_rate,
             state: PlayState::Stopped,
             current: None,
             plays: 0,
             frame: 0,
-            phase: 0,
             length: SongLength::Unknown,
             loop_count: None,
             fade_secs: 8.0,
@@ -167,24 +277,43 @@ impl Player {
             buf: Vec::new(),
             buf_pos: 0,
             levels: [0.0; 4],
-            snapshots: Vec::new(),
-        })
+        }
     }
 
-    pub fn rom(&self) -> Arc<[u8]> {
-        self.rom.clone()
+    fn game(&self) -> Option<&Game> {
+        match &self.source {
+            Source::Game(g) => Some(g),
+            Source::Files(_) => None,
+        }
     }
 
-    pub fn driver(&self) -> &Driver {
-        &self.driver
+    fn game_mut(&mut self) -> Option<&mut Game> {
+        match &mut self.source {
+            Source::Game(g) => Some(g),
+            Source::Files(_) => None,
+        }
     }
 
-    pub fn title(&self) -> &str {
-        &self.machine.mem.cart.header.title
+    /// The ROM image played; `None` for audio files.
+    pub fn rom(&self) -> Option<Arc<[u8]>> {
+        self.game().map(|g| g.rom.clone())
+    }
+
+    pub fn driver(&self) -> Option<&Driver> {
+        self.game().map(|g| &*g.driver)
+    }
+
+    /// The title in the cartridge header; `None` for audio files.
+    pub fn title(&self) -> Option<&str> {
+        self.game()
+            .map(|g| g.machine.mem.cart.header.title.as_str())
     }
 
     pub fn songs(&self) -> &[Song] {
-        &self.driver.songs
+        match &self.source {
+            Source::Game(g) => &g.driver.songs,
+            Source::Files(f) => &f.songs,
+        }
     }
 
     pub fn current(&self) -> Option<usize> {
@@ -192,7 +321,7 @@ impl Player {
     }
 
     pub fn state(&self) -> PlayState {
-        self.state
+        self.state.clone()
     }
 
     pub fn paused(&self) -> bool {
@@ -218,21 +347,26 @@ impl Player {
         }
     }
 
+    /// Mute one of the APU's channels; audio files have none.
     pub fn set_muted(&mut self, channel: usize, muted: bool) {
-        self.machine.mem.apu.mute[channel] = muted;
+        if let Some(g) = self.game_mut() {
+            g.machine.mem.apu.mute[channel] = muted;
+        }
     }
 
     pub fn muted(&self, channel: usize) -> bool {
-        self.machine.mem.apu.mute[channel]
+        self.game().is_some_and(|g| g.machine.mem.apu.mute[channel])
     }
 
     /// Set the volume of a channel, from 0 to 1, on top of the game's.
     pub fn set_channel_volume(&mut self, channel: usize, volume: f32) {
-        self.machine.mem.apu.gain[channel] = volume.clamp(0.0, 1.0);
+        if let Some(g) = self.game_mut() {
+            g.machine.mem.apu.gain[channel] = volume.clamp(0.0, 1.0);
+        }
     }
 
     pub fn channel_volume(&self, channel: usize) -> f32 {
-        self.machine.mem.apu.gain[channel]
+        self.game().map_or(1.0, |g| g.machine.mem.apu.gain[channel])
     }
 
     /// Peak level of each channel since the last call, for meters.
@@ -247,7 +381,7 @@ impl Player {
         }
         self.profile = profile;
         self.noise = noise;
-        self.effects = Chain::new(profile, self.machine.mem.apu.sample_rate(), noise);
+        self.effects = Chain::new(profile, self.sample_rate, noise);
     }
 
     pub fn profile(&self) -> (Profile, bool) {
@@ -255,32 +389,33 @@ impl Player {
     }
 
     pub fn play(&mut self, index: usize) {
-        let Some(song) = self.driver.songs.get(index).cloned() else {
+        if index >= self.songs().len() {
             return;
-        };
-        let sample_rate = self.machine.mem.apu.sample_rate();
-        let (mute, gain) = (self.machine.mem.apu.mute, self.machine.mem.apu.gain);
-        // A fresh machine gives every song the same clean starting state.
-        self.machine =
-            Machine::new(self.rom.to_vec(), sample_rate).expect("ROM was already validated");
-        self.machine.mem.apu.mute = mute;
-        self.machine.mem.apu.gain = gain;
+        }
         self.current = Some(index);
         self.plays += 1;
         self.frame = 0;
-        self.phase = 0;
         self.length = SongLength::Unknown;
         self.paused = false;
         self.buf.clear();
         self.buf_pos = 0;
         self.effects.reset();
-        self.state = match self.driver.play(&mut self.machine, &song) {
+        let sample_rate = self.sample_rate;
+        let started = match &mut self.source {
+            Source::Game(g) => g.start(index, sample_rate).map_err(Failure::Call),
+            Source::Files(f) => {
+                let track = &f.tracks[index];
+                self.length = track.length;
+                f.decoder = None;
+                TrackDecoder::open(&track.path, sample_rate)
+                    .map(|d| f.decoder = Some(d))
+                    .map_err(Failure::File)
+            }
+        };
+        self.state = match started {
             Ok(()) => PlayState::Playing,
             Err(e) => PlayState::Failed(e),
         };
-        // Samples produced while starting the song are discarded.
-        self.machine.mem.apu.take_samples();
-        self.snapshots.clear();
         self.keep_snapshot();
     }
 
@@ -323,11 +458,43 @@ impl Player {
     }
 
     fn run_frame(&mut self) {
-        if let Err(e) = self.driver.run_frame(&mut self.machine, &mut self.phase) {
-            self.state = PlayState::Failed(e);
-            return;
-        }
-        let mut samples = self.machine.mem.apu.take_samples();
+        let mut samples = match &mut self.source {
+            Source::Game(g) => {
+                if let Err(e) = g.driver.run_frame(&mut g.machine, &mut g.phase) {
+                    self.state = PlayState::Failed(Failure::Call(e));
+                    return;
+                }
+                let lv = g.machine.mem.apu.take_levels();
+                for (a, b) in self.levels.iter_mut().zip(lv) {
+                    *a = a.max(b);
+                }
+                g.machine.mem.apu.take_samples()
+            }
+            Source::Files(f) => {
+                let Some(decoder) = &mut f.decoder else {
+                    self.state = PlayState::Finished;
+                    return;
+                };
+                // As many samples as the APU makes in this frame.
+                let at = |frame: u32| (frame as f64 * self.sample_rate as f64 / FRAME_RATE) as u64;
+                let want = (at(self.frame + 1) - at(self.frame)) as usize;
+                let mut samples = Vec::with_capacity(want * 2);
+                let mut got = decoder.read(&mut samples, want);
+                if got < want && self.loop_count.is_none() && decoder.seek(0.0).is_ok() {
+                    // Played over and over: on from the start.
+                    let more = decoder.read(&mut samples, want - got);
+                    if more > 0 {
+                        self.frame = 0;
+                    }
+                    got += more;
+                }
+                if got == 0 {
+                    self.state = PlayState::Finished;
+                    return;
+                }
+                samples
+            }
+        };
         self.effects.process(&mut samples);
         let (g0, g1) = (
             self.gain_at(self.frame),
@@ -340,10 +507,6 @@ impl Player {
             let t = (i / 2) as f32 / n;
             self.buf.push(s * (g0 + (g1 - g0) * t) * self.volume);
         }
-        let lv = self.machine.mem.apu.take_levels();
-        for (a, b) in self.levels.iter_mut().zip(lv) {
-            *a = a.max(b);
-        }
         self.frame = self.frame.saturating_add(1);
         self.keep_snapshot();
 
@@ -352,41 +515,24 @@ impl Player {
         }
     }
 
-    /// The frame of the first pass through the song that sounds the same as `frame`: past the
-    /// first loop, the machine repeats the state it had one or more periods earlier.
-    fn pass_frame(&self, frame: u32) -> u32 {
-        match self.length {
-            SongLength::Loops { intro, period } if period > 0 && frame >= intro => {
-                intro + (frame - intro) % period
-            }
-            _ => frame,
-        }
-    }
-
-    /// Whether a snapshot of the first-pass frame `frame` is still missing.
-    fn wants_snapshot(&self, frame: u32) -> bool {
-        frame.is_multiple_of(SNAPSHOT_INTERVAL)
-            && self.snapshots.len() < MAX_SNAPSHOTS
-            && !self
-                .snapshots
-                .iter()
-                .any(|s| self.pass_frame(s.frame) == frame)
-    }
-
     /// Remember the machine at the current frame if it starts a new snapshot interval.
     fn keep_snapshot(&mut self) {
-        if self.wants_snapshot(self.pass_frame(self.frame)) {
-            self.snapshots.push(Snapshot {
-                frame: self.frame,
-                machine: self.machine.clone(),
-                phase: self.phase,
-            });
+        let (frame, length) = (self.frame, self.length);
+        if let Some(g) = self.game_mut() {
+            if wants_snapshot(&g.snapshots, length, pass_frame(length, frame)) {
+                g.snapshots.push(Snapshot {
+                    frame,
+                    machine: g.machine.clone(),
+                    phase: g.phase,
+                });
+            }
         }
     }
 
-    /// The frame at which the song stops with the current settings, if it does; a jingle's
-    /// last note rings out for a second.
+    /// The frame at which a game's song stops with the current settings, if it does; a
+    /// jingle's last note rings out for a second. An audio file stops at its end.
     fn end_frame(&self) -> Option<u32> {
+        self.game()?;
         match (self.fade_start(), self.length) {
             (Some(start), _) => Some(start.saturating_add(self.fade_frames())),
             (_, SongLength::Ends { at }) if self.loop_count.is_some() => {
@@ -404,45 +550,68 @@ impl Player {
         }
     }
 
-    /// Start moving the current song to `frame`. The machine is restored from the nearest
-    /// earlier snapshot and run silently up to that frame; beyond the first loop it is run up
-    /// to the same point of the first pass instead, which sounds the same. That can take a
-    /// while, so [`Seek::run`] does it apart from the player, which keeps playing until
-    /// [`Player::finish_seek`].
+    /// Start moving the current song to `frame`. A game's machine is restored from the
+    /// nearest earlier snapshot and run silently up to that frame; beyond the first loop it is
+    /// run up to the same point of the first pass instead, which sounds the same. An audio
+    /// file is opened again there. That can take a while, so [`Seek::run`] does it apart from
+    /// the player, which keeps playing until [`Player::finish_seek`].
     pub fn begin_seek(&self, frame: u32) -> Option<Seek> {
-        if self.current.is_none() || matches!(self.state, PlayState::Failed(_)) {
+        let current = self.current?;
+        if matches!(self.state, PlayState::Failed(_)) {
             return None;
         }
+        let g = match &self.source {
+            Source::Game(g) => g,
+            Source::Files(f) => {
+                let track = &f.tracks[current];
+                let frame = match track.length {
+                    SongLength::Ends { at } => frame.min(at.saturating_sub(1)),
+                    _ => frame,
+                };
+                return Some(Seek {
+                    play: self.plays,
+                    frame,
+                    work: SeekWork::File {
+                        path: track.path.clone(),
+                        sample_rate: self.sample_rate,
+                        decoder: None,
+                    },
+                });
+            }
+        };
         let frame = match self.end_frame() {
             Some(end) => frame.min(end.saturating_sub(1)),
             None => frame,
         };
-        let target = self.pass_frame(frame);
+        let pass = |f| pass_frame(self.length, f);
+        let target = pass(frame);
         // Run on from the latest snapshot at or before the target, or from where the song
         // is now when that is closer.
-        let (from, snapshot) = self
+        let (from, snapshot) = g
             .snapshots
             .iter()
-            .map(|s| (self.pass_frame(s.frame), s))
+            .map(|s| (pass(s.frame), s))
             .filter(|&(f, _)| f <= target)
             .max_by_key(|&(f, _)| f)?;
-        let now = self.pass_frame(self.frame);
+        let now = pass(self.frame);
         let (at, machine, phase) =
             if self.state == PlayState::Playing && from <= now && now <= target {
-                (now, self.machine.clone(), self.phase)
+                (now, Box::new(g.machine.clone()), g.phase)
             } else {
-                (from, snapshot.machine.clone(), snapshot.phase)
+                (from, Box::new(snapshot.machine.clone()), snapshot.phase)
             };
         Some(Seek {
             play: self.plays,
             frame,
-            target,
-            at,
-            machine,
-            phase,
-            driver: self.driver.clone(),
-            snapshots: Vec::new(),
-            error: None,
+            work: SeekWork::Game {
+                target,
+                at,
+                machine,
+                phase,
+                driver: g.driver.clone(),
+                snapshots: Vec::new(),
+                error: None,
+            },
         })
     }
 
@@ -452,23 +621,51 @@ impl Player {
         if seek.play != self.plays {
             return;
         }
-        for s in seek.snapshots {
-            if self.wants_snapshot(s.frame) {
-                self.snapshots.push(s);
+        let length = self.length;
+        let failure = match (seek.work, &mut self.source) {
+            (
+                SeekWork::Game {
+                    machine: mut m,
+                    phase,
+                    snapshots,
+                    error,
+                    ..
+                },
+                Source::Game(g),
+            ) => {
+                for s in snapshots {
+                    if wants_snapshot(&g.snapshots, length, s.frame) {
+                        g.snapshots.push(s);
+                    }
+                }
+                match error {
+                    Some(e) => Some(Failure::Call(e)),
+                    None => {
+                        m.mem.apu.set_output_enabled(true);
+                        m.mem.apu.mute = g.machine.mem.apu.mute;
+                        m.mem.apu.gain = g.machine.mem.apu.gain;
+                        m.mem.apu.take_samples();
+                        m.mem.apu.take_levels();
+                        g.machine = *m;
+                        g.phase = phase;
+                        None
+                    }
+                }
             }
-        }
-        if let Some(e) = seek.error {
+            (SeekWork::File { decoder, .. }, Source::Files(f)) => match decoder {
+                Some(Ok(d)) => {
+                    f.decoder = Some(d);
+                    None
+                }
+                Some(Err(e)) => Some(Failure::File(e)),
+                None => return,
+            },
+            _ => return,
+        };
+        if let Some(e) = failure {
             self.state = PlayState::Failed(e);
             return;
         }
-        let mut machine = seek.machine;
-        machine.mem.apu.set_output_enabled(true);
-        machine.mem.apu.mute = self.machine.mem.apu.mute;
-        machine.mem.apu.gain = self.machine.mem.apu.gain;
-        machine.mem.apu.take_samples();
-        machine.mem.apu.take_levels();
-        self.machine = machine;
-        self.phase = seek.phase;
         self.frame = seek.frame;
         self.buf.clear();
         self.buf_pos = 0;
@@ -494,6 +691,45 @@ impl Player {
             i += n;
         }
     }
+}
+
+impl Game {
+    /// Start song `index` on a fresh machine, which gives every song the same clean starting
+    /// state.
+    fn start(&mut self, index: usize, sample_rate: u32) -> Result<(), CallError> {
+        let song = self.driver.songs[index].clone();
+        let (mute, gain) = (self.machine.mem.apu.mute, self.machine.mem.apu.gain);
+        self.machine =
+            Machine::new(self.rom.to_vec(), sample_rate).expect("ROM was already validated");
+        self.machine.mem.apu.mute = mute;
+        self.machine.mem.apu.gain = gain;
+        self.phase = 0;
+        self.snapshots.clear();
+        let started = self.driver.play(&mut self.machine, &song);
+        // Samples produced while starting the song are discarded.
+        self.machine.mem.apu.take_samples();
+        started
+    }
+}
+
+/// The frame of the first pass through the song that sounds the same as `frame`: past the
+/// first loop, the machine repeats the state it had one or more periods earlier.
+fn pass_frame(length: SongLength, frame: u32) -> u32 {
+    match length {
+        SongLength::Loops { intro, period } if period > 0 && frame >= intro => {
+            intro + (frame - intro) % period
+        }
+        _ => frame,
+    }
+}
+
+/// Whether a snapshot of the first-pass frame `frame` is still missing.
+fn wants_snapshot(snapshots: &[Snapshot], length: SongLength, frame: u32) -> bool {
+    frame.is_multiple_of(SNAPSHOT_INTERVAL)
+        && snapshots.len() < MAX_SNAPSHOTS
+        && !snapshots
+            .iter()
+            .any(|s| pass_frame(length, s.frame) == frame)
 }
 
 #[cfg(test)]
@@ -543,7 +779,7 @@ mod tests {
     fn state_at(frame: u32) -> u64 {
         let mut p = counting_player();
         run_frames(&mut p, frame);
-        p.machine.state_hash()
+        p.game().unwrap().machine.state_hash()
     }
 
     #[test]
@@ -572,7 +808,11 @@ mod tests {
         for frame in [700, 0, 301, 1499] {
             p.seek(frame);
             assert_eq!(p.position_frames(), frame);
-            assert_eq!(p.machine.state_hash(), state_at(frame), "{frame}");
+            assert_eq!(
+                p.game().unwrap().machine.state_hash(),
+                state_at(frame),
+                "{frame}"
+            );
         }
     }
 
@@ -581,11 +821,11 @@ mod tests {
         let mut p = counting_player();
         run_frames(&mut p, 10);
         p.seek(2000);
-        assert_eq!(p.machine.state_hash(), state_at(2000));
+        assert_eq!(p.game().unwrap().machine.state_hash(), state_at(2000));
         // The frames run through were kept for seeking back.
-        assert!(p.snapshots.iter().any(|s| s.frame == 1800));
+        assert!(p.game().unwrap().snapshots.iter().any(|s| s.frame == 1800));
         p.seek(1900);
-        assert_eq!(p.machine.state_hash(), state_at(1900));
+        assert_eq!(p.game().unwrap().machine.state_hash(), state_at(1900));
     }
 
     #[test]
@@ -603,9 +843,9 @@ mod tests {
         let frame = 1 + 256 * 40 + 77;
         p.seek(frame);
         assert_eq!(p.position_frames(), frame);
-        assert_eq!(p.machine.state_hash(), state_at(78));
+        assert_eq!(p.game().unwrap().machine.state_hash(), state_at(78));
         // Only the first pass was run.
-        assert!(p.snapshots.iter().all(|s| s.frame <= 300));
+        assert!(p.game().unwrap().snapshots.iter().all(|s| s.frame <= 300));
     }
 
     #[test]
@@ -649,7 +889,7 @@ mod tests {
         p.set_paused(true);
         p.seek(20);
         assert!(p.paused());
-        assert_eq!(p.machine.state_hash(), state_at(20));
+        assert_eq!(p.game().unwrap().machine.state_hash(), state_at(20));
     }
 
     #[test]
@@ -667,6 +907,87 @@ mod tests {
         // Seeking starts it from there, as for a stopped song.
         p.seek(20);
         assert_eq!(p.state(), PlayState::Playing);
-        assert_eq!(p.machine.state_hash(), state_at(20));
+        assert_eq!(p.game().unwrap().machine.state_hash(), state_at(20));
+    }
+
+    /// A WAV file of a tone `secs` long at 44.1 kHz, in a folder of its own.
+    fn tone_wav(name: &str, secs: f64) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("gb-player-{}-{name}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let rate = 44_100u32;
+        let frames = (secs * rate as f64) as u32;
+        let mut wav = Vec::new();
+        wav.extend_from_slice(b"RIFF");
+        wav.extend_from_slice(&(36 + frames * 2).to_le_bytes());
+        wav.extend_from_slice(b"WAVEfmt ");
+        for v in [16u32, 1 | 1 << 16, rate, rate * 2, 2 | 16 << 16] {
+            wav.extend_from_slice(&v.to_le_bytes());
+        }
+        wav.extend_from_slice(b"data");
+        wav.extend_from_slice(&(frames * 2).to_le_bytes());
+        for i in 0..frames {
+            let s = (std::f64::consts::TAU * 440.0 * i as f64 / rate as f64).sin() * 16_000.0;
+            wav.extend_from_slice(&(s as i16).to_le_bytes());
+        }
+        let path = dir.join("tone.wav");
+        std::fs::write(&path, wav).unwrap();
+        path
+    }
+
+    fn file_player(path: &std::path::Path) -> Player {
+        let track = crate::track::probe(path).unwrap();
+        let mut p = Player::files(vec![track], 48_000);
+        p.play(0);
+        p
+    }
+
+    #[test]
+    fn a_file_plays_once_and_finishes() {
+        let mut p = file_player(&tone_wav("once", 1.0));
+        assert_eq!(p.length(), SongLength::Ends { at: 60 });
+        p.loop_count = Some(1);
+        let mut out = vec![0.0f32; 48_000 * 2 * 2];
+        p.render(&mut out);
+        assert_eq!(p.state(), PlayState::Finished);
+        // The tone is there, in mono on both sides, and silence after it.
+        let peak = out[..48_000].iter().fold(0.0f32, |m, s| m.max(s.abs()));
+        assert!((peak - 0.8 * 16_000.0 / 32_768.0).abs() < 0.01, "{peak}");
+        assert!(out.chunks(2).all(|f| f[0] == f[1]));
+        assert!(out[48_000 * 2 + 200..].iter().all(|&s| s == 0.0));
+    }
+
+    #[test]
+    fn a_file_looped_forever_starts_over() {
+        let mut p = file_player(&tone_wav("forever", 1.0));
+        let mut out = vec![0.0f32; 48_000 * 2 * 5 / 2];
+        p.render(&mut out);
+        assert_eq!(p.state(), PlayState::Playing);
+        assert!(
+            (25..35).contains(&p.position_frames()),
+            "{}",
+            p.position_frames()
+        );
+        assert!(out[48_000 * 4..].iter().any(|&s| s.abs() > 0.1));
+    }
+
+    #[test]
+    fn seeking_in_a_file_opens_it_there() {
+        let mut p = file_player(&tone_wav("seek", 2.0));
+        p.seek(90);
+        assert_eq!(p.position_frames(), 90);
+        assert_eq!(p.state(), PlayState::Playing);
+        // Past the end: the last frame.
+        p.seek(1000);
+        assert_eq!(p.position_frames(), 118);
+    }
+
+    #[test]
+    fn a_file_that_is_gone_fails() {
+        let path = tone_wav("gone", 0.5);
+        let track = crate::track::probe(&path).unwrap();
+        std::fs::remove_file(&path).unwrap();
+        let mut p = Player::files(vec![track], 48_000);
+        p.play(0);
+        assert!(matches!(p.state(), PlayState::Failed(Failure::File(_))));
     }
 }

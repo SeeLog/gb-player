@@ -12,10 +12,12 @@ export interface SongView {
   length: Length | null;
 }
 
-/** An open ROM. */
+/** An open ROM, or a folder of audio files. */
 export interface RomView {
-  /** The hash of the file, the same between runs. */
+  /** The hash of the file (or of the folder's path), the same between runs. */
   id: string;
+  /** Whether it is a folder of audio files: its songs have no channels of their own. */
+  folder: boolean;
   game: string;
   title: string;
   path: string;

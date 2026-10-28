@@ -7,7 +7,8 @@ use std::sync::PoisonError;
 
 use gb_music::songdb::{Names, LANGUAGES};
 use gb_music::{
-    frames_to_secs, read_rom, Driver, PlayState, Player, Profile, Song, SongLength, FRAME_RATE,
+    frames_to_secs, is_audio, read_rom, track, Driver, PlayState, Player, Profile, Song,
+    SongLength, FRAME_RATE,
 };
 
 use super::playlists::{self, Entry, Playlist};
@@ -53,28 +54,58 @@ pub struct Session {
     rng: Rng,
 }
 
-/// An open ROM.
+/// An open ROM, or a folder of audio files, opened and played the same way.
 struct Rom {
-    /// [`playlists::hash`] of the file, which the UI knows the ROM by.
+    /// [`playlists::hash`] of the file (or [`folder_id`] of the folder), which the UI knows the
+    /// ROM by.
     id: String,
+    /// The ROM file, or the folder.
     path: PathBuf,
     /// Its player while another ROM's is in the audio output.
     player: Option<Player>,
-    driver: Driver,
+    kind: Kind,
     songs: Vec<Song>,
+    /// The cartridge header's title; for a folder, the artist of all its files, if they agree.
     title: String,
     /// Game and song names in the UI language.
     names: Names,
-    /// Problems found in the user's song names for it.
+    /// Problems found in the user's song names for it, or in the files of a folder.
     warnings: Vec<String>,
     lengths: HashMap<usize, SongLength>,
-    analyzer: Analyzer,
+}
+
+enum Kind {
+    /// A game's sound engine, whose loop points are found in the background.
+    Game {
+        driver: Box<Driver>,
+        analyzer: Analyzer,
+    },
+    /// Audio files, in the order of the songs.
+    Folder { files: Vec<PathBuf> },
 }
 
 impl Rom {
     fn has_song(&self, index: usize) -> bool {
         self.songs.iter().any(|s| s.index == index)
     }
+
+    /// The song that a playlist entry of this ROM stands for: a folder's by its file, so that
+    /// files added to the folder later do not move it.
+    fn entry_song(&self, entry: &Entry) -> Option<usize> {
+        match &self.kind {
+            Kind::Game { .. } => self.has_song(entry.song).then_some(entry.song),
+            Kind::Folder { files } => files.iter().position(|f| *f == entry.path),
+        }
+    }
+}
+
+/// What a folder of audio files is known by: its path, as the files in it may change.
+pub fn folder_id(dir: &Path) -> String {
+    let dir = std::fs::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf());
+    format!(
+        "folder:{}",
+        playlists::hash(dir.as_os_str().as_encoded_bytes())
+    )
 }
 
 /// The playlist being played.
@@ -216,9 +247,13 @@ impl Session {
         last
     }
 
-    /// Open a ROM, or find it among the open ones; returns its id. The first one opened goes
-    /// into the audio output, so that Play has something to play.
+    /// Open a ROM, or find it among the open ones; returns its id. A folder or an audio file
+    /// opens the folder. The first one opened goes into the audio output, so that
+    /// Play has something to play.
     fn open(&mut self, path: &Path) -> Option<String> {
+        if path.is_dir() || is_audio(path) {
+            return self.open_folder(path);
+        }
         let rom = match read_rom(path) {
             Ok(r) => r,
             Err(e) => {
@@ -240,26 +275,99 @@ impl Session {
                 return None;
             }
         };
-        let driver = player.driver().clone();
+        let (Some(driver), Some(image)) = (player.driver().cloned(), player.rom()) else {
+            return None;
+        };
         let (names, warnings) = Names::new(&driver, self.text.language());
-        self.roms.push(Rom {
+        self.add(Rom {
             id: id.clone(),
             path: path.to_path_buf(),
-            analyzer: Analyzer::start(player.rom(), driver.clone()),
             songs: player.songs().to_vec(),
-            title: player.title().to_string(),
+            title: player.title().unwrap_or_default().to_string(),
             player: Some(player),
-            driver,
+            kind: Kind::Game {
+                analyzer: Analyzer::start(image, driver.clone()),
+                driver: Box::new(driver),
+            },
             names,
             warnings,
             lengths: HashMap::new(),
         });
+        Some(id)
+    }
+
+    /// Open the folder `path`, or the one holding the audio file `path`, or find it among the
+    /// open ones; returns its id.
+    fn open_folder(&mut self, path: &Path) -> Option<String> {
+        let dir = if path.is_dir() { path } else { path.parent()? };
+        let id = folder_id(dir);
+        if self.rom(&id).is_some() {
+            return Some(id);
+        }
+        let track::Folder { tracks, unreadable } = match track::folder(dir) {
+            Ok(f) => f,
+            Err(e) => {
+                self.error = Some(
+                    self.text
+                        .fmt("err_read", &[("path", &dir.display()), ("error", &e)]),
+                );
+                return None;
+            }
+        };
+        let warnings: Vec<String> = unreadable
+            .iter()
+            .map(|(path, e)| {
+                self.text
+                    .fmt("err_read", &[("path", &path.display()), ("error", &e)])
+            })
+            .collect();
+        if tracks.is_empty() {
+            self.error = Some(
+                warnings
+                    .into_iter()
+                    .next()
+                    .unwrap_or_else(|| self.text.fmt("err_no_audio", &[("path", &dir.display())])),
+            );
+            return None;
+        }
+        let folder = dir.file_name().map_or_else(
+            || dir.display().to_string(),
+            |n| n.to_string_lossy().into_owned(),
+        );
+        let artist = tracks[0]
+            .artist
+            .clone()
+            .filter(|a| tracks.iter().all(|t| t.artist.as_ref() == Some(a)));
+        let names = Names {
+            game: folder,
+            songs: tracks.iter().map(|t| t.title.clone()).collect(),
+        };
+        let lengths = tracks.iter().map(|t| t.length).enumerate().collect();
+        let files = tracks.iter().map(|t| t.path.clone()).collect();
+        let player = Player::files(tracks, self.sample_rate);
+        self.add(Rom {
+            id: id.clone(),
+            path: dir.to_path_buf(),
+            songs: player.songs().to_vec(),
+            title: artist.unwrap_or_default(),
+            player: Some(player),
+            kind: Kind::Folder { files },
+            names,
+            warnings,
+            lengths,
+        });
+        Some(id)
+    }
+
+    /// Keep a ROM just opened; the first one goes into the audio output.
+    fn add(&mut self, rom: Rom) {
+        let id = rom.id.clone();
+        self.roms.push(rom);
         self.error = None;
         self.forget_order();
         if self.loaded.is_none() {
             self.load(&id);
         }
-        Some(id)
     }
 
     /// Close an open ROM. When it is the one playing, playback stops (along with the playlist
@@ -325,7 +433,9 @@ impl Session {
     /// Look up the game and song names in the UI language after switching languages.
     fn refresh_names(&mut self) {
         for rom in &mut self.roms {
-            (rom.names, rom.warnings) = Names::new(&rom.driver, self.text.language());
+            if let Kind::Game { driver, .. } = &rom.kind {
+                (rom.names, rom.warnings) = Names::new(driver, self.text.language());
+            }
         }
     }
 
@@ -336,9 +446,9 @@ impl Session {
     /// Play a song of an open ROM. That leaves the playlist being played, unless it is the song
     /// the playlist is on (Previous starts it again this way).
     pub fn play_song(&mut self, rom: &str, index: usize) {
-        let on_it = self
-            .queue_entry()
-            .is_some_and(|e| e.song == index && e.hash == rom);
+        let on_it = self.queue_entry().is_some_and(|e| {
+            e.hash == rom && self.rom(rom).and_then(|r| r.entry_song(e)) == Some(index)
+        });
         if !on_it {
             self.queue = None;
         }
@@ -361,7 +471,9 @@ impl Session {
         let Some(rom) = self.loaded_rom() else {
             return;
         };
-        rom.analyzer.prioritize(index);
+        if let Kind::Game { analyzer, .. } = &rom.kind {
+            analyzer.prioritize(index);
+        }
         let length = rom.lengths.get(&index).copied();
         let count = self.settings.loop_count;
         self.with_player(|p| {
@@ -422,8 +534,9 @@ impl Session {
         };
         self.queue = entry
             .filter(|e| {
-                self.entry(&e.playlist, e.position)
-                    .is_some_and(|x| x.song == index && x.hash == last)
+                self.entry(&e.playlist, e.position).is_some_and(|x| {
+                    x.hash == last && self.rom(&last).and_then(|r| r.entry_song(&x)) == Some(index)
+                })
             })
             .map(|e| Queue {
                 playlist: e.playlist,
@@ -723,6 +836,7 @@ impl Session {
                 .iter()
                 .map(|rom| RomView {
                     id: rom.id.clone(),
+                    folder: matches!(rom.kind, Kind::Folder { .. }),
                     game: rom.names.game.clone(),
                     title: rom.title.clone(),
                     path: rom.path.display().to_string(),
@@ -822,7 +936,7 @@ impl Session {
         self.playlist(&q.playlist)?.entries.get(q.position)
     }
 
-    /// Entries for songs of the open ROM `rom`.
+    /// Entries for songs of the open ROM `rom`. A folder's entry is its song's file.
     fn entries_for(&self, rom: &str, songs: &[usize]) -> Vec<Entry> {
         let Some(rom) = self.rom(rom) else {
             return Vec::new();
@@ -831,7 +945,10 @@ impl Session {
             .iter()
             .filter(|&&i| rom.has_song(i))
             .map(|&song| Entry {
-                path: rom.path.clone(),
+                path: match &rom.kind {
+                    Kind::Game { .. } => rom.path.clone(),
+                    Kind::Folder { files } => files[song].clone(),
+                },
                 hash: rom.id.clone(),
                 song,
                 game: rom.names.game.clone(),
@@ -929,6 +1046,8 @@ impl Session {
 
     /// Point the entry at `position` of `id` at the file `path` holding the ROM `new_hash`,
     /// along with every entry, in any playlist, that cannot find the ROM `old_hash` either.
+    /// For an audio file, those are the songs of the same folder, each found by its file name
+    /// in the folder of `path`.
     pub fn relink(
         &mut self,
         id: &str,
@@ -937,13 +1056,26 @@ impl Session {
         path: &Path,
         new_hash: &str,
     ) {
+        let audio = is_audio(path);
         let mut changed = Vec::new();
         for list in &mut self.playlists {
             let mut any = false;
             for (i, e) in list.entries.iter_mut().enumerate() {
-                let chosen = list.id == id && i == position;
-                if chosen || (e.hash == old_hash && !e.path.is_file()) {
-                    e.path = path.to_path_buf();
+                let to = if list.id == id && i == position {
+                    Some(path.to_path_buf())
+                } else if e.hash == old_hash && !e.path.is_file() {
+                    match (audio, path.parent(), e.path.file_name()) {
+                        (false, _, _) => Some(path.to_path_buf()),
+                        (true, Some(dir), Some(name)) => {
+                            Some(dir.join(name)).filter(|p| p.is_file())
+                        }
+                        _ => None,
+                    }
+                } else {
+                    None
+                };
+                if let Some(to) = to {
+                    e.path = to;
                     e.hash = new_hash.to_string();
                     any = true;
                 }
@@ -973,20 +1105,20 @@ impl Session {
                 None => return false,
             },
         };
-        if !self.rom(&rom).is_some_and(|r| r.has_song(entry.song)) {
+        let Some(song) = self.rom(&rom).and_then(|r| r.entry_song(&entry)) else {
             self.error = Some(self.text.fmt(
                 "playlist_no_song",
                 &[("n", &(entry.song + 1)), ("path", &entry.path.display())],
             ));
             return false;
-        }
+        };
         self.queue = Some(Queue {
             playlist: id.to_string(),
             position,
             on_entry: true,
         });
         self.load(&rom);
-        self.play(entry.song);
+        self.play(song);
         true
     }
 
@@ -1060,11 +1192,14 @@ impl Session {
                 .iter()
                 .map(|e| {
                     // An open ROM gives the names in the current language.
-                    let names = self.rom(&e.hash).map(|r| &r.names);
+                    let rom = self.rom(&e.hash);
+                    let song = rom.and_then(|r| r.entry_song(e));
                     EntryView {
-                        game: names.map_or_else(|| e.game.clone(), |n| n.game.clone()),
-                        title: names
-                            .map_or_else(|| e.title.clone(), |n| n.song(e.song).to_string()),
+                        game: rom.map_or_else(|| e.game.clone(), |r| r.names.game.clone()),
+                        title: match (rom, song) {
+                            (Some(r), Some(i)) => r.names.song(i).to_string(),
+                            _ => e.title.clone(),
+                        },
                         length: e.length.clone(),
                         path: e.path.display().to_string(),
                         missing: !e.path.is_file(),
@@ -1079,7 +1214,10 @@ impl Session {
     pub fn tick(&mut self) -> (TickView, bool) {
         let mut changed = false;
         for i in 0..self.roms.len() {
-            let results: Vec<_> = self.roms[i].analyzer.results.try_iter().collect();
+            let Kind::Game { analyzer, .. } = &self.roms[i].kind else {
+                continue;
+            };
+            let results: Vec<_> = analyzer.results.try_iter().collect();
             if results.is_empty() {
                 continue;
             }
