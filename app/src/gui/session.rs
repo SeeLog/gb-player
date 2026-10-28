@@ -778,6 +778,17 @@ impl Session {
         }
     }
 
+    /// Clear the errors and warnings shown above the library (the user closed them). Warnings
+    /// come back when what they are about is loaded again.
+    pub fn dismiss_errors(&mut self) {
+        self.error = None;
+        for rom in &mut self.roms {
+            rom.warnings.clear();
+        }
+        self.theme_warnings.clear();
+        self.playlist_warnings.clear();
+    }
+
     pub fn reload_playlists(&mut self) {
         (self.playlists, self.playlist_warnings) = playlists::load(&self.text);
     }

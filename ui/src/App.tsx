@@ -344,9 +344,21 @@ export default function App() {
         {!mini && errorText && (
           <div
             role="alert"
-            className="border-b border-danger/35 bg-danger/16 px-4 py-2 whitespace-pre-wrap text-danger"
+            className="flex items-start gap-2 border-b border-danger/35 bg-danger/16 py-2 pr-2 pl-4 text-danger"
           >
-            {errorText}
+            <span className="min-w-0 flex-1 whitespace-pre-wrap">{errorText}</span>
+            <Tip text={t("err_dismiss")}>
+              <button
+                className="-my-1 grid size-7 flex-none place-items-center rounded-[7px] hover:bg-danger/16"
+                onClick={() => {
+                  setBackgroundError(null);
+                  api.dismissErrors();
+                }}
+                aria-label={t("err_dismiss")}
+              >
+                <Icon name="close" size={16} />
+              </button>
+            </Tip>
           </div>
         )}
 

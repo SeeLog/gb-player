@@ -353,6 +353,13 @@ pub fn set_language(handle: AppHandle, app: State<'_, App>, language: String) {
 }
 
 #[tauri::command]
+pub fn dismiss_errors(handle: AppHandle, app: State<'_, App>) {
+    let mut s = app.lock();
+    s.dismiss_errors();
+    emit_library(&handle, &s);
+}
+
+#[tauri::command]
 pub fn set_theme(handle: AppHandle, app: State<'_, App>, theme: String) {
     let mut s = app.lock();
     s.set_theme(theme);

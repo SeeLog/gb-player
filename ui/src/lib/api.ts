@@ -66,6 +66,7 @@ export const api = {
   themeImage: (image: string) => invoke<string>("theme_image", { image }),
   pickThemeImage: () => invoke<string | null>("pick_theme_image"),
   setLanguage: (language: string) => invoke<void>("set_language", { language }),
+  dismissErrors: () => invoke<void>("dismiss_errors"),
   /** Turn the window into the mini player, or back into the full window. */
   setMini: (on: boolean) => invoke<void>("set_mini", { on }),
   setMiniOnTop: (on: boolean) => invoke<void>("set_mini_on_top", { on }),
