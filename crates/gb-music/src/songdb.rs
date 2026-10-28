@@ -535,9 +535,9 @@ mod tests {
     #[test]
     fn fallback_to_english_then_key() {
         let (ja, _) = Localizer::new(GEN1, "ja");
-        assert_eq!(ja.song("pallet_town"), "マサラタウン");
+        assert_eq!(ja.song("pallet_town"), "マサラタウンのテーマ");
         let (fr, _) = Localizer::new(GEN1, "fr");
-        assert_eq!(fr.song("pallet_town"), "Pallet Town");
+        assert_eq!(fr.song("pallet_town"), "Pallet Town Theme");
         assert_eq!(fr.song("no_such_song"), "no_such_song");
     }
 
@@ -566,7 +566,7 @@ mod tests {
         // A language code that would escape the user folder still gets the built-in names.
         let (names, warnings) = Localizer::new(GEN1, "../../../ja");
         assert!(warnings.is_empty());
-        assert_eq!(names.song("pallet_town"), "Pallet Town");
+        assert_eq!(names.song("pallet_town"), "Pallet Town Theme");
     }
 
     #[test]

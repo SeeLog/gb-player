@@ -96,13 +96,18 @@ def write_series(out, series, header, games):
             for bank, sid, label, hidden in songs:
                 k = key(label)
                 if not hidden:
-                    titles.setdefault(k, pretty(label))
+                    titles.setdefault(k, OFFICIAL_TITLES.get(series, {}).get(k) or pretty(label))
                 bank_part = f"bank = {bank}, " if bank is not None else ""
                 hidden_part = ", hidden = true" if hidden else ""
                 f.write(f"    {{ {bank_part}id = 0x{sid:02X}, key = {quote(k)}{hidden_part} }},\n")
             f.write("]\n")
     with open(f"{out}/{series}/en.toml", "w", encoding="utf-8", newline="\n") as f:
-        f.write("# English song titles, from the pret labels.\n\n[games]\n")
+        if series in OFFICIAL_SOURCES:
+            f.write(f"# English song titles: the official ones from {OFFICIAL_SOURCES[series]},\n")
+            f.write("# the pret labels for songs it does not have.\n")
+        else:
+            f.write("# English song titles, from the pret labels.\n")
+        f.write("\n[games]\n")
         for game_id, name in GAME_NAMES[series]:
             f.write(f"{quote(game_id)} = {quote(name)}\n")
         f.write("\n[songs]\n")
@@ -119,6 +124,157 @@ GAME_NAMES = {
         ("gold-silver", "Pokémon Gold / Silver"),
         ("crystal", "Pokémon Crystal"),
     ],
+}
+
+OFFICIAL_SOURCES = {
+    "pokemon-gen1": "the Pokémon Game Sound Library",
+    "pokemon-gen2": "the HeartGold & SoulSilver soundtrack",
+}
+
+# Official English titles by song key.
+# Gen 1: the Pokémon Game Sound Library. The intro battle and the Yellow-only songs have none.
+# The Safari Zone music is also the evolution music.
+# Gen 2: the Pokémon HeartGold & Pokémon SoulSilver Super Music Collection, for the remakes'
+# arrangement of each song. A song shared by several places takes the title of the place the
+# remake kept it for (viridian_city plays in Pewter City, route_36 on Route 34, lake_of_rage on
+# Route 42); the trainer encounter songs are matched by the trainer classes that play them.
+# Songs whose arrangement is not on the album, or not certain, keep the pret label.
+OFFICIAL_TITLES = {
+    "pokemon-gen1": {
+        "title_screen": "Title Screen",
+        "pallet_town": "Pallet Town Theme",
+        "meet_prof_oak": "Professor Oak",
+        "oaks_lab": "Professor Oak's Laboratory",
+        "meet_rival": "A Rival Appears",
+        "routes_1": "Road to Viridian City: Leaving Pallet Town",
+        "wild_battle": "Battle! (Wild Pokémon)",
+        "defeated_wild_mon": "Victory! (Wild Pokémon)",
+        "cities_1": "Pewter City Theme",
+        "pokecenter": "Pokémon Center",
+        "pkmn_healed": "Pokémon Healed",
+        "dungeon_2": "Viridian Forest",
+        "museum_guy": "Guide",
+        "meet_female_trainer": "A Trainer Appears (Girl Version)",
+        "trainer_battle": "Battle! (Trainer Battle)",
+        "defeated_trainer": "Victory! (Trainer Battle)",
+        "dungeon_3": "Caves of Mt. Moon",
+        "routes_3": "Road to Cerulean City: Leaving Mt. Moon",
+        "cities_2": "Cerulean City Theme",
+        "gym": "Pokémon Gym",
+        "routes_2": "To Bill: Leaving Cerulean City",
+        "jigglypuff_song": "Jigglypuff's Song",
+        "vermilion": "Vermilion City Theme",
+        "ss_anne": "The S.S. Anne",
+        "routes_4": "Road to Lavender Town: Leaving Vermilion City",
+        "meet_male_trainer": "A Trainer Appears (Boy Version)",
+        "gym_leader_battle": "Battle! (Gym Leader Battle)",
+        "defeated_gym_leader": "Victory! (Gym Leader Battle)",
+        "bike_riding": "Cycling",
+        "lavender": "Lavender Town Theme",
+        "pokemon_tower": "Pokémon Tower",
+        "celadon": "Celadon City Theme",
+        "game_corner": "Rocket Game Corner",
+        "meet_evil_trainer": "A Trainer Appears (Bad Guy Version)",
+        "dungeon_1": "Rocket Hideout",
+        "silph_co": "Silph Co.",
+        "surfing": "The Sea",
+        "cinnabar": "Cinnabar Island Theme",
+        "cinnabar_mansion": "Pokémon Mansion",
+        "safari_zone": "Evolution",
+        "indigo_plateau": "The Final Road",
+        "final_battle": "Final Battle! (Rival)",
+        "hall_of_fame": "Hall of Fame",
+        "credits": "Ending Theme",
+    },
+    "pokemon-gen2": {
+        "title": "Title Screen",
+        "route_1": "Route 1",
+        "route_3": "Route 3",
+        "route_12": "Route 11",
+        "magnet_train": "Magnet Train",
+        "kanto_gym_leader_battle": "Battle! (Gym Leader—Kanto version)",
+        "kanto_trainer_battle": "Battle! (Trainer Battle—Kanto version)",
+        "kanto_wild_battle": "Battle! (Wild Pokémon—Kanto version)",
+        "pokemon_center": "Pokémon Center",
+        "hiker_encounter": "Trainers' Eyes Meet (Suspicious Figure 2)",
+        "lass_encounter": "Trainers' Eyes Meet (Girl 2)",
+        "officer_encounter": "Trainers' Eyes Meet (Boy 2)",
+        "heal": "Pokémon Healed",
+        "lavender_town": "Lavender Town",
+        "mt_moon": "Mt. Moon",
+        "show_me_around": "Hurry Along 2",
+        "game_corner": "Goldenrod Game Corner",
+        "bicycle": "Bicycle",
+        "hall_of_fame": "The Hall of Fame",
+        "viridian_city": "Pewter City",
+        "celadon_city": "Celadon City",
+        "trainer_victory": "Victory! (Trainer Battle)",
+        "wild_victory": "Victory! (Wild Pokémon)",
+        "gym_victory": "Victory! (Gym Leader)",
+        "gym": "Pokémon Gym",
+        "pallet_town": "Pallet Town",
+        "pokemon_talk": "Pokégear Radio: Professor Oak's Pokémon Talk",
+        "prof_oak": "Professor Oak",
+        "rival_encounter": "A Rival Appears!",
+        "surf": "Surf",
+        "evolution": "Evolution",
+        "national_park": "National Park",
+        "credits": "Ending Theme",
+        "azalea_town": "Azalea Town",
+        "cherrygrove_city": "Cherrygrove City",
+        "kimono_encounter": "Trainers' Eyes Meet (Kimono Girl)",
+        "union_cave": "Union Cave",
+        "johto_wild_battle": "Battle! (Wild Pokémon—Johto version)",
+        "johto_trainer_battle": "Battle! (Trainer Battle—Johto version)",
+        "route_30": "Route 30",
+        "ecruteak_city": "Ecruteak City",
+        "violet_city": "Violet City",
+        "johto_gym_leader_battle": "Battle! (Gym Leader—Johto version)",
+        "champion_battle": "Battle! (Champion)",
+        "rival_battle": "Battle! (Rival)",
+        "rocket_battle": "Battle! (Team Rocket)",
+        "prof_elm": "Elm Pokémon Lab",
+        "route_29": "Route 29",
+        "route_36": "Route 34",
+        "ss_aqua": "S.S. Aqua",
+        "youngster_encounter": "Trainers' Eyes Meet (Boy 1)",
+        "beauty_encounter": "Trainers' Eyes Meet (Girl 1)",
+        "rocket_encounter": "Trainers' Eyes Meet (Team Rocket)",
+        "pokemaniac_encounter": "Trainers' Eyes Meet (Suspicious Figure 1)",
+        "sage_encounter": "Trainers' Eyes Meet (Sage)",
+        "new_bark_town": "New Bark Town",
+        "goldenrod_city": "Goldenrod City",
+        "vermilion_city": "Vermilion City",
+        "pokemon_channel": "Pokégear Radio: Pokémon Channel",
+        "poke_flute_channel": "Pokégear Radio: Poké Flute",
+        "tin_tower": "Bell Tower",
+        "sprout_tower": "Sprout Tower",
+        "burned_tower": "Burned Tower",
+        "lighthouse": "Olivine Lighthouse",
+        "lake_of_rage": "Route 42",
+        "indigo_plateau": "The Pokémon League",
+        "route_37": "Route 38",
+        "rocket_hideout": "Team Rocket HQ",
+        "dragons_den": "Dragon's Den",
+        "ruins_of_alph_radio": "Pokégear Radio: Unown",
+        "route_26": "Route 26",
+        "mom": "Hurry Along",
+        "victory_road": "Victory Road",
+        "pokemon_lullaby": "Pokégear Radio: Pokémon Lullaby",
+        "pokemon_march": "Pokégear Radio: Pokémon March",
+        "gs_opening": "Opening Movie",
+        "rocket_overture": "Radio Tower Occupied!",
+        "dancing_hall": "Ecruteak Dance Theater",
+        "bug_catching_contest": "The Bug-Catching Contest",
+        "lake_of_rage_rocket_radio": "Radio Transmission",
+        "post_credits": "The End",
+        "clair": "Clair",
+        "buenas_password": "Pokégear Radio: Buena's Password",
+        "mysticalman_encounter": "Eusine",
+        "battle_tower_theme": "Battle Tower (Johto)",
+        "suicune_battle": "Battle! (Suicune)",
+        "battle_tower_lobby": "Battle Tower Reception Desk",
+    },
 }
 
 red, yellow, gold, crystal, out = sys.argv[1:6]
