@@ -1,13 +1,17 @@
-// Side panel for editing a theme; the page shows the draft live while it is open.
-import { useEffect, useMemo, useState } from "react";
-import { api } from "./api";
-import type { Translate } from "./format";
+// The theme editor, in a window of its own beside the main window, which shows the draft live
+// while the editor is open.
+import { useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { api, onLibrary, sendThemeDraft } from "./api";
+import { translator, type Translate } from "./format";
 import type { Background, Console, Library, Sheen } from "./types";
 import Icon from "./Icon";
 import {
   BASE_SHEENS,
   BODY_COLORS,
+  FALLBACKS,
   TOKENS,
+  applyTheme,
   forgetImage,
   isColor,
   joinColor,
@@ -16,7 +20,7 @@ import {
   splitColor,
   type Draft,
 } from "./theme";
-import Tip from "./Tip";
+import Tip, { Tooltips } from "./Tip";
 import ColorPicker from "./ColorPicker";
 import Select from "./Select";
 import Slider from "./Slider";
@@ -43,21 +47,70 @@ const CONSOLES: Console[] = ["dmg", "gbc"];
 const MAX_SHEEN_COLORS = 8;
 const mono = "font-[ui-monospace,'Cascadia_Mono',Consolas,monospace] text-xs";
 
-export default function ThemeEditor({
+/** The editor's window: starts from the chosen theme and sends each change to the main window. */
+export default function ThemeEditorWindow() {
+  const [library, setLibrary] = useState<Library | null>(null);
+  const [draft, setDraft] = useState<Draft | null>(null);
+  const t = useMemo(() => translator(library?.text ?? {}), [library?.text]);
+
+  useEffect(() => {
+    const unlisten = onLibrary(setLibrary);
+    api.library().then((l) => {
+      setLibrary(l);
+      const theme = l.themes.find((th) => th.id === l.theme);
+      if (!theme) return;
+      setDraft({
+        name: theme.custom ? theme.name : translator(l.text)("theme_new_name"),
+        base: theme.base,
+        colors: { ...theme.colors },
+        background: theme.background && { ...theme.background },
+        console: theme.console,
+        sheen: theme.sheen && structuredClone(theme.sheen),
+      });
+    });
+    return () => void unlisten.then((f) => f());
+  }, []);
+
+  useEffect(() => {
+    if (draft) sendThemeDraft(draft);
+  }, [draft]);
+
+  // The window itself is in the base palette as it is, so it stays readable whatever the draft.
+  const base = draft?.base;
+  useLayoutEffect(() => {
+    if (base) applyTheme(base, {}, null);
+  }, [base]);
+  useEffect(() => {
+    if (library) document.documentElement.lang = library.language;
+  }, [library?.language]);
+
+  if (!library || !draft) return null;
+  return (
+    <>
+      <ThemeEditor
+        library={library}
+        t={t}
+        draft={draft}
+        setDraft={setDraft}
+        onClose={() => getCurrentWindow().close()}
+      />
+      <Tooltips />
+    </>
+  );
+}
+
+function ThemeEditor({
   library,
   t,
   draft,
   setDraft,
   onClose,
-  leaving = false,
 }: {
   library: Library;
   t: Translate;
   draft: Draft;
   setDraft: (d: Draft) => void;
   onClose: () => void;
-  /** Closed, and sliding out. */
-  leaving?: boolean;
 }) {
   // What Reset goes back to.
   const [initial] = useState(() => structuredClone(draft));
@@ -80,7 +133,9 @@ export default function ThemeEditor({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  const value = (token: string) => draft.colors[token] ?? baseColors[token] ?? "";
+  const value = (token: string): string =>
+    draft.colors[token] ??
+    (baseColors[token] || (token in FALLBACKS ? value(FALLBACKS[token]) : ""));
   /** bg so opaque that a background image barely shows through it. */
   const bgHidesImage = splitColor(value("bg")).alpha >= 0.9;
 
@@ -148,20 +203,20 @@ export default function ThemeEditor({
 
   const bg = draft.background;
   return (
-    // Painted solid with the base palette's panel over its bg and backdrop, so it stays readable
-    // whatever the theme colours and background image are.
-    <aside
-      className={`fixed top-10 right-0 bottom-0 z-20 flex w-[380px] flex-col gap-3 border-l border-line px-4 py-3.5 shadow-[-12px_0_32px_rgba(0,0,0,0.3)] transition-[translate,opacity] duration-200 ease-out starting:translate-x-full starting:opacity-0 motion-reduce:transition-none ${
-        leaving ? "translate-x-full opacity-0 ease-in" : ""
-      }`}
-      inert={leaving}
+    // Painted solid with the base palette's panel over its bg and backdrop.
+    <main
+      className="flex h-full flex-col gap-3 px-4 pb-3.5"
       aria-label={t("theme_editor")}
       style={{
         background: `linear-gradient(${baseColors.panel}, ${baseColors.panel}), linear-gradient(${baseColors.bg}, ${baseColors.bg}), ${baseColors.backdrop}`,
       }}
     >
-      <div className="flex items-center justify-between">
-        <h2 className="text-[15px] font-bold">{t("theme_editor")}</h2>
+      {/* The window has no system frame: this bar is its title bar. */}
+      <div
+        data-tauri-drag-region
+        className="-mx-4 flex items-center justify-between px-4 pt-3"
+      >
+        <h2 className="pointer-events-none text-[15px] font-bold">{t("theme_editor")}</h2>
         <Tip text={t("theme_close")}>
           <button
             className={`${iconButton} size-[30px]`}
@@ -386,7 +441,7 @@ export default function ThemeEditor({
           </button>
         </div>
       </div>
-    </aside>
+    </main>
   );
 }
 

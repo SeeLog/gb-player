@@ -3,6 +3,7 @@
 //! [`session`].
 
 mod commands;
+mod editor;
 mod mini;
 mod playlists;
 mod session;
@@ -87,9 +88,11 @@ pub fn run(initial_rom: Option<PathBuf>, language: Option<String>) {
     let result = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(
-            // Only the size and place: the frame comes from tauri.conf.json.
+            // Only the size and place: the frame comes from tauri.conf.json. The theme editor
+            // opens beside the main window each time instead.
             tauri_plugin_window_state::Builder::new()
                 .with_state_flags(StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED)
+                .with_denylist(&[editor::LABEL])
                 .build(),
         )
         .manage(app)
@@ -128,14 +131,24 @@ pub fn run(initial_rom: Option<PathBuf>, language: Option<String>) {
             commands::save_theme,
             commands::theme_image,
             commands::pick_theme_image,
+            commands::open_theme_editor,
         ])
-        .on_window_event(|window, event| {
+        .on_window_event(|window, event| match event {
             // The window is gone by the time the app exits: keep where the mini player is now.
-            if let WindowEvent::CloseRequested { .. } = event {
-                if let Some(window) = window.get_webview_window(window.label()) {
-                    mini::remember(&window, window.state::<App>().lock().mini());
+            // The theme editor goes with it.
+            WindowEvent::CloseRequested { .. } if window.label() == "main" => {
+                if let Some(main) = window.get_webview_window("main") {
+                    mini::remember(&main, window.state::<App>().lock().mini());
+                }
+                if let Some(editor) = window.get_webview_window(editor::LABEL) {
+                    let _ = editor.close();
                 }
             }
+            // However the editor was closed, the main window shows the chosen theme again.
+            WindowEvent::Destroyed if window.label() == editor::LABEL => {
+                let _ = window.emit_to("main", editor::DRAFT_EVENT, ());
+            }
+            _ => {}
         })
         .setup(move |a| {
             let handle = a.handle().clone();

@@ -1,7 +1,8 @@
 // Calls into the Rust side (the Tauri commands in app/src/gui/).
 
 import { invoke } from "@tauri-apps/api/core";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { emitTo, listen, type UnlistenFn } from "@tauri-apps/api/event";
+import type { Draft } from "./theme";
 import type {
   Background,
   Console,
@@ -65,6 +66,8 @@ export const api = {
   }) => invoke<string>("save_theme", { theme }),
   themeImage: (image: string) => invoke<string>("theme_image", { image }),
   pickThemeImage: () => invoke<string | null>("pick_theme_image"),
+  /** Opens the theme editor's window, or brings it to the front. */
+  openThemeEditor: () => invoke<void>("open_theme_editor"),
   setLanguage: (language: string) => invoke<void>("set_language", { language }),
   dismissErrors: () => invoke<void>("dismiss_errors"),
   /** Turn the window into the mini player, or back into the full window. */
@@ -77,6 +80,13 @@ export const onLibrary = (f: (l: Library) => void): Promise<UnlistenFn> =>
 
 export const onTick = (f: (t: Tick) => void): Promise<UnlistenFn> =>
   listen<Tick>("tick", (e) => f(e.payload));
+
+/** The theme editor's draft as it changes, and `null` once its window is closed. */
+export const onThemeDraft = (f: (d: Draft | null) => void): Promise<UnlistenFn> =>
+  listen<Draft | null>("theme-draft", (e) => f(e.payload));
+
+/** Shows the editor's draft in the main window. */
+export const sendThemeDraft = (d: Draft) => emitTo("main", "theme-draft", d);
 
 /** Seconds into a song after which Previous starts it again instead of going back a song. */
 export const RESTART_AFTER = 3;

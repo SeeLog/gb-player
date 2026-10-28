@@ -287,7 +287,7 @@ function Screen({
           </span>
           <span>POWER</span>
         </div>
-        <div className="flex h-[156px] min-w-0 flex-1 flex-col gap-1 [text-shadow:none] bg-[linear-gradient(160deg,var(--lcd-hi),var(--lcd)_60%,var(--lcd-lo))] px-2 pt-1 pb-1.5 text-lcd-ink shadow-[inset_0_0_0_1px_rgba(0,0,0,0.3),inset_0_2px_6px_rgba(0,0,0,0.25)]">
+        <div className="flex h-[156px] min-w-0 flex-1 flex-col gap-1 [text-shadow:none] bg-[linear-gradient(160deg,var(--lcd-hi),var(--lcd)_60%,var(--lcd-lo))] px-2 pt-1 pb-1.5 text-lcd-ink shadow-[inset_0_0_0_1px_var(--lcd-shadow),inset_0_2px_6px_var(--lcd-shadow)]">
           <div className="flex justify-between gap-2 text-[10px] font-bold opacity-80">
             <span className="num">{song ? `#${String(song.index + 1).padStart(2, "0")}` : "--"}</span>
             <span className="truncate tracking-[0.06em] uppercase">

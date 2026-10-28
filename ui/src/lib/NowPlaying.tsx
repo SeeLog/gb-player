@@ -125,7 +125,7 @@ function Lcd({ library, t, volume }: { library: Library; t: Translate; volume: n
   const rom = useTick((tick) => tick?.rom ?? null);
   const state = useTick((tick) => tick?.state ?? "none");
   return (
-    <div className="rounded-xl bg-[linear-gradient(160deg,var(--lcd-hi),var(--lcd)_60%,var(--lcd-lo))] px-3.5 pt-3 pb-2.5 text-lcd-ink shadow-[inset_0_0_0_1px_rgba(0,0,0,0.25),inset_0_2px_10px_rgba(0,0,0,0.25),0_0_0_6px_var(--bezel)]">
+    <div className="rounded-xl bg-[linear-gradient(160deg,var(--lcd-hi),var(--lcd)_60%,var(--lcd-lo))] px-3.5 pt-3 pb-2.5 text-lcd-ink shadow-[inset_0_0_0_1px_var(--lcd-shadow),inset_0_2px_10px_var(--lcd-shadow),0_0_0_6px_var(--bezel)]">
       <div className="flex justify-between text-xs font-bold opacity-80">
         <span className="num">{song ? `#${String(song.index + 1).padStart(2, "0")}` : "--"}</span>
         <span className="tracking-[0.08em] uppercase">{t(`state_${state}`)}</span>
@@ -393,7 +393,7 @@ function GameChannels({ library, t }: { library: Library; t: Translate }) {
 }
 
 // The meters run from accent-2 to accent, or between --meter-start and --meter-end where a
-// palette sets them (clear: pale mint to emerald, its accent being for text). The tip shows the
+// palette or theme sets them (clear: pale mint to emerald, its accent being for text). The tip shows the
 // end colour, so that is the stronger one. They are moved straight from animation frames (scaleX / translateX), with a slowly
 // falling peak marker, so the channel buttons themselves render only when mute changes.
 function Channels({ library, t }: { library: Library; t: Translate }) {

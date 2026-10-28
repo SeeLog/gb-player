@@ -32,7 +32,7 @@ pub fn current_id(id: &str) -> &str {
 }
 
 /// The colour tokens a theme may set, the CSS custom properties without the leading `--`.
-pub const TOKENS: [&str; 25] = [
+pub const TOKENS: [&str; 28] = [
     "backdrop",
     "bg",
     "panel",
@@ -44,11 +44,14 @@ pub const TOKENS: [&str; 25] = [
     "accent",
     "accent-2",
     "accent-ink",
+    "meter-start",
+    "meter-end",
     "lcd-hi",
     "lcd",
     "lcd-lo",
     "lcd-ink",
     "lcd-grid",
+    "lcd-shadow",
     "bezel",
     "overlay",
     "danger",
@@ -550,7 +553,7 @@ mod tests {
         let mut warnings = Vec::new();
         let theme = parse(
             Path::new("night.toml"),
-            "base = \"nope\"\n[colors]\nbackdrop = \"#123\"\nbg = \"#000\"\nfoo = \"#fff\"\ntext = \"red\"\n",
+            "base = \"nope\"\n[colors]\nbackdrop = \"#123\"\nbg = \"#000\"\nmeter-end = \"#fc0\"\nfoo = \"#fff\"\ntext = \"red\"\n",
             &t,
             &mut warnings,
         )
@@ -558,9 +561,10 @@ mod tests {
         assert_eq!(theme.id, "custom:night");
         assert_eq!(theme.name, "night");
         assert_eq!(theme.base, "dmg");
-        assert_eq!(theme.colors.len(), 2);
+        assert_eq!(theme.colors.len(), 3);
         assert_eq!(theme.colors["backdrop"], "#123");
         assert_eq!(theme.colors["bg"], "#000");
+        assert_eq!(theme.colors["meter-end"], "#fc0");
         assert_eq!(theme.console, "dmg");
         assert_eq!(warnings.len(), 3);
     }

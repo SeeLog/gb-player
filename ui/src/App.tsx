@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { api, onLibrary, onTick, previous } from "./lib/api";
+import { api, onLibrary, onThemeDraft, onTick, previous } from "./lib/api";
 import { translator, type Translate } from "./lib/format";
 import type { Library } from "./lib/types";
 import ContextMenu, { type MenuState } from "./lib/ContextMenu";
@@ -16,7 +16,6 @@ import Sidebar, { type View } from "./lib/Sidebar";
 import SongList from "./lib/SongList";
 import MiniPlayer from "./lib/MiniPlayer";
 import NowPlaying from "./lib/NowPlaying";
-import ThemeEditor from "./lib/ThemeEditor";
 import WindowControls from "./lib/WindowControls";
 import { applyTheme, imageUrl, type Draft } from "./lib/theme";
 import { tickStore } from "./lib/tick";
@@ -111,11 +110,12 @@ export default function App() {
     if (library) document.documentElement.lang = library.language;
   }, [library?.language]);
 
-  // A draft from the theme editor is shown instead of the chosen theme while it is open.
+  // A draft from the theme editor's window is shown instead of the chosen theme while it is open.
   const [draft, setDraft] = useState<Draft | null>(null);
-  // The editor slides out after it is closed; a new one each time it is opened.
-  const editor = useLeaving(draft, 200);
-  const [editorKey, setEditorKey] = useState(0);
+  useEffect(() => {
+    const unlisten = onThemeDraft(setDraft);
+    return () => void unlisten.then((f) => f());
+  }, []);
   const theme = library?.themes.find((th) => th.id === library.theme);
   // Before paint, so a theme change is in place for the fade (see showLibrary).
   useLayoutEffect(() => {
@@ -149,30 +149,9 @@ export default function App() {
   }, [image]);
   const errorText = [library?.error, backgroundError].filter(Boolean).join("\n");
 
-  /** Opens the theme editor on the chosen theme, or closes it when it is open (as its × does). */
-  function editTheme() {
-    if (draft) {
-      setDraft(null);
-      return;
-    }
-    if (!theme) return;
-    setEditorKey((k) => k + 1);
-    setDraft({
-      name: theme.custom ? theme.name : t("theme_new_name"),
-      base: theme.base,
-      colors: { ...theme.colors },
-      background: theme.background && { ...theme.background },
-      console: theme.console,
-      sheen: theme.sheen && structuredClone(theme.sheen),
-    });
-  }
-  const closeEditor = useCallback(() => setDraft(null), []);
-  // The mini player has no room for the editor. It draws no backdrop, so the desktop shows
-  // around the console (the window is transparent).
+  // The mini player draws no backdrop, so the desktop shows around the console (the window is
+  // transparent).
   const mini = !!library?.mini;
-  useEffect(() => {
-    if (mini) setDraft(null);
-  }, [mini]);
   useLayoutEffect(() => {
     document.documentElement.toggleAttribute("data-mini", mini);
   }, [mini]);
@@ -298,12 +277,12 @@ export default function App() {
                   onChange={(id) => api.setTheme(id)}
                   disabled={!!draft}
                 />
-                <Tip text={draft ? t("theme_close") : t("edit_theme")}>
+                <Tip text={t("edit_theme")}>
                   <button
                     className={`${headerControl} w-[30px] justify-center ${
                       draft ? "border-accent! text-accent" : ""
                     }`}
-                    onClick={editTheme}
+                    onClick={() => api.openThemeEditor()}
                     aria-label={t("edit_theme")}
                     aria-pressed={!!draft}
                   >
@@ -381,18 +360,6 @@ export default function App() {
             />
             <OpenPrompt t={t} onOpen={pickRom} />
           </div>
-        )}
-
-        {library && editor.shown && (
-          <ThemeEditor
-            key={editorKey}
-            library={library}
-            t={t}
-            draft={editor.shown}
-            setDraft={setDraft}
-            onClose={closeEditor}
-            leaving={editor.leaving}
-          />
         )}
 
         <ContextMenu menu={menu} onClose={closeMenu} />

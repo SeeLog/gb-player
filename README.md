@@ -104,7 +104,8 @@ ROMのパスとファイルのハッシュで保存されます。ROMを移動�
 
 以前の名前の `clear` と `light` は、それぞれ Prism と Daylight として読み込みます。
 
-隣の鉛筆ボタンでテーマエディタが開き、色を変えるとその場で画面に反映されます。「名前を付けて保存…」で
+隣の鉛筆ボタンでテーマエディタがメインウィンドウの横に別ウィンドウで開き、色を変えるとその場でメインウィンドウに
+反映されます。編集中にミニプレイヤーに切り替えて、本体の色を見ながら調整することもできます。「名前を付けて保存…」で
 `%APPDATA%\gb-player\themes\<名前>.toml`(Linux/macOSは `~/.config/gb-player/themes/`)に保存され、メニューに追加されます。
 このフォルダのファイルは手で書いても構いません(起動時と保存時に読み込みます)。
 
@@ -138,7 +139,8 @@ colors = ["#bdf3e4", "#d2c8fb", "#f8cbe4"]   # 8色まで
 (エディタに注意が出ます)。エディタの「画像を選ぶ…」で選んだ画像は `themes\images\` にコピーされます。
 
 色の名前は `backdrop` `bg` `panel` `panel-2` `line` `text` `muted` `faint` `accent` `accent-2` `accent-ink`
-`lcd-hi` `lcd` `lcd-lo` `lcd-ink` `lcd-grid` `bezel` `overlay` `danger` `knob`(スライダーとスイッチのつまみ)、
+`meter-start` `meter-end`(チャンネルのレベルメーターの左端と右端。省略すると `accent-2` と `accent`)
+`lcd-hi` `lcd` `lcd-lo` `lcd-ink` `lcd-grid` `lcd-shadow`(液晶の内側の縁の影)`bezel`(液晶の外枠) `overlay` `danger` `knob`(スライダーとスイッチのつまみ)、
 ミニプレイヤーの `shell`(本体)`shell-ink`(本体の文字)`shell-frame`(画面の枠)`key`(A・Bボタン)`key-ink`
 (ボタンの文字)です。値は `#rgb` / `#rrggbb` /
 `#rrggbbaa` か、数値だけの `rgb()` `rgba()` `hsl()` `hsla()` に限ります。知らない名前や色でない値は無視され、

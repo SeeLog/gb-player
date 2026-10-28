@@ -16,11 +16,14 @@ export const TOKENS = [
   "accent",
   "accent-2",
   "accent-ink",
+  "meter-start",
+  "meter-end",
   "lcd-hi",
   "lcd",
   "lcd-lo",
   "lcd-ink",
   "lcd-grid",
+  "lcd-shadow",
   "bezel",
   "overlay",
   "danger",
@@ -31,6 +34,13 @@ export const TOKENS = [
   "key-ink",
   "knob",
 ] as const;
+
+/** Tokens a palette may leave out, and the token each then follows (as in the meters'
+ * `var(--meter-start, var(--accent-2))`). */
+export const FALLBACKS: Record<string, string> = {
+  "meter-start": "accent-2",
+  "meter-end": "accent",
+};
 
 /** The sheens of the built-in palettes that have one (the others have none). */
 export const BASE_SHEENS: Record<string, Sheen> = {
@@ -151,15 +161,20 @@ export function applyTheme(base: string, colors: Record<string, string>, sheen: 
 
 /** The colours of a built-in palette, read from a hidden element that uses it. */
 export function paletteColors(base: string): Record<string, string> {
+  // Inside a wrapper that clears the tokens a palette may leave out, which the probe would
+  // otherwise take from the page (its palette and the theme's colours).
+  const wrapper = document.createElement("div");
+  for (const token of Object.keys(FALLBACKS)) wrapper.style.setProperty(`--${token}`, "initial");
+  wrapper.hidden = true;
   const probe = document.createElement("div");
   probe.dataset.palette = base;
-  probe.hidden = true;
-  document.body.append(probe);
+  wrapper.append(probe);
+  document.body.append(wrapper);
   const style = getComputedStyle(probe);
   const colors = Object.fromEntries(
     TOKENS.map((token) => [token, style.getPropertyValue(`--${token}`).trim()]),
   );
-  probe.remove();
+  wrapper.remove();
   return colors;
 }
 

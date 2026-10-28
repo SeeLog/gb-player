@@ -79,6 +79,8 @@
   --lcd-lo: #8bac0f;
   --lcd-ink: #0f380f;
   --lcd-grid: rgba(15, 56, 15, 0.18);
+  /* The shade along the inside edge of the LCDs. */
+  --lcd-shadow: rgba(0, 0, 0, 0.25);
   --bezel: #1c2a1e;
   --overlay: rgba(255, 255, 255, 0.05);
   --danger: #e36b5f;
@@ -110,6 +112,7 @@
   --lcd-lo: #b3b99d;
   --lcd-ink: #2f322b;
   --lcd-grid: rgba(47, 50, 43, 0.15);
+  --lcd-shadow: rgba(0, 0, 0, 0.25);
   --bezel: #2a2c2f;
   --overlay: rgba(255, 255, 255, 0.05);
   --danger: #e36b5f;
@@ -143,6 +146,7 @@
   --lcd-lo: #b4c878;
   --lcd-ink: #1e2a3f;
   --lcd-grid: rgba(30, 42, 63, 0.15);
+  --lcd-shadow: rgba(0, 0, 0, 0.25);
   --bezel: #262a52;
   --overlay: rgba(255, 255, 255, 0.05);
   --danger: #ff7a6b;
@@ -183,6 +187,7 @@
   --lcd-lo: #c8bde8;
   --lcd-ink: #21163f;
   --lcd-grid: rgba(33, 22, 63, 0.15);
+  --lcd-shadow: rgba(0, 0, 0, 0.25);
   --bezel: #2c2257;
   --overlay: rgba(255, 255, 255, 0.05);
   --danger: #ff8a7a;
@@ -224,6 +229,7 @@
   --lcd-lo: #c3cad1;
   --lcd-ink: #1f2a36;
   --lcd-grid: rgba(31, 42, 54, 0.14);
+  --lcd-shadow: rgba(0, 0, 0, 0.25);
   --bezel: #c8ced5;
   --overlay: rgba(0, 0, 0, 0.05);
   --danger: #b8322a;
@@ -262,6 +268,7 @@
   --lcd-lo: #8bac0f;
   --lcd-ink: #0f380f;
   --lcd-grid: rgba(15, 56, 15, 0.18);
+  --lcd-shadow: rgba(0, 0, 0, 0.25);
   --bezel: #c9c6bb;
   --overlay: rgba(0, 0, 0, 0.06);
   --danger: #b8322a;
