@@ -2,9 +2,9 @@
 //! the sound on its way out of the console. A [`Profile`] picks where it comes out (the line
 //! out as the APU makes it, or the speaker of a real console) and builds the [`Chain`] for it.
 //!
-//! The GBC speaker was measured on a real Game Boy Color: the title song of Pokémon Crystal
-//! recorded from its speaker with a microphone, against the same song rendered here. Its filters
-//! fit the ratio of the two within about 1.4 dB from 300 Hz to 14 kHz (below 300 Hz the speaker
+//! The GBC speaker was measured on a real Game Boy Color: songs of Pokémon Crystal and Red
+//! recorded from its speaker with a microphone, against the same songs rendered here. Its filters
+//! fit the ratio of the two within about 1.2 dB from 300 Hz to 14 kHz (below 300 Hz the speaker
 //! is lost in the room noise), and its interference tones are those that showed up in a
 //! recording of the console switched on and silent, but not with it switched off.
 
@@ -255,69 +255,69 @@ impl Effect for Interference {
 /// The speaker's response, fitted to the measurement: (kind, Hz, Q, dB). `tools/speaker_measure.py
 /// fit` prints these.
 const GBC_SPEAKER_FILTERS: &[(FilterKind, f64, f64, f64)] = &[
-    (FilterKind::HighPass, 787.9, 1.724, 0.0),
-    (FilterKind::HighPass, 242.6, 0.400, 0.0),
-    (FilterKind::Peak, 1150.0, 1.895, 4.93),
-    (FilterKind::Peak, 1939.9, 4.000, -4.89),
-    (FilterKind::Peak, 2130.8, 4.000, 5.75),
-    (FilterKind::Peak, 3548.8, 2.811, 15.0),
-    (FilterKind::Peak, 6534.6, 4.000, 1.84),
-    (FilterKind::Peak, 7978.2, 4.000, 5.22),
-    (FilterKind::LowPass, 9065.8, 1.467, 0.0),
+    (FilterKind::HighPass, 904.8, 1.574, 0.0),
+    (FilterKind::HighPass, 181.1, 0.400, 0.0),
+    (FilterKind::Peak, 1150.0, 0.400, 6.70),
+    (FilterKind::Peak, 1901.9, 2.909, -5.68),
+    (FilterKind::Peak, 2169.1, 4.000, 4.16),
+    (FilterKind::Peak, 3624.0, 2.977, 15.0),
+    (FilterKind::Peak, 6468.5, 4.000, 3.15),
+    (FilterKind::Peak, 7973.8, 4.000, 5.44),
+    (FilterKind::LowPass, 9456.4, 1.906, 0.0),
 ];
 
 /// Keeps the loudest moments about as loud as the line out's: the speaker's resonance at
 /// 3.5 kHz makes the peaks stand out, so it sounds a little quieter than the line out overall.
-const GBC_SPEAKER_GAIN_DB: f64 = -7.0;
+const GBC_SPEAKER_GAIN_DB: f64 = -9.5;
 
 /// The tones heard from the GBC's speaker with nothing playing, at their level relative to the
 /// filtered music (before [`GBC_SPEAKER_GAIN_DB`]); `tools/speaker_measure.py noise` prints
 /// them. Most are harmonics of the 59.7 Hz frame rate, gathered around the LCD's line rate (154
 /// lines a frame, 9198 Hz), which is by far the loudest of them.
 const GBC_INTERFERENCE: &[Tone] = &[
-    harmonic(11, 1.52e-3),
-    harmonic(22, 5.54e-4),
-    harmonic(58, 2.54e-4),
-    harmonic(62, 3.31e-4),
-    harmonic(101, 2.47e-4),
-    harmonic(103, 4.07e-4),
-    harmonic(104, 4.87e-4),
-    harmonic(105, 2.75e-4),
-    harmonic(108, 2.22e-4),
-    harmonic(125, 2.40e-4),
-    harmonic(126, 2.39e-4),
-    harmonic(127, 2.95e-4),
-    harmonic(130, 3.58e-4),
-    harmonic(131, 2.78e-4),
-    harmonic(134, 2.98e-4),
-    harmonic(139, 2.56e-4),
-    harmonic(142, 3.03e-4),
-    harmonic(144, 3.07e-4),
-    harmonic(145, 3.69e-4),
-    harmonic(146, 2.56e-4),
-    harmonic(148, 3.16e-4),
-    harmonic(149, 2.24e-4),
-    harmonic(150, 2.69e-4),
-    harmonic(151, 2.94e-4),
-    harmonic(152, 4.76e-4),
-    harmonic(153, 4.67e-4),
-    harmonic(154, 3.96e-3),
-    harmonic(155, 2.37e-4),
-    harmonic(157, 3.51e-4),
-    harmonic(158, 3.71e-4),
-    harmonic(159, 2.34e-4),
-    harmonic(160, 3.12e-4),
-    harmonic(161, 4.64e-4),
-    harmonic(162, 2.63e-4),
-    harmonic(164, 3.69e-4),
-    harmonic(165, 2.92e-4),
-    harmonic(308, 3.79e-4),
+    harmonic(11, 2.02e-3),
+    harmonic(22, 7.36e-4),
+    harmonic(58, 3.37e-4),
+    harmonic(62, 4.39e-4),
+    harmonic(101, 3.27e-4),
+    harmonic(103, 5.40e-4),
+    harmonic(104, 6.47e-4),
+    harmonic(105, 3.65e-4),
+    harmonic(108, 2.95e-4),
+    harmonic(125, 3.18e-4),
+    harmonic(126, 3.18e-4),
+    harmonic(127, 3.92e-4),
+    harmonic(130, 4.75e-4),
+    harmonic(131, 3.70e-4),
+    harmonic(134, 3.95e-4),
+    harmonic(139, 3.40e-4),
+    harmonic(142, 4.02e-4),
+    harmonic(144, 4.07e-4),
+    harmonic(145, 4.89e-4),
+    harmonic(146, 3.39e-4),
+    harmonic(148, 4.19e-4),
+    harmonic(149, 2.97e-4),
+    harmonic(150, 3.57e-4),
+    harmonic(151, 3.91e-4),
+    harmonic(152, 6.32e-4),
+    harmonic(153, 6.20e-4),
+    harmonic(154, 5.26e-3),
+    harmonic(155, 3.15e-4),
+    harmonic(157, 4.66e-4),
+    harmonic(158, 4.93e-4),
+    harmonic(159, 3.11e-4),
+    harmonic(160, 4.14e-4),
+    harmonic(161, 6.16e-4),
+    harmonic(162, 3.49e-4),
+    harmonic(164, 4.90e-4),
+    harmonic(165, 3.88e-4),
+    harmonic(308, 5.03e-4),
     // Not harmonics of the frame rate; the loudest, 584 Hz, perhaps from the power supply.
-    tone(584.0, 1.04e-2),
-    tone(3800.0, 5.28e-4),
-    tone(3859.8, 9.42e-4),
-    tone(4569.2, 5.08e-4),
-    tone(4629.0, 4.87e-4),
+    tone(584.0, 1.38e-2),
+    tone(3800.0, 7.00e-4),
+    tone(3859.8, 1.25e-3),
+    tone(4569.2, 6.74e-4),
+    tone(4629.0, 6.46e-4),
 ];
 
 #[cfg(test)]
@@ -397,8 +397,8 @@ mod tests {
             2.0 * (c * c + si * si).sqrt() / left.len() as f64
         };
         let gain = db_to_gain(GBC_SPEAKER_GAIN_DB) as f64;
-        assert!((level(154.0 * FRAME_HZ) - 3.96e-3 * gain).abs() < 4e-4 * gain);
-        assert!((level(584.0) - 1.04e-2 * gain).abs() < 1e-3 * gain);
+        assert!((level(154.0 * FRAME_HZ) - 5.26e-3 * gain).abs() < 5e-4 * gain);
+        assert!((level(584.0) - 1.38e-2 * gain).abs() < 1.4e-3 * gain);
         assert!(level(1000.0) < 1e-4);
         // Quiet: well under the music.
         assert!(left.iter().all(|v| v.abs() < 0.05));

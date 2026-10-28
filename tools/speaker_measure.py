@@ -29,7 +29,7 @@ import numpy as np
 from scipy.io import wavfile
 from scipy.ndimage import maximum_filter, median_filter
 from scipy.optimize import least_squares
-from scipy.signal import butter, lfilter, resample_poly, sosfilt, sosfiltfilt, stft, welch
+from scipy.signal import butter, lfilter, resample_poly, sosfilt, stft, welch
 
 RATE = 48000
 # gb-player --wav renders at the player's default volume.
@@ -55,43 +55,43 @@ def load(path, trim=0.0):
 
 # --- Lining a recording up with the render ------------------------------------------------------
 
-BAND = butter(4, [400, 4000], "bandpass", fs=RATE, output="sos")
+HOP = RATE // 1000  # envelopes are in milliseconds
+EDGES = np.geomspace(400, 4000, 13)
+BANDS = [butter(2, [lo, hi], "bandpass", fs=RATE, output="sos") for lo, hi in zip(EDGES, EDGES[1:])]
 
 
-def lag_of(chunk, ref_b, start=None, search=None):
-    """Where `chunk` is in the band-passed render, by FFT cross-correlation, and how well."""
-    c = sosfiltfilt(BAND, chunk)
-    base = 0 if start is None else max(0, start - search)
-    r = ref_b if start is None else ref_b[base:start + len(c) + search]
-    if len(r) < len(c):
-        return 0, 0.0
-    nfft = 1 << (len(r) + len(c) - 1).bit_length()
-    xc = np.fft.irfft(np.fft.rfft(r, nfft) * np.conj(np.fft.rfft(c, nfft)), nfft)[:len(r) - len(c) + 1]
-    i = int(np.argmax(xc))
-    peak = xc[i] / (np.linalg.norm(c) * np.linalg.norm(r[i:i + len(c)]) + 1e-12)
-    return base + i, peak
+def envelopes(x):
+    """How loud 12 bands from 400 Hz to 4 kHz are, every millisecond, each scaled to zero mean
+    and unit variance. The waveforms of the console and the render match poorly (the channels'
+    phases differ, and notes land up to a frame apart), but when each band is loud matches."""
+    n = len(x) // HOP
+    out = []
+    for sos in BANDS:
+        e = (sosfilt(sos, x)[:n * HOP] ** 2).reshape(n, HOP).mean(1)
+        # A floor 30 dB under the band's mean, so that the render's silences do not count.
+        e = np.log(e + 1e-3 * e.mean() + 1e-20)
+        out.append((e - e.mean()) / (e.std() + 1e-12))
+    return np.array(out)
 
 
 def align(rec, ref):
-    """The render lined up with the recording. Notes land up to a frame apart on the console and
-    in the render, so the waveforms only partly match; the offset is the median over 3 s chunks,
-    leaving out chunks that locked onto a repeat of the same phrase."""
-    ref_b = sosfiltfilt(BAND, ref)
-    l0, _ = lag_of(rec[:RATE * 8], ref_b)
-    w = RATE * 3
-    pts = []
-    for s in range(0, len(rec) - w, w // 2):
-        lag, peak = lag_of(rec[s:s + w], ref_b, int(l0 + s), RATE // 10)
-        pts.append((lag - s, peak))
-    pts = np.array(pts)
-    good = (pts[:, 1] > 0.15) & (np.abs(pts[:, 0] - np.median(pts[:, 0])) < RATE * 0.05)
-    if not good.any():
-        sys.exit("could not find the recording in the render; is it the same song?")
+    """The render lined up with the recording, where their envelopes match best over the whole
+    recording. The render must cover the recording: render enough loops."""
+    er, ee = envelopes(rec), envelopes(ref)
+    span = ee.shape[1] - er.shape[1]
+    if span < 0:
+        sys.exit("the render is shorter than the recording; render more loops")
+    nfft = 1 << (ee.shape[1] + er.shape[1]).bit_length()
+    xc = np.fft.irfft(np.fft.rfft(ee, nfft) * np.conj(np.fft.rfft(er, nfft)), nfft).sum(0)[:span + 1]
+    xc /= er.size
+    lag = int(np.argmax(xc))
+    if xc[lag] < 0.2:
+        sys.exit(f"could not find the recording in the render (best match {xc[lag]:.2f}); "
+                 "is it the same song?")
     # A whole number of samples: shifting by a fraction would interpolate, which dulls the
     # render's highs (by 3 dB at 12.5 kHz for half a sample) and so brightens the response.
-    offset = int(np.median(pts[good, 0]))
-    print(f"recording starts {offset / RATE:.3f} s into the render "
-          f"({good.sum()}/{len(pts)} chunks agree, median correlation {np.median(pts[:, 1]):.2f})")
+    offset = lag * HOP
+    print(f"recording starts {offset / RATE:.3f} s into the render (match {xc[lag]:.2f})")
     shifted = np.zeros(len(rec))
     part = ref[max(offset, 0):offset + len(rec)]
     shifted[max(-offset, 0):max(-offset, 0) + len(part)] = part
