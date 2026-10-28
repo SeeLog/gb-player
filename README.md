@@ -187,7 +187,7 @@ crates/gb-music  サウンドドライバ検出、曲リスト、再生とルー
 app              GUIのRust側(Tauri)と音声出力(cpal)、CLI
 ui               GUIの画面(React + TypeScript + Tailwind CSS、bun/Viteでビルド)
 songdb           曲データベース(ゲームの照合、曲ID → 曲キー、言語ごとの曲名)
-tools            曲データベースの生成スクリプト
+tools            曲データベースの生成スクリプト、スピーカーの測定スクリプト
 ```
 
 設計の詳細は [docs/DESIGN.md](docs/DESIGN.md) を参照してください。
