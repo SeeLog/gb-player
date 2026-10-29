@@ -11,8 +11,8 @@ use tauri_plugin_dialog::DialogExt;
 
 use super::session::folder_id;
 use super::views::LibraryView;
-use super::{emit_library, App};
 use super::{editor, mini, playlists};
+use super::{emit_library, App};
 use crate::i18n::Text;
 use crate::settings::Shuffle;
 use crate::themes::{self, NewTheme};
@@ -449,7 +449,12 @@ pub fn save_theme(
 /// in a synchronous command would hang on Windows.
 #[tauri::command]
 pub async fn open_theme_editor(handle: AppHandle) -> Result<(), String> {
-    let title = handle.state::<App>().lock().text().get("theme_editor").to_string();
+    let title = handle
+        .state::<App>()
+        .lock()
+        .text()
+        .get("theme_editor")
+        .to_string();
     editor::open(&handle, &title).map_err(|e| e.to_string())
 }
 

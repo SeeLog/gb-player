@@ -47,7 +47,10 @@ pub fn open<R: Runtime>(handle: &AppHandle<R>, title: &str) -> tauri::Result<()>
 
 /// Put `window` to the right of `main`, or to its left where there is no room on the right, at
 /// the same height and no taller than the screen; over the edge of `main` where neither fits.
-fn place_beside<R: Runtime>(window: &WebviewWindow<R>, main: &WebviewWindow<R>) -> tauri::Result<()> {
+fn place_beside<R: Runtime>(
+    window: &WebviewWindow<R>,
+    main: &WebviewWindow<R>,
+) -> tauri::Result<()> {
     let Some(monitor) = main.current_monitor()? else {
         return Ok(());
     };
@@ -70,6 +73,7 @@ fn place_beside<R: Runtime>(window: &WebviewWindow<R>, main: &WebviewWindow<R>) 
         right - width
     };
     let bottom = area.position.y + area.size.height as i32;
-    let y = at.y.clamp(area.position.y, (bottom - height).max(area.position.y));
+    let y =
+        at.y.clamp(area.position.y, (bottom - height).max(area.position.y));
     window.set_position(PhysicalPosition::new(x, y))
 }
