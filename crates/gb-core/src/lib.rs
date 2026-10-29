@@ -6,7 +6,7 @@ pub mod cartridge;
 pub mod cpu;
 pub mod machine;
 
-pub use apu::{Apu, CPU_CLOCK};
+pub use apu::{midi_note, Apu, ChannelState, CPU_CLOCK};
 pub use cartridge::{read_rom, Cartridge, CartridgeError, Header, MbcKind, MAX_ROM_SIZE};
 pub use cpu::{Bus, Cpu};
 pub use machine::{CallError, Machine, CYCLES_PER_FRAME};

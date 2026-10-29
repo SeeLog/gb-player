@@ -113,6 +113,8 @@ export interface Library {
   mini: boolean;
   /** Whether the mini player stays above other windows. */
   miniOnTop: boolean;
+  /** Whether the mini player's screen shows the notes instead of the oscilloscope. */
+  miniNotes: boolean;
   error: string | null;
 }
 
@@ -134,6 +136,10 @@ export interface Tick {
   tempo: number;
   levels: [number, number, number, number];
   scope: number[];
+  /** What the four channels played in each frame since the last tick, oldest first: the MIDI
+   * note (for the noise, that of its clock), the volume (0 silent to 15) and whether it was keyed
+   * on. Empty for audio files. */
+  notes: [number, number, boolean][][];
 }
 
 /** How pointing a playlist entry at a file went (see app/src/gui/commands.rs). */

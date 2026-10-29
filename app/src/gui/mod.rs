@@ -127,6 +127,7 @@ pub fn run(initial_rom: Option<PathBuf>, language: Option<String>) {
             commands::set_muted,
             commands::set_mini,
             commands::set_mini_on_top,
+            commands::set_mini_notes,
             commands::set_language,
             commands::dismiss_errors,
             commands::set_theme,

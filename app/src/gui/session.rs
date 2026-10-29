@@ -7,16 +7,16 @@ use std::sync::PoisonError;
 
 use gb_music::songdb::{Names, LANGUAGES};
 use gb_music::{
-    frames_to_secs, is_audio, read_rom, track, Driver, PlayState, Player, Profile, Song,
-    SongLength, FRAME_RATE, TEMPO_RANGE,
+    frames_to_secs, is_audio, midi_note, read_rom, track, ChannelState, Driver, PlayState, Player,
+    Profile, Song, SongLength, FRAME_RATE, TEMPO_RANGE,
 };
 
 use super::media::{NowPlaying, Playback};
 use super::playlists::{self, Entry, Playlist};
 use super::shuffle::{Order, Rng};
 use super::views::{
-    EntryView, LanguageView, LengthView, LibraryView, PlaylistView, QueueView, RomView, SongView,
-    TickView,
+    EntryView, LanguageView, LengthView, LibraryView, NoteView, PlaylistView, QueueView, RomView,
+    SongView, TickView,
 };
 use crate::analyzer::Analyzer;
 use crate::audio::{Scope, SharedPlayer};
@@ -43,6 +43,8 @@ pub struct Session {
     shown: Option<String>,
     muted: [bool; 4],
     levels: [f32; 4],
+    /// The channels' key-on counts in the last frame sent, to tell which frames key on.
+    triggers: [u8; 4],
     themes: Vec<Theme>,
     /// Problems found in the custom theme files.
     theme_warnings: Vec<String>,
@@ -194,6 +196,7 @@ impl Session {
             shown: None,
             muted: [false; 4],
             levels: [0.0; 4],
+            triggers: [0; 4],
             themes: Vec::new(),
             theme_warnings: Vec::new(),
             playlists: Vec::new(),
@@ -891,6 +894,7 @@ impl Session {
                 .filter(|id| self.playlist(id).is_some()),
             mini: self.settings.mini.on,
             mini_on_top: self.settings.mini.on_top,
+            mini_notes: self.settings.mini.notes,
             error: {
                 let errors: Vec<&str> = self
                     .error
@@ -1287,6 +1291,7 @@ impl Session {
                 p.length(),
                 p.take_levels(),
                 p.tempo(),
+                p.take_notes(),
             )
         });
         let scope = {
@@ -1294,7 +1299,7 @@ impl Session {
             let skip = samples.len().saturating_sub(SCOPE_POINTS);
             samples.iter().skip(skip).copied().collect()
         };
-        let Some((current, state, paused, pos, length, levels, tempo)) = info else {
+        let Some((current, state, paused, pos, length, levels, tempo, notes)) = info else {
             let view = TickView {
                 rom: None,
                 current: None,
@@ -1306,6 +1311,7 @@ impl Session {
                 tempo: 100,
                 levels: [0.0; 4],
                 scope,
+                notes: Vec::new(),
             };
             return (view, changed);
         };
@@ -1340,8 +1346,20 @@ impl Session {
             tempo,
             levels: self.levels,
             scope,
+            notes: notes.iter().map(|f| self.note_frame(f)).collect(),
         };
         (view, changed)
+    }
+
+    /// The notes of a frame for the UI, telling which channels were keyed on since the last.
+    fn note_frame(&mut self, states: &[ChannelState; 4]) -> [NoteView; 4] {
+        std::array::from_fn(|ch| {
+            let s = states[ch];
+            let keyed = s.triggers != self.triggers[ch];
+            self.triggers[ch] = s.triggers;
+            let note = midi_note(s.hz(ch)).clamp(0, 255) as u8;
+            (note, if s.sounding { s.volume } else { 0 }, keyed)
+        })
     }
 }
 
