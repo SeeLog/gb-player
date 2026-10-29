@@ -109,6 +109,13 @@ ROMのパスとファイルのハッシュで保存されます。ROMを移動�
 `%APPDATA%\gb-player\themes\<名前>.toml`(Linux/macOSは `~/.config/gb-player/themes/`)に保存され、メニューに追加されます。
 このフォルダのファイルは手で書いても構いません(起動時と保存時に読み込みます)。
 
+[themes/](themes/) に自作テーマの例があります。このフォルダにコピーすると使えます。
+
+| テーマ | 色 |
+|---|---|
+| Mew | ミュウのピンクに青い目の色 |
+| Shiny Mew | 色違いミュウの水色に、差し色のピンク |
+
 ```toml
 name = "夜のマサラタウン"   # 省略するとファイル名
 base = "color"              # 元にする内蔵テーマ: dmg / pocket / color / prism / nebula / daylight

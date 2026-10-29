@@ -1,0 +1,33 @@
+name = "Shiny Mew"
+base = "prism"
+console = "gbc"
+
+[colors]
+accent = "#24489a"
+accent-2 = "#f06e9f"
+backdrop = "#9cd5f2"
+bezel = "#9cd5f2"
+bg = "#bbe8ffa3"
+faint = "#47545a"
+key = "#34313c"
+key-ink = "#d7d3e0"
+lcd = "#93c3db"
+lcd-grid = "#07639124"
+lcd-hi = "#c0e9fd"
+lcd-ink = "#344a55"
+lcd-lo = "#6cb7dd"
+lcd-shadow = "#3b96c380"
+line = "#3fa3dc"
+meter-end = "#e8558f"
+meter-start = "#f7b6cf"
+muted = "#424e54"
+panel = "#dcf3ffc4"
+panel-2 = "#ecf9ff"
+shell = "#4f86b88f"
+shell-frame = "#1f1d26"
+shell-ink = "#22344a"
+text = "#111619"
+
+[sheen]
+colors = ["#ffe1c6", "#ffc6dd", "#e9c3ff", "#c6d6ff"]
+angle = 115.0

@@ -1,0 +1,33 @@
+name = "Mew"
+base = "prism"
+console = "gbc"
+
+[colors]
+accent = "#2f5fb3"
+accent-2 = "#509dff"
+backdrop = "#F29CBB"
+bezel = "#F29CBB"
+bg = "#ffbbd3a3"
+faint = "#5a4750"
+key = "#34313c"
+key-ink = "#d7d3e0"
+lcd = "#db93b5"
+lcd-grid = "#91074924"
+lcd-hi = "#fdc0e3"
+lcd-ink = "#55343b"
+lcd-lo = "#dd6cac"
+lcd-shadow = "#c33b8580"
+line = "#f06e9f"
+meter-end = "#3f8fe0"
+meter-start = "#9fc1e0"
+muted = "#54424b"
+panel = "#ffdce9c4"
+panel-2 = "#ffecf3"
+shell = "#6b4fb88f"
+shell-frame = "#1f1d26"
+shell-ink = "#2c2244"
+text = "#191114"
+
+[sheen]
+colors = ["#c6f5ec", "#b8e0ff", "#c9c7ff", "#e8c4ff"]
+angle = 115.0
