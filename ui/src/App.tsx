@@ -11,6 +11,7 @@ import PlaylistView from "./lib/PlaylistView";
 import Select from "./lib/Select";
 import Tip, { Tooltips } from "./lib/Tip";
 import { Dialogs } from "./lib/Dialog";
+import Export from "./lib/Export";
 import { Toasts } from "./lib/Toasts";
 import Sidebar, { type View } from "./lib/Sidebar";
 import SongList from "./lib/SongList";
@@ -365,6 +366,7 @@ export default function App() {
         <ContextMenu menu={menu} onClose={closeMenu} />
         <Tooltips />
         <Dialogs />
+        <Export t={t} />
         <Toasts />
 
         {drop.shown && (

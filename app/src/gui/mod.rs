@@ -4,6 +4,7 @@
 
 mod commands;
 mod editor;
+mod export;
 mod mini;
 mod playlists;
 mod session;
@@ -96,6 +97,7 @@ pub fn run(initial_rom: Option<PathBuf>, language: Option<String>) {
                 .build(),
         )
         .manage(app)
+        .manage(export::Exports::default())
         .invoke_handler(tauri::generate_handler![
             commands::library,
             commands::open_roms,
@@ -132,6 +134,10 @@ pub fn run(initial_rom: Option<PathBuf>, language: Option<String>) {
             commands::theme_image,
             commands::pick_theme_image,
             commands::open_theme_editor,
+            export::export_plan,
+            export::pick_export_dir,
+            export::start_export,
+            export::cancel_export,
         ])
         .on_window_event(|window, event| match event {
             // The window is gone by the time the app exits: keep where the mini player is now.

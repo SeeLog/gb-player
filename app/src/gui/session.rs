@@ -11,6 +11,7 @@ use gb_music::{
     SongLength, FRAME_RATE,
 };
 
+use super::export::{Item, Target};
 use super::playlists::{self, Entry, Playlist};
 use super::shuffle::{Order, Rng};
 use super::views::{
@@ -1304,6 +1305,97 @@ impl Session {
             scope,
         };
         (view, changed)
+    }
+}
+
+/// What an export needs to know (see [`super::export`]).
+impl Session {
+    /// The songs of `target` to export, in order. Playlist entries whose file is missing are
+    /// left out.
+    pub fn export_items(&self, target: &Target) -> Vec<Item> {
+        let digits = |n: usize| n.to_string().len().max(2);
+        match target {
+            Target::Rom { rom, songs } => {
+                let Some(r) = self.rom(rom) else {
+                    return Vec::new();
+                };
+                let width = digits(r.songs.len());
+                let all: Vec<usize> = r.songs.iter().map(|s| s.index).collect();
+                songs
+                    .as_ref()
+                    .unwrap_or(&all)
+                    .iter()
+                    .filter(|&&i| r.has_song(i))
+                    .map(|&i| rom_item(r, i, i + 1, width))
+                    .collect()
+            }
+            Target::Playlist { id, positions } => {
+                let Some(list) = self.playlist(id) else {
+                    return Vec::new();
+                };
+                let width = digits(list.entries.len());
+                list.entries
+                    .iter()
+                    .enumerate()
+                    .filter(|(p, e)| {
+                        positions.as_ref().is_none_or(|ps| ps.contains(p)) && e.path.is_file()
+                    })
+                    .map(|(p, e)| {
+                        let open = self
+                            .rom(&e.hash)
+                            .and_then(|r| r.entry_song(e).map(|i| (r, i)));
+                        match open {
+                            Some((r, i)) => rom_item(r, i, p + 1, width),
+                            None => {
+                                let audio = is_audio(&e.path);
+                                Item {
+                                    path: e.path.clone(),
+                                    song: if audio { 0 } else { e.song },
+                                    title: e.title.clone(),
+                                    number: p + 1,
+                                    width,
+                                    length: None,
+                                    channels: !audio,
+                                }
+                            }
+                        }
+                    })
+                    .collect()
+            }
+        }
+    }
+
+    /// The loop count, the output and its noise, and the folder of the last export.
+    pub fn export_settings(&self) -> (Option<u32>, Profile, bool, Option<PathBuf>) {
+        let s = &self.settings;
+        (
+            s.loop_count,
+            s.profile,
+            s.speaker_noise,
+            s.export_dir.clone(),
+        )
+    }
+
+    pub fn set_export_dir(&mut self, dir: PathBuf) {
+        self.settings.export_dir = Some(dir);
+        self.save_settings();
+    }
+}
+
+/// Song `index` of `rom` to export as `number`: a folder's by its file.
+fn rom_item(rom: &Rom, index: usize, number: usize, width: usize) -> Item {
+    let (path, song, channels) = match &rom.kind {
+        Kind::Game { .. } => (rom.path.clone(), index, true),
+        Kind::Folder { files } => (files[index].clone(), 0, false),
+    };
+    Item {
+        path,
+        song,
+        title: rom.names.song(index).to_string(),
+        number,
+        width,
+        length: rom.lengths.get(&index).copied(),
+        channels,
     }
 }
 
