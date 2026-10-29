@@ -1,14 +1,22 @@
-// A playlist in the middle column. Songs from any ROM; a song whose ROM is missing is greyed
-// out and asks for the file when clicked. Drag a song to move it, Delete removes it.
+// A playlist in the middle column, or the favourites or the history. Songs from any ROM; a song
+// whose ROM is missing is greyed out and asks for the file when clicked. Drag a song to move it
+// (not in the history, which is in the order played), Delete removes it.
 import { memo, useEffect, useRef, useState, type PointerEvent } from "react";
-import { locateEntry } from "./actions";
+import { clearHistory, locateEntry } from "./actions";
 import { api } from "./api";
 import type { Translate } from "./format";
 import type { Library, PlaylistView as Playlist } from "./types";
 import Icon from "./Icon";
-import { Duration } from "./SongList";
+import { Duration, Star } from "./SongList";
 import { useTick } from "./tick";
 import Tip from "./Tip";
+
+/** What an empty list says. */
+const EMPTY = {
+  playlist: "playlist_empty",
+  favorites: "favorites_empty",
+  history: "history_empty",
+} as const;
 
 /** How far the pointer moves before a press on a song becomes a drag. */
 const DRAG_START = 4;
@@ -63,7 +71,7 @@ export default memo(function PlaylistView({
   }
 
   function onPointerDown(e: PointerEvent, i: number) {
-    if (e.button !== 0) return;
+    if (e.button !== 0 || list.kind === "history") return;
     dragged.current = false;
     setDrag({ from: i, startY: e.clientY, gap: null });
   }
@@ -90,6 +98,14 @@ export default memo(function PlaylistView({
       <div className="mx-4 mt-3 mb-2 flex h-9 items-center gap-3">
         <h2 className="min-w-0 truncate text-base font-semibold">{list.name}</h2>
         <div className="flex-1" />
+        {list.kind === "history" && list.entries.length > 0 && (
+          <button
+            className="flex h-[30px] items-center rounded-lg border border-line bg-panel-2 px-3 text-text hover:border-faint"
+            onClick={() => clearHistory(t)}
+          >
+            {t("history_clear")}
+          </button>
+        )}
         <button
           className="flex h-[30px] items-center gap-1.5 rounded-lg bg-accent px-3 font-semibold text-accent-ink hover:brightness-108 disabled:opacity-50"
           disabled={firstPlayable < 0}
@@ -110,7 +126,9 @@ export default memo(function PlaylistView({
         onPointerCancel={() => setDrag(null)}
       >
         {list.entries.length === 0 && (
-          <p className="mx-6 mt-8 text-center text-muted">{t("playlist_empty")}</p>
+          <p className="mx-6 mt-8 text-center text-muted">
+            {t(EMPTY[list.kind])}
+          </p>
         )}
         {list.entries.map((entry, i) => {
           const active = i === position;
@@ -142,7 +160,7 @@ export default memo(function PlaylistView({
                     api.removeFromPlaylist(list.id, [i]);
                   }
                 }}
-                className={`grid w-full cursor-default grid-cols-[44px_minmax(0,1fr)_auto] items-center gap-2 rounded-lg px-2.5 py-[7px] text-left outline-none select-none focus-visible:ring-1 focus-visible:ring-accent-2 ${gapLine} ${
+                className={`group grid w-full cursor-default grid-cols-[44px_minmax(0,1fr)_auto_24px] items-center gap-2 rounded-lg px-2.5 py-[7px] text-left outline-none select-none focus-visible:ring-1 focus-visible:ring-accent-2 ${gapLine} ${
                   drag?.gap != null && drag.from === i ? "opacity-50" : ""
                 } ${
                   active ? "bg-playing" : "hover:bg-hover"
@@ -174,6 +192,11 @@ export default memo(function PlaylistView({
                 ) : (
                   <span className="num text-xs text-faint">—</span>
                 )}
+                <Star
+                  t={t}
+                  on={entry.favorite}
+                  onToggle={() => api.setEntryFavorite(list.id, i, !entry.favorite)}
+                />
               </div>
             </Tip>
           );

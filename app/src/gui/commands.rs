@@ -166,6 +166,36 @@ pub fn play_entry(handle: AppHandle, app: State<'_, App>, id: String, position: 
     playing
 }
 
+/// Add a song of the open ROM `rom` to the favourites, or take it out.
+#[tauri::command]
+pub fn set_favorite(handle: AppHandle, app: State<'_, App>, rom: String, song: usize, on: bool) {
+    let mut s = app.lock();
+    s.set_favorite(&rom, song, on);
+    emit_library(&handle, &s);
+}
+
+/// Add the song of a playlist entry to the favourites, or take it out.
+#[tauri::command]
+pub fn set_entry_favorite(
+    handle: AppHandle,
+    app: State<'_, App>,
+    id: String,
+    position: usize,
+    on: bool,
+) {
+    let mut s = app.lock();
+    s.set_entry_favorite(&id, position, on);
+    emit_library(&handle, &s);
+}
+
+/// Empty the history (the UI has asked the user first).
+#[tauri::command]
+pub fn clear_history(handle: AppHandle, app: State<'_, App>) {
+    let mut s = app.lock();
+    s.clear_history();
+    emit_library(&handle, &s);
+}
+
 /// What the middle column shows: the songs of the ROM `rom`, or the playlist `playlist`.
 #[tauri::command]
 pub fn set_view(app: State<'_, App>, rom: Option<String>, playlist: Option<String>) {

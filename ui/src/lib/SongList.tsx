@@ -140,11 +140,12 @@ export default memo(function SongList({
       </div>
       <div
         role="row"
-        className="grid grid-cols-[44px_minmax(0,1fr)_auto] gap-2 overflow-hidden border-b border-line px-[18px] pb-1 text-xs text-muted [scrollbar-gutter:stable]"
+        className="grid grid-cols-[44px_minmax(0,1fr)_auto_24px] gap-2 overflow-hidden border-b border-line px-[18px] pb-1 text-xs text-muted [scrollbar-gutter:stable]"
       >
         {header("#", null, "pr-1.5 text-right")}
         {header(t("col_title"), "title")}
         {header(t("col_length"), "length", "text-right")}
+        <span />
       </div>
       <div
         ref={list}
@@ -155,41 +156,77 @@ export default memo(function SongList({
         {songs.length === 0 && <p className="mt-8 text-center text-muted">{t("no_results")}</p>}
         {songs.map((song) => {
           const active = song.index === current;
+          // The star sits over the row's last column, as a button cannot hold another.
           return (
-            <button
-              key={song.index}
-              className={`grid w-full grid-cols-[44px_minmax(0,1fr)_auto] items-center gap-2 rounded-lg px-2.5 py-[7px] text-left ${
-                active ? "bg-playing" : "hover:bg-hover"
-              }`}
-              data-index={song.index}
-              role="option"
-              aria-selected={active}
-              onClick={() => api.play(rom.id, song.index)}
-            >
-              <span className="num pr-1.5 text-right text-faint">
-                {active && playing ? (
-                  <span className="eq inline-flex h-3 items-end gap-0.5" aria-hidden="true">
-                    <i />
-                    <i />
-                    <i />
-                  </span>
-                ) : (
-                  song.index + 1
-                )}
-              </span>
-              <span
-                className={`truncate ${active ? "font-semibold text-[color:var(--row-text,var(--accent))]" : ""}`}
+            <div key={song.index} data-index={song.index} className="group relative">
+              <button
+                className={`grid w-full grid-cols-[44px_minmax(0,1fr)_auto_24px] items-center gap-2 rounded-lg px-2.5 py-[7px] text-left ${
+                  active ? "bg-playing" : "group-hover:bg-hover"
+                }`}
+                role="option"
+                aria-selected={active}
+                onClick={() => api.play(rom.id, song.index)}
               >
-                {song.title}
+                <span className="num pr-1.5 text-right text-faint">
+                  {active && playing ? (
+                    <span className="eq inline-flex h-3 items-end gap-0.5" aria-hidden="true">
+                      <i />
+                      <i />
+                      <i />
+                    </span>
+                  ) : (
+                    song.index + 1
+                  )}
+                </span>
+                <span
+                  className={`truncate ${active ? "font-semibold text-[color:var(--row-text,var(--accent))]" : ""}`}
+                >
+                  {song.title}
+                </span>
+                <Duration t={t} length={song.length} loopCount={library.loopCount} />
+              </button>
+              <span className="absolute top-1/2 right-2.5 -translate-y-1/2">
+                <Star
+                  t={t}
+                  on={song.favorite}
+                  onToggle={() => api.setFavorite(rom.id, song.index, !song.favorite)}
+                />
               </span>
-              <Duration t={t} length={song.length} loopCount={library.loopCount} />
-            </button>
+            </div>
           );
         })}
       </div>
     </section>
   );
 });
+
+/** The star that adds a song to the favourites or takes it out: shown while the song is one,
+ * otherwise on hovering its row (a `group`). */
+export function Star({ t, on, onToggle }: { t: Translate; on: boolean; onToggle: () => void }) {
+  const label = on ? t("favorite_remove") : t("favorite_add");
+  return (
+    <Tip text={label}>
+      <button
+        className={`grid size-6 place-items-center rounded-md hover:bg-panel-2 ${
+          on
+            ? "text-accent"
+            : "text-faint opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 hover:text-text"
+        }`}
+        aria-label={label}
+        aria-pressed={on}
+        // Not a press, a drag or a key of the row.
+        onPointerDown={(e) => e.stopPropagation()}
+        onKeyDown={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggle();
+        }}
+      >
+        <Icon name={on ? "starFilled" : "star"} size={16} />
+      </button>
+    </Tip>
+  );
+}
 
 /** How long the song plays with the current loop setting, with the intro and loop on hover. */
 export function Duration({

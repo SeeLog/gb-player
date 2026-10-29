@@ -35,6 +35,12 @@ export const api = {
   moveInPlaylist: (id: string, from: number, to: number) =>
     invoke<void>("move_in_playlist", { id, from, to }),
   playEntry: (id: string, position: number) => invoke<boolean>("play_entry", { id, position }),
+  setFavorite: (rom: string, song: number, on: boolean) =>
+    invoke<void>("set_favorite", { rom, song, on }),
+  setEntryFavorite: (id: string, position: number, on: boolean) =>
+    invoke<void>("set_entry_favorite", { id, position, on }),
+  /** Clears at once: ask first (see actions.ts). */
+  clearHistory: () => invoke<void>("clear_history"),
   /** The ROM whose songs are shown (or were, before the playlist), and the playlist shown. */
   setView: (rom: string | null, playlist: string | null) =>
     invoke<void>("set_view", { rom, playlist }),

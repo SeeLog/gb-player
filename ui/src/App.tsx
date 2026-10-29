@@ -327,7 +327,8 @@ export default function App() {
 
         {library?.mini ? (
           <MiniPlayer library={library} t={t} />
-        ) : library && (hasRom || library.playlists.length > 0) ? (
+        ) : library &&
+          (hasRom || library.playlists.some((l) => l.kind === "playlist" || l.entries.length > 0)) ? (
           <main className="grid min-h-0 flex-1 grid-cols-[200px_minmax(0,1fr)_380px]">
             <Sidebar
               library={library}

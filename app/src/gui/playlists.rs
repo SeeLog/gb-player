@@ -1,6 +1,10 @@
 //! Playlists of songs from any number of ROMs, kept as json files in `gb-player/playlists`
 //! next to the user song names. An entry remembers its ROM by path and by a hash of the file,
 //! so a ROM that was moved can be pointed at again and checked to be the same one.
+//!
+//! Two of them are kept by the app itself, under fixed ids: the favourites and the history of
+//! songs played. They come first, cannot be renamed or deleted, and are there even before
+//! their files are.
 
 use std::path::{Path, PathBuf};
 
@@ -44,6 +48,52 @@ pub fn hash(data: &[u8]) -> String {
     format!("fnv1a64:{h:016x}")
 }
 
+/// The id of the favourites.
+pub const FAVORITES: &str = "favorites";
+/// The id of the songs played lately, the latest first.
+pub const HISTORY: &str = "history";
+/// How many songs the history keeps.
+pub const HISTORY_LEN: usize = 100;
+
+/// Whether `id` is one of the lists the app keeps itself.
+pub fn is_auto(id: &str) -> bool {
+    id == FAVORITES || id == HISTORY
+}
+
+/// The favourites, then the history, then the user's playlists by name.
+pub fn sort(lists: &mut [Playlist]) {
+    let rank = |l: &Playlist| match l.id.as_str() {
+        FAVORITES => 0,
+        HISTORY => 1,
+        _ => 2,
+    };
+    lists.sort_by(|a, b| {
+        rank(a)
+            .cmp(&rank(b))
+            .then_with(|| a.name.cmp(&b.name))
+            .then_with(|| a.id.cmp(&b.id))
+    });
+}
+
+/// Whether two entries are the same song: of the same ROM and number, or for a song of a
+/// folder (whose numbers change as files come and go), of the same file.
+pub fn same_song(a: &Entry, b: &Entry) -> bool {
+    a.hash == b.hash
+        && if a.hash.starts_with("folder:") {
+            a.path == b.path
+        } else {
+            a.song == b.song
+        }
+}
+
+/// Put `entry` at the top of the history `entries`, dropping its earlier play and the songs
+/// beyond [`HISTORY_LEN`].
+pub fn record(entries: &mut Vec<Entry>, entry: Entry) {
+    entries.retain(|e| !same_song(e, &entry));
+    entries.insert(0, entry);
+    entries.truncate(HISTORY_LEN);
+}
+
 fn dir() -> Option<PathBuf> {
     Some(gb_music::songdb::user_dir()?.parent()?.join("playlists"))
 }
@@ -52,14 +102,22 @@ fn file(dir: &Path, id: &str) -> PathBuf {
     dir.join(format!("{id}.json"))
 }
 
-/// The saved playlists in name order, and the problems found reading them.
+/// The saved playlists in [`sort`] order, the favourites and the history among them, and the
+/// problems found reading them.
 pub fn load(t: &Text) -> (Vec<Playlist>, Vec<String>) {
+    load_from(dir().as_deref(), t)
+}
+
+fn load_from(dir: Option<&Path>, t: &Text) -> (Vec<Playlist>, Vec<String>) {
     let mut lists = Vec::new();
     let mut warnings = Vec::new();
-    let Some(entries) = dir().and_then(|d| std::fs::read_dir(d).ok()) else {
-        return (lists, warnings);
-    };
-    for path in entries.flatten().map(|e| e.path()) {
+    for path in dir
+        .and_then(|d| std::fs::read_dir(d).ok())
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.path())
+    {
         if path.extension().is_none_or(|e| e != "json") {
             continue;
         }
@@ -80,7 +138,16 @@ pub fn load(t: &Text) -> (Vec<Playlist>, Vec<String>) {
             )),
         }
     }
-    lists.sort_by(|a, b| a.name.cmp(&b.name).then_with(|| a.id.cmp(&b.id)));
+    for id in [FAVORITES, HISTORY] {
+        if lists.iter().all(|l| l.id != id) {
+            lists.push(Playlist {
+                id: id.to_string(),
+                name: id.to_string(),
+                entries: Vec::new(),
+            });
+        }
+    }
+    sort(&mut lists);
     (lists, warnings)
 }
 
@@ -182,5 +249,73 @@ mod tests {
         assert_eq!(back.entries, list.entries);
         let bare: Playlist = serde_json::from_str(r#"{"name":"Empty"}"#).unwrap();
         assert!(bare.entries.is_empty());
+    }
+
+    fn entry(hash: &str, path: &str, song: usize) -> Entry {
+        Entry {
+            path: path.into(),
+            hash: hash.into(),
+            song,
+            game: "Game".into(),
+            title: format!("Song {song}"),
+            length: None,
+        }
+    }
+
+    #[test]
+    fn a_song_is_known_by_its_rom_and_number_or_by_its_file() {
+        let rom = entry("fnv1a64:1", "a.gb", 3);
+        assert!(same_song(&rom, &entry("fnv1a64:1", "moved/a.gb", 3)));
+        assert!(!same_song(&rom, &entry("fnv1a64:1", "a.gb", 4)));
+        assert!(!same_song(&rom, &entry("fnv1a64:2", "a.gb", 3)));
+        // Songs of a folder move along as files are added.
+        let file = entry("folder:1", "d/x.ogg", 0);
+        assert!(same_song(&file, &entry("folder:1", "d/x.ogg", 2)));
+        assert!(!same_song(&file, &entry("folder:1", "d/y.ogg", 0)));
+    }
+
+    #[test]
+    fn the_history_keeps_the_latest_play_of_each_song_up_to_its_length() {
+        let mut h = Vec::new();
+        for song in [1, 2, 3, 2] {
+            record(&mut h, entry("fnv1a64:1", "a.gb", song));
+        }
+        let songs: Vec<usize> = h.iter().map(|e| e.song).collect();
+        assert_eq!(songs, [2, 3, 1]);
+        for song in 0..HISTORY_LEN + 10 {
+            record(&mut h, entry("fnv1a64:2", "b.gb", song));
+        }
+        assert_eq!(h.len(), HISTORY_LEN);
+        assert_eq!(h[0].song, HISTORY_LEN + 9);
+        assert_eq!(h[HISTORY_LEN - 1].song, 10);
+    }
+
+    #[test]
+    fn the_favourites_and_the_history_load_first_even_without_files() {
+        let t = Text::new("en");
+        let dir = std::env::temp_dir().join(format!("gb-player-lists-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let write = |id: &str, list: &Playlist| {
+            std::fs::write(file(&dir, id), serde_json::to_string(list).unwrap()).unwrap();
+        };
+        let list = |name: &str, entries: Vec<Entry>| Playlist {
+            id: String::new(),
+            name: name.into(),
+            entries,
+        };
+        write("p1", &list("Alpha", vec![]));
+        write(HISTORY, &list(HISTORY, vec![entry("fnv1a64:1", "a.gb", 5)]));
+
+        let (lists, warnings) = load_from(Some(&dir), &t);
+        let ids: Vec<&str> = lists.iter().map(|l| l.id.as_str()).collect();
+        assert_eq!(ids, [FAVORITES, HISTORY, "p1"]);
+        assert!(warnings.is_empty());
+        assert!(lists[0].entries.is_empty());
+        assert_eq!(lists[1].entries[0].song, 5);
+
+        let (lists, _) = load_from(None, &t);
+        let ids: Vec<&str> = lists.iter().map(|l| l.id.as_str()).collect();
+        assert_eq!(ids, [FAVORITES, HISTORY]);
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

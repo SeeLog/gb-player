@@ -1,13 +1,13 @@
-// What the right-click menu holds: window items on the title bar, play, copy and add to a
-// playlist on a song, Close on an open ROM, the playlist items on a playlist and its songs, and
+// What the right-click menu holds: window items on the title bar, play, copy, favourite and add
+// to a playlist on a song, Close on an open ROM, the playlist items on a playlist and its songs, and
 // playback elsewhere. Text fields keep the WebView's Cut / Copy / Paste.
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { RESTART_AFTER, api, previous } from "./api";
-import { deletePlaylist, locateEntry } from "./actions";
+import { clearHistory, deletePlaylist, locateEntry } from "./actions";
 import type { MenuItem } from "./ContextMenu";
 import { notify } from "./Toasts";
 import type { Translate } from "./format";
-import type { Library } from "./types";
+import type { Library, PlaylistView } from "./types";
 import { tickStore } from "./tick";
 
 const NOT_TEXT = new Set(["checkbox", "radio", "range", "button", "submit", "reset", "color", "file"]);
@@ -43,6 +43,10 @@ export async function menuFor(
     return [
       ...songItems(rom.id, song.index, song.title, t),
       "separator",
+      {
+        label: song.favorite ? t("favorite_remove") : t("favorite_add"),
+        onSelect: () => api.setFavorite(rom.id, song.index, !song.favorite),
+      },
       ...addItems(rom.id, song.index, library, t, actions),
     ];
   }
@@ -56,10 +60,7 @@ export async function menuFor(
   if (entryRow && list) return entryItems(list.id, Number(entryRow.dataset.entry), library!, t);
   const itemId = target.closest<HTMLElement>("[data-playlist-item]")?.dataset.playlistItem;
   const item = library?.playlists.find((l) => l.id === itemId);
-  if (item) {
-    const first = item.entries.findIndex((e) => !e.missing);
-    return playlistItems(item.id, item.name, first, t, actions);
-  }
+  if (item) return playlistItems(item, t, actions);
   return playbackItems(!!library && library.roms.length > 0, t, actions);
 }
 
@@ -72,16 +73,17 @@ function addItems(
   t: Translate,
   actions: MenuActions,
 ): MenuItem[] {
+  const lists = library.playlists.filter((l) => l.kind === "playlist");
   const newPlaylist: MenuItem = {
     label: t("playlist_add_new"),
     onSelect: async () => {
-      const name = t("playlist_default_name", { n: library.playlists.length + 1 });
+      const name = t("playlist_default_name", { n: lists.length + 1 });
       const id = await api.createPlaylist(name, rom, [index]);
       actions.showPlaylist(id);
       actions.renamePlaylist(id);
     },
   };
-  if (library.playlists.length === 0) return [newPlaylist];
+  if (lists.length === 0) return [newPlaylist];
   return [
     {
       label: t("playlist_add"),
@@ -89,7 +91,7 @@ function addItems(
       submenu: [
         newPlaylist,
         "separator",
-        ...library.playlists.map((l) => ({
+        ...lists.map((l) => ({
           label: l.name,
           onSelect: () => api.addToPlaylist(l.id, rom, [index]),
         })),
@@ -116,34 +118,54 @@ function entryItems(id: string, position: number, library: Library, t: Translate
           },
     { label: t("copy_title"), onSelect: () => copyText(entry.title, t) },
     "separator",
+    // Taking a song out of the favourites is all removing it from them does.
+    ...(list.kind === "favorites"
+      ? []
+      : [
+          {
+            label: entry.favorite ? t("favorite_remove") : t("favorite_add"),
+            onSelect: () => api.setEntryFavorite(id, position, !entry.favorite),
+          },
+        ]),
     {
-      label: t("playlist_remove"),
+      label: t(
+        { favorites: "favorite_remove", history: "history_remove", playlist: "playlist_remove" }[
+          list.kind
+        ],
+      ),
       shortcut: "Del",
       onSelect: () => api.removeFromPlaylist(id, [position]),
     },
   ];
 }
 
-function playlistItems(
-  id: string,
-  name: string,
-  /** The first song whose ROM is there, or -1. */
-  first: number,
-  t: Translate,
-  actions: MenuActions,
-): MenuItem[] {
-  return [
-    {
-      label: t("playlist_play"),
-      disabled: first < 0,
-      onSelect: () => {
-        actions.showPlaylist(id);
-        api.playEntry(id, first);
-      },
+function playlistItems(list: PlaylistView, t: Translate, actions: MenuActions): MenuItem[] {
+  const first = list.entries.findIndex((e) => !e.missing);
+  const play: MenuItem = {
+    label: t("playlist_play"),
+    disabled: first < 0,
+    onSelect: () => {
+      actions.showPlaylist(list.id);
+      api.playEntry(list.id, first);
     },
+  };
+  if (list.kind === "favorites") return [play];
+  if (list.kind === "history") {
+    return [
+      play,
+      "separator",
+      {
+        label: t("history_clear"),
+        disabled: list.entries.length === 0,
+        onSelect: () => clearHistory(t),
+      },
+    ];
+  }
+  return [
+    play,
     "separator",
-    { label: t("playlist_rename"), onSelect: () => actions.renamePlaylist(id) },
-    { label: t("playlist_delete"), onSelect: () => deletePlaylist(id, name, t) },
+    { label: t("playlist_rename"), onSelect: () => actions.renamePlaylist(list.id) },
+    { label: t("playlist_delete"), onSelect: () => deletePlaylist(list.id, list.name, t) },
   ];
 }
 

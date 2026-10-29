@@ -11,11 +11,11 @@ use gb_music::{
     SongLength, FRAME_RATE,
 };
 
-use super::playlists::{self, Entry, Playlist};
+use super::playlists::{self, Entry, Playlist, FAVORITES, HISTORY};
 use super::shuffle::{Order, Rng};
 use super::views::{
-    EntryView, LanguageView, LengthView, LibraryView, PlaylistView, QueueView, RomView, SongView,
-    TickView,
+    EntryView, LanguageView, LengthView, LibraryView, PlaylistKind, PlaylistView, QueueView,
+    RomView, SongView, TickView,
 };
 use crate::analyzer::Analyzer;
 use crate::audio::{Scope, SharedPlayer};
@@ -25,6 +25,9 @@ use crate::themes::{self, NewTheme, Theme};
 
 /// Output samples sent with each tick for the oscilloscope.
 const SCOPE_POINTS: usize = 1024;
+
+/// Seconds a song plays before it goes into the history, so that songs skipped past do not.
+const HISTORY_AFTER: f64 = 5.0;
 
 pub struct Session {
     player: SharedPlayer,
@@ -52,6 +55,8 @@ pub struct Session {
     /// The order Next follows while shuffle is on, made when it is first needed.
     order: Option<(Pool, Order<Pick>)>,
     rng: Rng,
+    /// The song (ROM id and number) whose play going on is in the history already.
+    counted: Option<(String, usize)>,
 }
 
 /// An open ROM, or a folder of audio files, opened and played the same way.
@@ -200,6 +205,7 @@ impl Session {
             queue: None,
             order: None,
             rng: Rng::from_clock(),
+            counted: None,
         }
     }
 
@@ -847,6 +853,9 @@ impl Session {
                             index: song.index,
                             title: rom.names.song(song.index).to_string(),
                             length: rom.lengths.get(&song.index).map(|&l| l.into()),
+                            favorite: self
+                                .favorites()
+                                .any(|e| e.hash == rom.id && rom.entry_song(e) == Some(song.index)),
                         })
                         .collect(),
                 })
@@ -923,8 +932,7 @@ impl Session {
     }
 
     fn sort_playlists(&mut self) {
-        self.playlists
-            .sort_by(|a, b| a.name.cmp(&b.name).then_with(|| a.id.cmp(&b.id)));
+        playlists::sort(&mut self.playlists);
     }
 
     pub fn entry(&self, id: &str, position: usize) -> Option<Entry> {
@@ -976,7 +984,7 @@ impl Session {
 
     pub fn rename_playlist(&mut self, id: &str, name: &str) {
         let name = name.trim();
-        if name.is_empty() {
+        if name.is_empty() || playlists::is_auto(id) {
             return;
         }
         self.edit_playlist(id, |l| l.name = name.to_string());
@@ -984,6 +992,9 @@ impl Session {
     }
 
     pub fn delete_playlist(&mut self, id: &str) {
+        if playlists::is_auto(id) {
+            return;
+        }
         self.playlists.retain(|l| l.id != id);
         playlists::delete(id);
         if self.queue.as_ref().is_some_and(|q| q.playlist == id) {
@@ -991,10 +1002,10 @@ impl Session {
         }
     }
 
-    /// Add songs of the open ROM `rom` to the end of a playlist.
+    /// Add songs of the open ROM `rom` to the end of a playlist (not one the app keeps).
     pub fn add_to_playlist(&mut self, id: &str, rom: &str, songs: &[usize]) {
         let entries = self.entries_for(rom, songs);
-        if !entries.is_empty() {
+        if !entries.is_empty() && !playlists::is_auto(id) {
             self.edit_playlist(id, |l| l.entries.extend(entries));
             self.forget_playlist_order(id);
         }
@@ -1031,7 +1042,7 @@ impl Session {
         let Some(len) = self.playlist(id).map(|l| l.entries.len()) else {
             return;
         };
-        if from >= len || to >= len || from == to {
+        if from >= len || to >= len || from == to || id == HISTORY {
             return;
         }
         self.forget_playlist_order(id);
@@ -1042,6 +1053,83 @@ impl Session {
             let e = l.entries.remove(from);
             l.entries.insert(to, e);
         });
+    }
+
+    /// Add a song of the open ROM `rom` to the favourites, or take it out.
+    pub fn set_favorite(&mut self, rom: &str, song: usize, on: bool) {
+        if let Some(entry) = self.entries_for(rom, &[song]).pop() {
+            self.set_favorite_entry(entry, on);
+        }
+    }
+
+    /// Add the song of the entry at `position` of the playlist `id` to the favourites, or take
+    /// it out.
+    pub fn set_entry_favorite(&mut self, id: &str, position: usize, on: bool) {
+        if let Some(entry) = self.entry(id, position) {
+            self.set_favorite_entry(entry, on);
+        }
+    }
+
+    fn set_favorite_entry(&mut self, entry: Entry, on: bool) {
+        let Some(favorites) = self.playlist(FAVORITES) else {
+            return;
+        };
+        let at: Vec<usize> = (favorites.entries.iter().enumerate())
+            .filter(|(_, e)| playlists::same_song(e, &entry))
+            .map(|(i, _)| i)
+            .collect();
+        if on && at.is_empty() {
+            self.edit_playlist(FAVORITES, |l| l.entries.push(entry));
+            self.forget_playlist_order(FAVORITES);
+        } else if !on && !at.is_empty() {
+            self.remove_from_playlist(FAVORITES, &at);
+        }
+    }
+
+    pub fn clear_history(&mut self) {
+        let len = self.playlist(HISTORY).map_or(0, |l| l.entries.len());
+        self.remove_from_playlist(HISTORY, &(0..len).collect::<Vec<_>>());
+    }
+
+    /// Put the song playing at the top of the history once it has played for
+    /// [`HISTORY_AFTER`] seconds, or to its end, counting each play once. Songs played from the
+    /// history leave it as it is, so that it can be played through. Returns whether the
+    /// history changed.
+    fn note_play(&mut self) -> bool {
+        let Some((current, state, pos)) =
+            self.with_player(|p| (p.current(), p.state(), p.position_frames()))
+        else {
+            return false;
+        };
+        let (Some(rom), Some(index)) = (self.loaded.clone(), current) else {
+            return false;
+        };
+        let song = (rom, index);
+        let secs = frames_to_secs(pos);
+        let listened = match state {
+            PlayState::Playing => secs >= HISTORY_AFTER,
+            PlayState::Finished => true,
+            _ => false,
+        };
+        if !listened {
+            // Played again from the start: that is another play.
+            if state == PlayState::Playing && self.counted.as_ref() == Some(&song) {
+                self.counted = None;
+            }
+            return false;
+        }
+        if self.counted.as_ref() == Some(&song) {
+            return false;
+        }
+        let entry = self.entries_for(&song.0, &[song.1]).pop();
+        self.counted = Some(song);
+        let Some(entry) =
+            entry.filter(|_| self.queue.as_ref().is_none_or(|q| q.playlist != HISTORY))
+        else {
+            return false;
+        };
+        self.edit_playlist(HISTORY, |l| playlists::record(&mut l.entries, entry));
+        true
     }
 
     /// Point the entry at `position` of `id` at the file `path` holding the ROM `new_hash`,
@@ -1183,10 +1271,22 @@ impl Session {
         }
     }
 
+    fn favorites(&self) -> impl Iterator<Item = &Entry> {
+        self.playlist(FAVORITES)
+            .into_iter()
+            .flat_map(|l| &l.entries)
+    }
+
     fn playlist_view(&self, list: &Playlist) -> PlaylistView {
+        let (kind, name) = match list.id.as_str() {
+            FAVORITES => (PlaylistKind::Favorites, self.text.get("favorites")),
+            HISTORY => (PlaylistKind::History, self.text.get("history")),
+            _ => (PlaylistKind::Playlist, list.name.as_str()),
+        };
         PlaylistView {
             id: list.id.clone(),
-            name: list.name.clone(),
+            kind,
+            name: name.to_string(),
             entries: list
                 .entries
                 .iter()
@@ -1203,6 +1303,7 @@ impl Session {
                         length: e.length.clone(),
                         path: e.path.display().to_string(),
                         missing: !e.path.is_file(),
+                        favorite: self.favorites().any(|f| playlists::same_song(f, e)),
                     }
                 })
                 .collect(),
@@ -1234,6 +1335,7 @@ impl Session {
             let id = self.roms[i].id.clone();
             self.store_lengths(&id, &results);
         }
+        changed |= self.note_play();
         // Go on to the next song when one has finished, if asked to. That may open the ROM of
         // a playlist entry.
         let finished = self
