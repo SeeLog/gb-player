@@ -4,7 +4,7 @@ use std::fmt;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use gb_core::{CallError, CartridgeError, Machine};
+use gb_core::{CallError, CartridgeError, Machine, CYCLES_PER_FRAME};
 
 use crate::driver::{Driver, Song};
 use crate::effects::{Chain, Profile};
@@ -44,6 +44,13 @@ const SNAPSHOT_INTERVAL: u32 = 300;
 
 /// Most snapshots kept for one song (about 170 KiB each), enough for 20 minutes of music.
 const MAX_SNAPSHOTS: usize = 240;
+
+/// The slowest and fastest tempo, in percent of the game's own.
+pub const TEMPO_RANGE: std::ops::RangeInclusive<u32> = 50..=200;
+
+/// One frame of music in hundredths of a T-cycle, the unit that a tempo in percent advances
+/// the music by exactly.
+const FRAME_SUB: u64 = CYCLES_PER_FRAME as u64 * 100;
 
 /// The machine as it was at the start of a frame, to seek back to.
 struct Snapshot {
@@ -176,6 +183,9 @@ struct Game {
     /// Snapshots of the current song, at most one per frame of its first pass (see
     /// [`pass_frame`]).
     snapshots: Vec<Snapshot>,
+    /// Whether the machine is as it would be with the song played at its own tempo from the
+    /// start: only then is it a snapshot of its frame, or a place for a seek to run on from.
+    exact: bool,
 }
 
 struct Files {
@@ -192,7 +202,10 @@ pub struct Player {
     current: Option<usize>,
     /// Counts [`Player::play`] calls, so that a seek can tell it is still for the same song.
     plays: u64,
+    /// The frame of music the song is at, and how far into the next one in hundredths of a
+    /// T-cycle: with another tempo, a frame of output plays more or less than a frame of music.
     frame: u32,
+    sub: u64,
     length: SongLength,
     /// Number of times to play the looping part before fading out; `None` loops forever. An
     /// audio file has no loop of its own: it plays once, or over and over for `None`.
@@ -201,6 +214,8 @@ pub struct Player {
     /// Applied after the [`Profile`]'s effects, as the console's volume wheel comes after the
     /// chip: turning it down makes everything quieter but changes nothing else.
     pub volume: f32,
+    /// In percent of the game's own; see [`Player::set_tempo`].
+    tempo: u32,
     profile: Profile,
     noise: bool,
     effects: Chain,
@@ -238,6 +253,7 @@ impl Player {
                 driver: Arc::new(driver),
                 phase: 0,
                 snapshots: Vec::new(),
+                exact: true,
             })),
             sample_rate,
         ))
@@ -274,10 +290,12 @@ impl Player {
             current: None,
             plays: 0,
             frame: 0,
+            sub: 0,
             length: SongLength::Unknown,
             loop_count: None,
             fade_secs: 8.0,
             volume: 0.8,
+            tempo: 100,
             profile: Profile::Line,
             noise: true,
             effects: Chain::new(Profile::Line, sample_rate, true),
@@ -340,8 +358,28 @@ impl Player {
         self.paused = paused;
     }
 
+    /// The frame of music the song is at: at another tempo, frames of music go by more or
+    /// less often than video frames.
     pub fn position_frames(&self) -> u32 {
         self.frame
+    }
+
+    /// Play a game's songs at `percent` of their own tempo (within [`TEMPO_RANGE`]), at the
+    /// same pitch: the sound engine's updates come more or less often while the APU runs as
+    /// ever. The song's length, its loops and the fade-out all stay in frames of music, so
+    /// they take longer or shorter in step. It takes effect from the next frame, without a
+    /// jump. Audio files keep their own tempo.
+    pub fn set_tempo(&mut self, percent: u32) {
+        self.tempo = percent.clamp(*TEMPO_RANGE.start(), *TEMPO_RANGE.end());
+    }
+
+    /// The tempo songs play at, in percent: always 100 for audio files.
+    pub fn tempo(&self) -> u32 {
+        if self.game().is_some() {
+            self.tempo
+        } else {
+            100
+        }
     }
 
     pub fn length(&self) -> SongLength {
@@ -403,6 +441,7 @@ impl Player {
         self.current = Some(index);
         self.plays += 1;
         self.frame = 0;
+        self.sub = 0;
         self.length = SongLength::Unknown;
         self.paused = false;
         self.buf.clear();
@@ -459,19 +498,28 @@ impl Player {
         ((self.fade_secs as f64 * FRAME_RATE) as u32).max(1)
     }
 
-    fn gain_at(&self, frame: u32) -> f32 {
+    /// The gain at a point of the song, in frames of music.
+    fn gain_at(&self, frame: f64) -> f32 {
         match self.fade_start() {
-            Some(start) if frame >= start => {
-                1.0 - ((frame - start) as f32 / self.fade_frames() as f32).min(1.0)
+            Some(start) if frame >= start as f64 => {
+                1.0 - ((frame - start as f64) / self.fade_frames() as f64).min(1.0) as f32
             }
             _ => 1.0,
         }
     }
 
     fn run_frame(&mut self) {
+        let from = self.frame as f64 + self.sub as f64 / FRAME_SUB as f64;
+        let mut music = FRAME_SUB;
         let mut samples = match &mut self.source {
             Source::Game(g) => {
-                if let Err(e) = g.driver.run_frame(&mut g.machine, &mut g.phase) {
+                music = CYCLES_PER_FRAME as u64 * self.tempo as u64;
+                let cycles = (self.sub + music) / 100 - self.sub / 100;
+                g.exact &= self.tempo == 100;
+                if let Err(e) = g
+                    .driver
+                    .run_scaled(&mut g.machine, &mut g.phase, cycles as u32)
+                {
                     self.state = PlayState::Failed(Failure::Call(e));
                     return;
                 }
@@ -510,8 +558,8 @@ impl Player {
         };
         self.effects.process(&mut samples);
         let (g0, g1) = (
-            self.gain_at(self.frame),
-            self.gain_at(self.frame.saturating_add(1)),
+            self.gain_at(from),
+            self.gain_at(from + music as f64 / FRAME_SUB as f64),
         );
         let n = (samples.len() / 2).max(1) as f32;
         self.buf.clear();
@@ -520,7 +568,9 @@ impl Player {
             let t = (i / 2) as f32 / n;
             self.buf.push(s * (g0 + (g1 - g0) * t) * self.volume);
         }
-        self.frame = self.frame.saturating_add(1);
+        self.sub += music;
+        self.frame = self.frame.saturating_add((self.sub / FRAME_SUB) as u32);
+        self.sub %= FRAME_SUB;
         self.keep_snapshot();
 
         if self.end_frame().is_some_and(|end| self.frame >= end) {
@@ -532,7 +582,7 @@ impl Player {
     fn keep_snapshot(&mut self) {
         let (frame, length) = (self.frame, self.length);
         if let Some(g) = self.game_mut() {
-            if wants_snapshot(&g.snapshots, length, pass_frame(length, frame)) {
+            if g.exact && wants_snapshot(&g.snapshots, length, pass_frame(length, frame)) {
                 g.snapshots.push(Snapshot {
                     frame,
                     machine: g.machine.clone(),
@@ -612,7 +662,7 @@ impl Player {
             .max_by_key(|&(f, _)| f)?;
         let now = pass(self.frame);
         let (at, machine, phase) =
-            if self.state == PlayState::Playing && from <= now && now <= target {
+            if self.state == PlayState::Playing && g.exact && from <= now && now <= target {
                 (now, Box::new(g.machine.clone()), g.phase)
             } else {
                 (from, Box::new(snapshot.machine.clone()), snapshot.phase)
@@ -665,6 +715,7 @@ impl Player {
                         m.mem.apu.take_levels();
                         g.machine = *m;
                         g.phase = phase;
+                        g.exact = true;
                         None
                     }
                 }
@@ -684,6 +735,7 @@ impl Player {
             return;
         }
         self.frame = seek.frame;
+        self.sub = 0;
         self.buf.clear();
         self.buf_pos = 0;
         self.effects.reset();
@@ -722,6 +774,7 @@ impl Game {
         self.machine.mem.apu.gain = gain;
         self.phase = 0;
         self.snapshots.clear();
+        self.exact = true;
         let started = self.driver.play(&mut self.machine, &song);
         // Samples produced while starting the song are discarded.
         self.machine.mem.apu.take_samples();
@@ -897,6 +950,73 @@ mod tests {
         seek.run();
         p.finish_seek(seek);
         assert_eq!(p.position_frames(), 0);
+    }
+
+    /// Output frames the toy song plays for with one loop and a second's fade at `percent`.
+    fn frames_to_finish(percent: u32) -> u32 {
+        let mut p = counting_player();
+        p.loop_count = Some(1);
+        p.fade_secs = 1.0;
+        p.set_length(
+            0,
+            SongLength::Loops {
+                intro: 1,
+                period: 256,
+            },
+        );
+        p.set_tempo(percent);
+        let mut frames = 0;
+        while p.state() == PlayState::Playing {
+            p.run_frame();
+            frames += 1;
+        }
+        assert_eq!(p.state(), PlayState::Finished);
+        frames
+    }
+
+    #[test]
+    fn the_song_length_scales_with_the_tempo() {
+        // The intro, one loop and the fade, in frames of music.
+        let end = 1 + 256 + (FRAME_RATE as u32);
+        assert_eq!(frames_to_finish(100), end);
+        assert_eq!(frames_to_finish(50), end * 2);
+        assert_eq!(frames_to_finish(200), end.div_ceil(2));
+        assert_eq!(frames_to_finish(150), (end * 2).div_ceil(3));
+    }
+
+    #[test]
+    fn the_tempo_changes_how_often_the_engine_runs_but_not_the_output_rate() {
+        let mut samples = Vec::new();
+        for percent in [50, 100, 200] {
+            let mut p = counting_player();
+            p.set_tempo(percent);
+            let mut n = 0;
+            for _ in 0..120 {
+                p.run_frame();
+                n += p.buf.len();
+            }
+            samples.push(n);
+            // Each frame of music is one update of the toy engine.
+            let updates = p.game().unwrap().machine.clone().read(0xC003);
+            assert_eq!(updates as u32, 120 * percent / 100 % 256, "{percent}%");
+            assert_eq!(p.position_frames(), 120 * percent / 100);
+        }
+        assert!(samples.iter().all(|&n| n == samples[0]), "{samples:?}");
+    }
+
+    #[test]
+    fn seeking_at_another_tempo_lands_on_the_same_state() {
+        let mut p = counting_player();
+        p.set_tempo(150);
+        run_frames(&mut p, 400);
+        assert_eq!(p.position_frames(), 600);
+        // Snapshots of a song played at another tempo would not be those of its frames.
+        assert_eq!(p.game().unwrap().snapshots.len(), 1);
+        for frame in [700, 100, 650] {
+            p.seek(frame);
+            assert_eq!(p.position_frames(), frame);
+            assert_eq!(p.game().unwrap().machine.state_hash(), state_at(frame));
+        }
     }
 
     #[test]

@@ -50,6 +50,7 @@ export const api = {
   setAutoNext: (autoNext: boolean) => invoke<void>("set_auto_next", { autoNext }),
   setShuffle: (shuffle: Shuffle) => invoke<void>("set_shuffle", { shuffle }),
   setVolume: (volume: number) => invoke<void>("set_volume", { volume }),
+  setTempo: (percent: number) => invoke<void>("set_tempo", { percent }),
   setProfile: (profile: Profile, noise: boolean) =>
     invoke<void>("set_profile", { profile, noise }),
   setChannelVolume: (channel: number, volume: number) =>

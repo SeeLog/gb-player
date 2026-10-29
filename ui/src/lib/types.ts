@@ -95,6 +95,8 @@ export interface Library {
   autoNext: boolean;
   shuffle: Shuffle;
   volume: number;
+  /** The tempo games' songs play at, in percent of their own. */
+  tempo: number;
   profile: Profile;
   /** Whether the speaker plays the console's own noise too. */
   speakerNoise: boolean;
@@ -124,9 +126,12 @@ export interface Tick {
   queue: { playlist: string; position: number } | null;
   state: PlayState;
   failure: string | null;
-  /** Seconds since the song started. */
+  /** Seconds since the song started, as the song counts them: at another tempo they go by
+   * faster or slower, as do the lengths. */
   position: number;
   length: Length;
+  /** The tempo the song plays at, in percent of its own; 100 for audio files. */
+  tempo: number;
   levels: [number, number, number, number];
   scope: number[];
 }

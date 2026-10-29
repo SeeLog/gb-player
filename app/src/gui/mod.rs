@@ -120,6 +120,7 @@ pub fn run(initial_rom: Option<PathBuf>, language: Option<String>) {
             commands::set_auto_next,
             commands::set_shuffle,
             commands::set_volume,
+            commands::set_tempo,
             commands::set_profile,
             commands::set_channel_volume,
             commands::set_muted,

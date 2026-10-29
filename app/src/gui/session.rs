@@ -8,7 +8,7 @@ use std::sync::PoisonError;
 use gb_music::songdb::{Names, LANGUAGES};
 use gb_music::{
     frames_to_secs, is_audio, read_rom, track, Driver, PlayState, Player, Profile, Song,
-    SongLength, FRAME_RATE,
+    SongLength, FRAME_RATE, TEMPO_RANGE,
 };
 
 use super::playlists::{self, Entry, Playlist};
@@ -410,6 +410,7 @@ impl Session {
             return false;
         };
         next.volume = self.settings.volume;
+        next.set_tempo(self.settings.tempo);
         next.set_profile(self.settings.profile, self.settings.speaker_noise);
         for (ch, &m) in self.muted.iter().enumerate() {
             next.set_muted(ch, m);
@@ -768,6 +769,13 @@ impl Session {
         self.with_player(|p| p.volume = volume);
     }
 
+    /// Play games' songs at `percent` of their own tempo; audio files keep theirs.
+    pub fn set_tempo(&mut self, percent: u32) {
+        let percent = percent.clamp(*TEMPO_RANGE.start(), *TEMPO_RANGE.end());
+        self.settings.tempo = percent;
+        self.with_player(|p| p.set_tempo(percent));
+    }
+
     pub fn set_profile(&mut self, profile: Profile, noise: bool) {
         self.settings.profile = profile;
         self.settings.speaker_noise = noise;
@@ -856,6 +864,10 @@ impl Session {
             auto_next: self.settings.auto_next,
             shuffle: self.settings.shuffle,
             volume: self.settings.volume,
+            tempo: self
+                .settings
+                .tempo
+                .clamp(*TEMPO_RANGE.start(), *TEMPO_RANGE.end()),
             profile: self.settings.profile,
             speaker_noise: self.settings.speaker_noise,
             channel_volumes: self.settings.channel_volumes,
@@ -1251,6 +1263,7 @@ impl Session {
                 p.position_frames(),
                 p.length(),
                 p.take_levels(),
+                p.tempo(),
             )
         });
         let scope = {
@@ -1258,7 +1271,7 @@ impl Session {
             let skip = samples.len().saturating_sub(SCOPE_POINTS);
             samples.iter().skip(skip).copied().collect()
         };
-        let Some((current, state, paused, pos, length, levels)) = info else {
+        let Some((current, state, paused, pos, length, levels, tempo)) = info else {
             let view = TickView {
                 rom: None,
                 current: None,
@@ -1267,6 +1280,7 @@ impl Session {
                 failure: None,
                 position: 0.0,
                 length: LengthView::Unknown,
+                tempo: 100,
                 levels: [0.0; 4],
                 scope,
             };
@@ -1300,6 +1314,7 @@ impl Session {
             failure,
             position: frames_to_secs(pos),
             length: length.into(),
+            tempo,
             levels: self.levels,
             scope,
         };

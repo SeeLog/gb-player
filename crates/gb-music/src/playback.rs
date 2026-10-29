@@ -179,33 +179,56 @@ impl Playback {
     /// like a real one counting up to overflow. All updates of a frame share one budget.
     /// Returns how many updates ran.
     pub fn run_frame(&self, m: &mut Machine, phase: &mut u32) -> Result<u32, CallError> {
+        self.run_scaled(m, phase, CYCLES_PER_FRAME)
+    }
+
+    /// Play one video frame of real time during which `music` T-cycles pass on the clock that
+    /// schedules the updates, which changes the tempo without changing the pitch: the APU
+    /// runs in real time, so the notes keep their frequencies, while the updates that step
+    /// through the score come more or less often. [`Playback::run_frame`] is `music` =
+    /// [`CYCLES_PER_FRAME`]. `phase` is kept on the music clock, so the tempo can change from
+    /// one frame to the next without a jump: for a timer the T-cycles since the last update,
+    /// for VBlank those until the next one (0 with a new song, which starts with an update).
+    pub fn run_scaled(
+        &self,
+        m: &mut Machine,
+        phase: &mut u32,
+        music: u32,
+    ) -> Result<u32, CallError> {
+        let period = match self.rate {
+            Rate::VBlank => CYCLES_PER_FRAME,
+            Rate::Timer { period } => period,
+        };
+        let (real, music) = (CYCLES_PER_FRAME as u64, music.max(1) as u64);
+        // The real T-cycle into the frame at which music T-cycle `x` comes, and back.
+        let to_real = |x: u64| (x * real).div_ceil(music);
+        let to_music = |r: u64| r * music / real;
+        // Music T-cycle into the frame at which the next update is due.
+        let mut due = match self.rate {
+            Rate::VBlank => *phase as u64,
+            Rate::Timer { .. } => period.saturating_sub(*phase) as u64,
+        };
+        let most = MAX_UPDATES_PER_FRAME * music.div_ceil(real) as u32;
+        let mut at = 0;
         let mut updates = 0;
-        match self.rate {
-            Rate::VBlank => {
-                let spent = self.update(m)?;
-                m.idle(CYCLES_PER_FRAME.saturating_sub(spent));
-                updates = 1;
-            }
-            Rate::Timer { period } => {
-                let mut left = CYCLES_PER_FRAME;
-                let mut budget = UPDATE_BUDGET;
-                while updates < MAX_UPDATES_PER_FRAME {
-                    let wait = period.saturating_sub(*phase);
-                    if wait >= left {
-                        break;
-                    }
-                    m.idle(wait);
-                    left -= wait;
-                    let spent = self.update_within(m, budget)?;
-                    budget = budget.saturating_sub(spent);
-                    *phase = spent;
-                    left = left.saturating_sub(spent);
-                    updates += 1;
-                }
-                m.idle(left);
-                *phase = phase.saturating_add(left);
-            }
+        let mut budget = UPDATE_BUDGET;
+        while updates < most && due < music && at < real {
+            let start = to_real(due).max(at);
+            m.idle((start - at) as u32);
+            let spent = self.update_within(m, budget)?;
+            budget = budget.saturating_sub(spent);
+            at = start + spent as u64;
+            due = to_music(start) + period as u64;
+            updates += 1;
         }
+        if at < real {
+            m.idle((real - at) as u32);
+        }
+        let wait = due.saturating_sub(to_music(at.max(real))) as u32;
+        *phase = match self.rate {
+            Rate::VBlank => wait,
+            Rate::Timer { .. } => period.saturating_sub(wait),
+        };
         Ok(updates)
     }
 
@@ -367,6 +390,42 @@ mod tests {
             }
             assert_eq!(m.read(0xC000), updates as u8, "{rate:?}");
         }
+    }
+
+    #[test]
+    fn the_music_clock_sets_how_often_updates_come() {
+        for (rate, frames, updates) in [
+            (Rate::VBlank, 60, [30, 60, 90, 120]),
+            (Rate::timer(0x04, 0xF0).unwrap(), 30, [64, 128, 192, 257]),
+        ] {
+            for (percent, updates) in [50, 100, 150, 200].into_iter().zip(updates) {
+                let (mut m, playback) = counting(rate);
+                let mut phase = 0;
+                for _ in 0..frames {
+                    playback
+                        .run_scaled(&mut m, &mut phase, CYCLES_PER_FRAME / 100 * percent)
+                        .unwrap();
+                }
+                assert_eq!(m.read(0xC000), updates as u8, "{rate:?} at {percent}%");
+            }
+        }
+    }
+
+    #[test]
+    fn the_music_clock_can_change_between_frames() {
+        // Half a frame of music at 50%, then on at 200%: the next update comes half a frame
+        // of real time in, not at once or a frame late.
+        let (mut m, playback) = counting(Rate::VBlank);
+        let mut phase = 0;
+        playback
+            .run_scaled(&mut m, &mut phase, CYCLES_PER_FRAME / 2)
+            .unwrap();
+        assert_eq!(phase, CYCLES_PER_FRAME / 2);
+        playback
+            .run_scaled(&mut m, &mut phase, CYCLES_PER_FRAME * 2)
+            .unwrap();
+        assert_eq!(m.read(0xC000), 1 + 2);
+        assert_eq!(phase, CYCLES_PER_FRAME / 2);
     }
 
     #[test]
