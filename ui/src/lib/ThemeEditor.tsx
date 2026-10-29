@@ -1,6 +1,6 @@
 // The theme editor, in a window of its own beside the main window, which shows the draft live
 // while the editor is open.
-import { useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { api, onLibrary, sendThemeDraft } from "./api";
 import { translator, type Translate } from "./format";
@@ -21,6 +21,7 @@ import {
   type Draft,
 } from "./theme";
 import Tip, { Tooltips } from "./Tip";
+import { ask, Dialogs } from "./Dialog";
 import ColorPicker from "./ColorPicker";
 import Select from "./Select";
 import Slider from "./Slider";
@@ -46,6 +47,15 @@ const CONSOLES: Console[] = ["dmg", "gbc"];
 /** The most colours a sheen may run through (as in themes.rs). */
 const MAX_SHEEN_COLORS = 8;
 const mono = "font-[ui-monospace,'Cascadia_Mono',Consolas,monospace] text-xs";
+
+/** Whether two drafts are the same theme, whatever order their colours were set in. */
+function sameDraft(a: Draft, b: Draft) {
+  const sorted = (_: string, v: unknown) =>
+    v && typeof v === "object" && !Array.isArray(v)
+      ? Object.fromEntries(Object.entries(v).sort(([x], [y]) => x.localeCompare(y)))
+      : v;
+  return JSON.stringify(a, sorted) === JSON.stringify(b, sorted);
+}
 
 /** The editor's window: starts from the chosen theme and sends each change to the main window. */
 export default function ThemeEditorWindow() {
@@ -95,6 +105,7 @@ export default function ThemeEditorWindow() {
         onClose={() => getCurrentWindow().close()}
       />
       <Tooltips />
+      <Dialogs />
     </>
   );
 }
@@ -114,6 +125,28 @@ function ThemeEditor({
 }) {
   // What Reset goes back to.
   const [initial] = useState(() => structuredClone(draft));
+
+  // However the window is closed (its ×, Escape, the system, or the main window closing), it
+  // asks first when there are changes that were not saved.
+  const saved = useRef(false);
+  const latest = useRef({ unsaved: false, t });
+  latest.current = { unsaved: !saved.current && !sameDraft(draft, initial), t };
+  useEffect(() => {
+    const win = getCurrentWindow();
+    const unlisten = win.onCloseRequested(async (e) => {
+      const { unsaved, t } = latest.current;
+      if (!unsaved) return;
+      e.preventDefault();
+      const yes = await ask({
+        message: t("theme_discard_confirm"),
+        ok: t("theme_discard"),
+        cancel: t("cancel"),
+        danger: true,
+      });
+      if (yes) await win.destroy();
+    });
+    return () => void unlisten.then((f) => f());
+  }, []);
   const builtins = library.themes.filter((th) => !th.custom);
   const baseColors = useMemo(() => paletteColors(draft.base), [draft.base]);
   /** Text being typed into a colour field, which may not be a colour yet. */
@@ -193,6 +226,7 @@ function ThemeEditor({
     setError(null);
     try {
       await api.saveTheme(draft);
+      saved.current = true;
       onClose();
     } catch (e) {
       setError(String(e));
@@ -378,6 +412,7 @@ function ThemeEditor({
                     hex={parts.hex}
                     onChange={(hex) => setPart(token, { hex })}
                     label={token}
+                    t={t}
                   />
                   <Tip text={`${t("theme_opacity")} ${Math.round(parts.alpha * 100)}%`}>
                     <Slider
@@ -462,6 +497,10 @@ function SheenSection({
   const shown = sheen ?? base ?? { colors: [], angle: 115 };
   const colors = shown.colors;
   const setColors = (colors: string[]) => onChange({ ...shown, colors });
+  const setColor = (i: number, color: string) =>
+    setColors(colors.map((c, j) => (j === i ? color : c)));
+  /** Text being typed into a colour's field, which may not be a colour yet, by its place. */
+  const [typing, setTyping] = useState<Record<number, string>>({});
   return (
     <section className="flex flex-col gap-1.5">
       <h3 className={heading}>{t("theme_sheen")}</h3>
@@ -471,25 +510,42 @@ function SheenSection({
             className="h-6 rounded-[7px] border border-line"
             style={{ background: sheenGradient(shown) }}
           />
-          <div className="flex flex-wrap items-center gap-1.5">
+          <div className="flex flex-col gap-1">
             {colors.map((color, i) => {
               const parts = splitColor(color);
+              const label = t("theme_sheen_color", { n: i + 1 });
+              const text = typing[i];
+              const bad = text !== undefined && !isColor(text);
               return (
-                <div key={i} className="flex items-center">
+                <div key={i} className="grid grid-cols-[30px_112px_22px] items-center gap-1.5">
                   <ColorPicker
                     hex={parts.hex}
-                    onChange={(hex) =>
-                      setColors(colors.map((c, j) => (j === i ? joinColor(hex, parts.alpha) : c)))
-                    }
-                    label={t("theme_sheen_color", { n: i + 1 })}
+                    onChange={(hex) => setColor(i, joinColor(hex, parts.alpha))}
+                    label={label}
+                    t={t}
+                  />
+                  <input
+                    className={`${fieldBase} ${mono} h-[26px] ${bad ? "border-danger" : "border-line"}`}
+                    value={text ?? color}
+                    onChange={(e) => {
+                      const text = e.currentTarget.value;
+                      setTyping({ ...typing, [i]: text });
+                      if (isColor(text)) setColor(i, text.trim());
+                    }}
+                    onBlur={() => setTyping({})}
+                    spellCheck={false}
+                    aria-label={label}
                   />
                   <Tip text={t("theme_sheen_remove")}>
                     <button
-                      className={`${iconButton} size-[18px]`}
-                      onClick={() => setColors(colors.filter((_, j) => j !== i))}
+                      className={`${iconButton} size-[22px]`}
+                      onClick={() => {
+                        setTyping({});
+                        setColors(colors.filter((_, j) => j !== i));
+                      }}
                       aria-label={t("theme_sheen_remove")}
                     >
-                      <Icon name="close" size={12} />
+                      <Icon name="close" size={14} />
                     </button>
                   </Tip>
                 </div>

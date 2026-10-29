@@ -15,6 +15,7 @@ export default function Slider({
   max = 1,
   step = 0.01,
   small = false,
+  track,
   className = "",
   ...passed
 }: Passed & {
@@ -27,6 +28,8 @@ export default function Slider({
   step?: number;
   /** A thinner track and thumb, for a channel or a colour. */
   small?: boolean;
+  /** A background for the whole track in place of the fill, such as the range of a colour. */
+  track?: string;
   className?: string;
 }) {
   return (
@@ -42,9 +45,12 @@ export default function Slider({
       {/* The control is taller than the track, so it is easy to grab. */}
       <Base.Control className="group flex cursor-pointer touch-none items-center py-1.5 select-none">
         <Base.Track
-          className={`w-full rounded-full bg-panel-2 shadow-[inset_0_0_0_1px_var(--line)] ${small ? "h-1" : "h-1.5"}`}
+          className={`w-full rounded-full bg-panel-2 shadow-[inset_0_0_0_1px_var(--line)] ${
+            track ? "h-2" : small ? "h-1" : "h-1.5"
+          }`}
+          style={track ? { background: track } : undefined}
         >
-          <Base.Indicator className="rounded-full bg-accent" />
+          {!track && <Base.Indicator className="rounded-full bg-accent" />}
           <Base.Thumb
             aria-label={label}
             className={`rounded-full bg-knob shadow-[0_1px_3px_rgba(0,0,0,0.3)] transition-transform group-hover:scale-115 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-accent motion-reduce:transition-none ${

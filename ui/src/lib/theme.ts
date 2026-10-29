@@ -216,6 +216,38 @@ export function joinColor(hex: string, alpha: number): string {
   return alpha >= 1 ? hex : hex + hex2(alpha * 255);
 }
 
+/** A colour's hue (0 to 360), saturation and lightness (0 to 100). */
+export interface Hsl {
+  h: number;
+  s: number;
+  l: number;
+}
+
+/** `#rrggbb` as hue, saturation and lightness. */
+export function toHsl(hex: string): Hsl {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  const d = max - min;
+  if (d === 0) return { h: 0, s: 0, l: l * 100 };
+  const s = d / (1 - Math.abs(2 * l - 1));
+  const h =
+    max === r ? ((g - b) / d + 6) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return { h: h * 60, s: s * 100, l: l * 100 };
+}
+
+/** Hue, saturation and lightness as `#rrggbb`. */
+export function fromHsl({ h, s, l }: Hsl): string {
+  const sat = s / 100;
+  const light = l / 100;
+  const f = (n: number) => {
+    const k = (n + h / 30) % 12;
+    return light - sat * Math.min(light, 1 - light) * Math.max(-1, Math.min(k - 3, 9 - k, 1));
+  };
+  return "#" + [f(0), f(8), f(4)].map((v) => hex2(v * 255)).join("");
+}
+
 /** Whether `value` is a colour themes.rs accepts (hex, or rgb()/hsl() with numbers). */
 export function isColor(value: string): boolean {
   const v = value.trim();
