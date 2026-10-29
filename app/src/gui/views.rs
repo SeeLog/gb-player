@@ -114,6 +114,8 @@ pub struct LibraryView {
     pub mini: bool,
     /// Whether the mini player stays above other windows.
     pub mini_on_top: bool,
+    /// Whether the mini player's screen shows the notes instead of the oscilloscope.
+    pub mini_notes: bool,
     pub error: Option<String>,
 }
 
@@ -135,4 +137,11 @@ pub struct TickView {
     pub levels: [f32; 4],
     /// The latest output samples, oldest first.
     pub scope: Vec<f32>,
+    /// What the four channels played in each frame since the last tick, oldest first; empty
+    /// for audio files.
+    pub notes: Vec<[NoteView; 4]>,
 }
+
+/// What a channel played in a frame: its MIDI note (for the noise, the note of its clock), its
+/// volume from 0 (silent) to 15, and whether it was keyed on in that frame.
+pub type NoteView = (u8, u8, bool);

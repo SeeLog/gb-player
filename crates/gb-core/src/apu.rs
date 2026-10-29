@@ -25,6 +25,40 @@ const READ_MASKS: [u8; 0x20] = [
     0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
 ];
 
+/// What a channel plays, read from its registers and state, for showing the notes.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct ChannelState {
+    /// Whether it can be heard: on, with its DAC on, a volume above 0 and sent to a speaker.
+    pub sounding: bool,
+    /// The 11-bit frequency value of NRx3/NRx4 (after the sweep), or NR43 for the noise.
+    pub freq: u16,
+    /// 0 to 15: the envelope, or for the wave channel its output level (15, 7 or 3).
+    pub volume: u8,
+    /// Counts the times the channel has been triggered (key-on), wrapping round.
+    pub triggers: u8,
+}
+
+impl ChannelState {
+    /// The pitch in Hz of `channel` (0 to 3): the tone of a pulse or the wave channel, the
+    /// clock of the noise channel's shift register.
+    pub fn hz(&self, channel: usize) -> f64 {
+        let x = 2048.0 - (self.freq & 0x7FF) as f64;
+        match channel {
+            0 | 1 => 131_072.0 / x,
+            2 => 65_536.0 / x,
+            _ => {
+                let divisor = NOISE_DIVISORS[(self.freq & 7) as usize] as f64;
+                CPU_CLOCK as f64 / (divisor * (1u32 << (self.freq >> 4)) as f64)
+            }
+        }
+    }
+}
+
+/// The MIDI note nearest to `hz`, 69 being A4 (440 Hz).
+pub fn midi_note(hz: f64) -> i32 {
+    (69.0 + 12.0 * (hz / 440.0).log2()).round() as i32
+}
+
 #[derive(Default, Clone)]
 struct Envelope {
     initial: u8,
@@ -352,6 +386,8 @@ pub struct Apu {
     levels: [f32; 4],
     /// When false, no samples are produced and channels are stepped in large chunks.
     output_enabled: bool,
+    /// Key-ons per channel, wrapping round (see [`ChannelState::triggers`]).
+    triggers: [u8; 4],
 }
 
 impl Apu {
@@ -379,6 +415,7 @@ impl Apu {
             out: Vec::with_capacity(4096),
             levels: [0.0; 4],
             output_enabled: true,
+            triggers: [0; 4],
         };
         apu.set_sample_rate(sample_rate);
         apu
@@ -420,6 +457,39 @@ impl Apu {
 
     pub fn take_levels(&mut self) -> [f32; 4] {
         std::mem::take(&mut self.levels)
+    }
+
+    /// What each channel plays now; cheap enough to take every frame.
+    pub fn channel_states(&self) -> [ChannelState; 4] {
+        let wave_volume = [0, 15, 7, 3][self.ch3.volume_code as usize];
+        let states = [
+            (
+                self.ch1.enabled && self.ch1.dac,
+                self.ch1.freq,
+                self.ch1.env.volume,
+            ),
+            (
+                self.ch2.enabled && self.ch2.dac,
+                self.ch2.freq,
+                self.ch2.env.volume,
+            ),
+            (self.ch3.enabled && self.ch3.dac, self.ch3.freq, wave_volume),
+            (
+                self.ch4.enabled && self.ch4.dac,
+                self.regs[0x12] as u16,
+                self.ch4.env.volume,
+            ),
+        ];
+        let nr51 = self.regs[0x15];
+        std::array::from_fn(|i| {
+            let (on, freq, volume) = states[i];
+            ChannelState {
+                sounding: self.power && on && volume > 0 && nr51 & (0x11 << i) != 0,
+                freq,
+                volume,
+                triggers: self.triggers[i],
+            }
+        })
     }
 
     pub fn read(&self, addr: u16) -> u8 {
@@ -502,6 +572,7 @@ impl Apu {
                 self.ch1.freq = (self.ch1.freq & 0xFF) | ((v as u16 & 7) << 8);
                 self.ch1.length_enable = v & 0x40 != 0;
                 if v & 0x80 != 0 {
+                    self.triggers[0] = self.triggers[0].wrapping_add(1);
                     self.ch1.trigger(true);
                 }
             }
@@ -521,6 +592,7 @@ impl Apu {
                 self.ch2.freq = (self.ch2.freq & 0xFF) | ((v as u16 & 7) << 8);
                 self.ch2.length_enable = v & 0x40 != 0;
                 if v & 0x80 != 0 {
+                    self.triggers[1] = self.triggers[1].wrapping_add(1);
                     self.ch2.trigger(false);
                 }
             }
@@ -537,6 +609,7 @@ impl Apu {
                 self.ch3.freq = (self.ch3.freq & 0xFF) | ((v as u16 & 7) << 8);
                 self.ch3.length_enable = v & 0x40 != 0;
                 if v & 0x80 != 0 {
+                    self.triggers[2] = self.triggers[2].wrapping_add(1);
                     self.ch3.trigger();
                 }
             }
@@ -556,6 +629,7 @@ impl Apu {
             0xFF23 => {
                 self.ch4.length_enable = v & 0x40 != 0;
                 if v & 0x80 != 0 {
+                    self.triggers[3] = self.triggers[3].wrapping_add(1);
                     self.ch4.trigger();
                 }
             }
@@ -736,6 +810,61 @@ mod tests {
         assert!((half / full - 0.5).abs() < 0.01, "{half} / {full}");
         assert!((half_level / full_level - 0.5).abs() < 0.01);
         assert_eq!(peak(0.0), (0.0, 0.0));
+    }
+
+    #[test]
+    fn frequencies_map_to_the_nearest_note() {
+        let note = |channel: usize, freq: u16| {
+            midi_note(
+                ChannelState {
+                    freq,
+                    ..ChannelState::default()
+                }
+                .hz(channel),
+            )
+        };
+        // 131072/(2048-1750) = 439.8 Hz: A4. The wave channel plays an octave lower.
+        assert_eq!(note(0, 1750), 69);
+        assert_eq!(note(1, 1750), 69);
+        assert_eq!(note(2, 1750), 57);
+        // 524.3 Hz: C5, and 64 Hz at the bottom of the range: C2.
+        assert_eq!(note(0, 1798), 72);
+        assert_eq!(note(0, 0), 36);
+        // A quarter tone either side rounds to the nearer note.
+        assert_eq!(midi_note(440.0 * 2f64.powf(0.49 / 12.0)), 69);
+        assert_eq!(midi_note(440.0 * 2f64.powf(0.51 / 12.0)), 70);
+        // Noise: 4194304/(8 << 2) = 131072 Hz, the clock of NR43 = $20.
+        assert_eq!(
+            ChannelState {
+                freq: 0x20,
+                ..ChannelState::default()
+            }
+            .hz(3),
+            131_072.0
+        );
+    }
+
+    #[test]
+    fn channel_states_show_what_sounds() {
+        let mut apu = Apu::new(48_000);
+        apu.write(0xFF26, 0x80);
+        apu.write(0xFF25, 0x11);
+        apu.write(0xFF12, 0xA0);
+        apu.write(0xFF13, 0xD6);
+        apu.write(0xFF14, 0x86);
+        let s = apu.channel_states();
+        assert_eq!(s[0].freq, 0x6D6);
+        assert_eq!(s[0].volume, 10);
+        assert_eq!(s[0].triggers, 1);
+        assert!(s[0].sounding);
+        assert!(!s[1].sounding);
+        // Not sent to either speaker.
+        apu.write(0xFF25, 0x22);
+        assert!(!apu.channel_states()[0].sounding);
+        // The DAC off.
+        apu.write(0xFF25, 0x11);
+        apu.write(0xFF12, 0x00);
+        assert!(!apu.channel_states()[0].sounding);
     }
 
     #[test]

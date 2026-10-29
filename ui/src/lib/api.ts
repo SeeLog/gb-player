@@ -73,6 +73,8 @@ export const api = {
   /** Turn the window into the mini player, or back into the full window. */
   setMini: (on: boolean) => invoke<void>("set_mini", { on }),
   setMiniOnTop: (on: boolean) => invoke<void>("set_mini_on_top", { on }),
+  /** Show the notes on the mini player's screen instead of the oscilloscope. */
+  setMiniNotes: (on: boolean) => invoke<void>("set_mini_notes", { on }),
 };
 
 export const onLibrary = (f: (l: Library) => void): Promise<UnlistenFn> =>

@@ -4,7 +4,7 @@ use std::fmt;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use gb_core::{CallError, CartridgeError, Machine};
+use gb_core::{CallError, CartridgeError, ChannelState, Machine};
 
 use crate::driver::{Driver, Song};
 use crate::effects::{Chain, Profile};
@@ -41,6 +41,9 @@ impl From<CartridgeError> for LoadError {
 
 /// Frames between the snapshots kept for seeking, about five seconds of music.
 const SNAPSHOT_INTERVAL: u32 = 300;
+
+/// Most frames of channel states kept between calls to [`Player::take_notes`].
+const MAX_NOTE_FRAMES: usize = 64;
 
 /// Most snapshots kept for one song (about 170 KiB each), enough for 20 minutes of music.
 const MAX_SNAPSHOTS: usize = 240;
@@ -208,6 +211,8 @@ pub struct Player {
     buf: Vec<f32>,
     buf_pos: usize,
     levels: [f32; 4],
+    /// What the channels played at the end of each frame since the last [`Player::take_notes`].
+    notes: Vec<[ChannelState; 4]>,
 }
 
 impl Player {
@@ -285,6 +290,7 @@ impl Player {
             buf: Vec::new(),
             buf_pos: 0,
             levels: [0.0; 4],
+            notes: Vec::new(),
         }
     }
 
@@ -380,6 +386,12 @@ impl Player {
     /// Peak level of each channel since the last call, for meters.
     pub fn take_levels(&mut self) -> [f32; 4] {
         std::mem::take(&mut self.levels)
+    }
+
+    /// What the APU's channels played at the end of each frame since the last call, oldest
+    /// first, for showing the notes; empty for audio files.
+    pub fn take_notes(&mut self) -> Vec<[ChannelState; 4]> {
+        std::mem::take(&mut self.notes)
     }
 
     /// Where the sound comes out, and whether the console's own noise comes with it.
@@ -479,6 +491,10 @@ impl Player {
                 for (a, b) in self.levels.iter_mut().zip(lv) {
                     *a = a.max(b);
                 }
+                if self.notes.len() == MAX_NOTE_FRAMES {
+                    self.notes.remove(0);
+                }
+                self.notes.push(g.machine.mem.apu.channel_states());
                 g.machine.mem.apu.take_samples()
             }
             Source::Files(f) => {

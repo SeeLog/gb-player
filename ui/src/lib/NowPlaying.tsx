@@ -12,6 +12,7 @@ import { describe, fmtTime, type Translate } from "./format";
 import type { Length, Library, Profile, Shuffle, SongView } from "./types";
 import Icon from "./Icon";
 import Marquee from "./Marquee";
+import Notes from "./Notes";
 import Scope from "./Scope";
 import VolumeSlider from "./Slider";
 import Tip from "./Tip";
@@ -141,6 +142,12 @@ function Lcd({ library, t, volume }: { library: Library; t: Translate; volume: n
       <div className="mt-1.5 h-[72px]">
         <Scope volume={volume} />
       </div>
+      {/* Audio files have no channels to show. */}
+      {!library.roms.find((r) => r.id === rom)?.folder && (
+        <div className="mt-1 h-[84px]">
+          <Notes muted={library.muted} />
+        </div>
+      )}
     </div>
   );
 }

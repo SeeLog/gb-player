@@ -367,6 +367,15 @@ pub fn set_mini_on_top(
     result.map_err(|e| e.to_string())
 }
 
+/// Show the notes on the mini player's screen instead of the oscilloscope, or not.
+#[tauri::command]
+pub fn set_mini_notes(handle: AppHandle, app: State<'_, App>, on: bool) {
+    let mut s = app.lock();
+    s.mini().notes = on;
+    s.save_settings();
+    emit_library(&handle, &s);
+}
+
 #[tauri::command]
 pub fn set_language(handle: AppHandle, app: State<'_, App>, language: String) {
     let mut s = app.lock();

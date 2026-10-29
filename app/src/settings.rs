@@ -47,6 +47,8 @@ pub struct Mini {
     pub on: bool,
     /// Whether the mini player stays above other windows.
     pub on_top: bool,
+    /// Whether the mini player's screen shows the notes instead of the oscilloscope.
+    pub notes: bool,
     /// Where the mini player was (its size is fixed).
     pub bounds: Option<Bounds>,
     /// Where the full window was before it became the mini player, to go back to.
@@ -58,6 +60,7 @@ impl Default for Mini {
         Mini {
             on: false,
             on_top: true,
+            notes: false,
             bounds: None,
             full: None,
         }
@@ -208,6 +211,7 @@ mod tests {
             mini: Mini {
                 on: true,
                 on_top: false,
+                notes: true,
                 bounds: Some(Bounds {
                     x: -1200,
                     y: 40,

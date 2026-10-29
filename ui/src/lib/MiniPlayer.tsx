@@ -16,6 +16,7 @@ import type { Console, Library, Shuffle } from "./types";
 import Icon from "./Icon";
 import Marquee from "./Marquee";
 import { Progress, useSong } from "./NowPlaying";
+import Notes from "./Notes";
 import Scope from "./Scope";
 import { contrast, paletteColors, splitColor } from "./theme";
 import Tip from "./Tip";
@@ -235,6 +236,9 @@ function Screen({
   const game = library.roms.find((r) => r.id === rom)?.game;
   const playing = state === "playing";
   const dmg = model === "dmg";
+  // Audio files have no channels to show.
+  const channels = !library.roms.find((r) => r.id === rom)?.folder;
+  const notes = channels && library.miniNotes;
   return (
     // A thick frame as on the console: the screen takes two thirds of its width. On the first
     // model the margin below is the deepest, under the big rounded corner; on the colour one the
@@ -304,9 +308,22 @@ function Screen({
               <Marquee text={song?.title ?? t("not_playing")} />
             </div>
           </Tip>
-          <div className="min-h-0 flex-1">
-            <Scope volume={volume} />
-          </div>
+          {/* A click switches between the waveform and the notes; it does not drag the window. */}
+          <Tip text={channels ? t(notes ? "show_scope" : "show_notes") : undefined}>
+            <button
+              className="min-h-0 flex-1 cursor-pointer disabled:cursor-default"
+              data-tauri-drag-region="false"
+              disabled={!channels}
+              onClick={() => api.setMiniNotes(!library.miniNotes)}
+              aria-label={channels ? t(notes ? "show_scope" : "show_notes") : undefined}
+            >
+              {notes ? (
+                <Notes muted={library.muted} frameWidth={1} labels={false} />
+              ) : (
+                <Scope volume={volume} />
+              )}
+            </button>
+          </Tip>
           {/* Clicks on the bar seek rather than drag the window. */}
           <div data-tauri-drag-region="false">
             <Progress library={library} t={t} lcd />
