@@ -39,6 +39,8 @@ pub struct Settings {
     /// The id of the playlist shown instead of the ROM's songs.
     pub open_playlist: Option<String>,
     pub mini: Mini,
+    /// The folder songs were last exported to.
+    pub export_dir: Option<PathBuf>,
 }
 
 /// The mini player: the window shrunk to a strip with the song and the transport.
@@ -144,6 +146,7 @@ impl Default for Settings {
             last_song: None,
             last_entry: None,
             open_playlist: None,
+            export_dir: None,
             mini: Mini::default(),
         }
     }
@@ -212,6 +215,7 @@ mod tests {
                 position: 2,
             }),
             open_playlist: Some("a1".into()),
+            export_dir: Some(PathBuf::from("C:/music")),
             mini: Mini {
                 on: true,
                 on_top: false,

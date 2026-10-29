@@ -156,3 +156,35 @@ export type Relink =
   | { kind: "failed"; message: string }
   /** A different ROM than the entry's: taken only once the user agrees. */
   | { kind: "mismatch"; message: string; path: string };
+
+/** What to export (see app/src/gui/export.rs): songs of an open ROM or entries of a playlist,
+ * all of them for `null`. */
+export type ExportTarget =
+  | { kind: "rom"; rom: string; songs: number[] | null }
+  | { kind: "playlist"; id: string; positions: number[] | null };
+
+/** What the export dialog starts with. */
+export interface ExportPlan {
+  songs: number;
+  /** How many of them have channels to write stems of (not audio files). */
+  withChannels: number;
+  /** The player's loop count; `null` loops forever. */
+  loopCount: number | null;
+  loops: number;
+  profile: Profile;
+  noise: boolean;
+  /** The folder of the last export, if it is still there. */
+  dir: string | null;
+}
+
+/** The progress of an export, sent as it goes. */
+export type ExportProgress =
+  | { state: "running"; done: number; total: number; title: string; fraction: number }
+  | {
+      state: "ended";
+      written: number;
+      total: number;
+      cancelled: boolean;
+      errors: string[];
+      dir: string;
+    };

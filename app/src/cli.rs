@@ -1,9 +1,10 @@
 //! Command-line helpers for checking a ROM without the GUI.
 //!
 //!   gb-player --info <rom>                      list detected songs and their loop points
-//!   gb-player --wav <rom> <song#> <out.wav> [loops] [line|gbc-speaker]
+//!   gb-player --wav <rom> <song#> <out.wav> [loops] [line|gbc-speaker] [stems]
 //!                                               render a song to a WAV file, from the line out
-//!                                               (the default) or a GBC's speaker
+//!                                               (the default) or a GBC's speaker; `stems`
+//!                                               adds a file per channel
 //!
 //! An audio file can stand in for the ROM, as a ROM with that one song.
 //!
@@ -11,18 +12,14 @@
 //! and the song names; the default is the OS language.
 
 use std::ffi::OsString;
-use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::AtomicBool;
 
 use gb_music::songdb::Names;
-use gb_music::{
-    analyze, frames_to_secs, is_audio, read_rom, track, PlayState, Player, Profile, SongLength,
-    ANALYSIS_FRAMES,
-};
+use gb_music::{frames_to_secs, Player, Profile, SongLength};
 
+use crate::export::{self, length_of, Options, Part, Source};
 use crate::i18n::Text;
-
-const RATE: u32 = 44_100;
 
 pub fn run(args: &[OsString], language: &str) -> i32 {
     let a: Vec<String> = args
@@ -32,14 +29,7 @@ pub fn run(args: &[OsString], language: &str) -> i32 {
     let t = Text::new(language);
     let result = match a.first().map(String::as_str) {
         Some("--info") if a.len() == 2 => info(&t, &a[1]),
-        Some("--wav") if (4..=6).contains(&a.len()) => wav(
-            &t,
-            &a[1],
-            &a[2],
-            &a[3],
-            a.get(4).map(String::as_str),
-            a.get(5).map(String::as_str),
-        ),
+        Some("--wav") if (4..=7).contains(&a.len()) => wav(&t, &a[1], &a[2], &a[3], &a[4..]),
         _ => Err(t.get("usage").to_string()),
     };
     match result {
@@ -51,18 +41,16 @@ pub fn run(args: &[OsString], language: &str) -> i32 {
     }
 }
 
-/// Load `path` and look up its names in the output language.
-fn load(t: &Text, path: &str) -> Result<(Player, Names), String> {
-    if is_audio(Path::new(path)) {
-        let track = track::probe(Path::new(path)).map_err(|e| format!("{path}: {e}"))?;
+/// A player of `source`, and its names in the output language.
+fn load(t: &Text, source: &Source) -> Result<(Player, Names), String> {
+    let player = source.player()?;
+    if let Source::Audio(track) = source {
         let names = Names {
             game: track.album.clone().unwrap_or_default(),
             songs: vec![track.title.clone()],
         };
-        return Ok((Player::files(vec![track], RATE), names));
+        return Ok((player, names));
     }
-    let rom = read_rom(Path::new(path)).map_err(|e| format!("{path}: {e}"))?;
-    let player = Player::new(rom, RATE).map_err(|e| e.to_string())?;
     let driver = player.driver().expect("a ROM's player has a driver");
     let (names, warnings) = Names::new(driver, t.language());
     for warning in warnings {
@@ -86,18 +74,8 @@ fn secs(frames: u32) -> String {
     format!("{:.2}", frames_to_secs(frames))
 }
 
-/// The length of `song`: analysed for a ROM, as the file says for an audio file.
-fn length_of(player: &Player, song: &gb_music::Song) -> Result<SongLength, String> {
-    match (player.rom(), player.driver()) {
-        (Some(rom), Some(driver)) => {
-            analyze(&rom, driver, song, ANALYSIS_FRAMES).map_err(|e| e.to_string())
-        }
-        _ => Ok(song.length.unwrap_or(SongLength::Unknown)),
-    }
-}
-
 fn info(t: &Text, path: &str) -> Result<(), String> {
-    let (player, names) = load(t, path)?;
+    let (player, names) = load(t, &Source::open(Path::new(path))?)?;
     println!("{} ({})", names.game, player.title().unwrap_or(path));
     if let Some(driver) = player.driver() {
         println!("engine: {:04X?}", driver.engine);
@@ -125,21 +103,26 @@ fn info(t: &Text, path: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn wav(
-    t: &Text,
-    path: &str,
-    song: &str,
-    out: &str,
-    loops: Option<&str>,
-    profile: Option<&str>,
-) -> Result<(), String> {
-    let profile = match profile {
-        None | Some("line") => Profile::Line,
-        Some("gbc-speaker") => Profile::GbcSpeaker,
-        Some(_) => return Err(t.get("err_profile").to_string()),
+fn wav(t: &Text, path: &str, song: &str, out: &str, rest: &[String]) -> Result<(), String> {
+    let mut options = Options {
+        loops: 2,
+        profile: Profile::Line,
+        noise: true,
     };
-    let (mut player, names) = load(t, path)?;
-    player.set_profile(profile, true);
+    let mut stems = false;
+    for arg in rest {
+        match arg.as_str() {
+            "line" => options.profile = Profile::Line,
+            "gbc-speaker" => options.profile = Profile::GbcSpeaker,
+            "stems" => stems = true,
+            n if n.starts_with(|c: char| c.is_ascii_digit()) => {
+                options.loops = n.parse().map_err(|_| t.get("err_loops"))?
+            }
+            _ => return Err(t.get("err_wav_arg").to_string()),
+        }
+    }
+    let source = Source::open(Path::new(path))?;
+    let (player, names) = load(t, &source)?;
     let index = song
         .parse::<usize>()
         .map_err(|_| t.get("err_song_number"))?
@@ -150,63 +133,57 @@ fn wav(
         .get(index)
         .ok_or(t.get("err_no_song"))?
         .clone();
+    if stems && player.driver().is_none() {
+        return Err(t.get("err_stems_audio").to_string());
+    }
     let length = length_of(&player, &s)?;
-    player.play(index);
-    player.loop_count = Some(
-        loops
-            .map_or(Ok(2), str::parse)
-            .map_err(|_| t.get("err_loops"))?,
-    );
-    player.set_length(index, length);
+    let parts = if stems {
+        Part::with_stems(&options)
+    } else {
+        vec![Part::Mix]
+    };
+    // The stems go next to the mix: `out - Pulse 1.wav`.
+    let out = PathBuf::from(out);
+    let stem = out.file_stem().unwrap_or_default().to_string_lossy();
+    let files: Vec<(Part, PathBuf)> = parts
+        .iter()
+        .map(|&part| match part.text_key() {
+            None => (part, out.clone()),
+            Some(key) => (
+                part,
+                out.with_file_name(format!("{stem} - {}.wav", t.get(key))),
+            ),
+        })
+        .collect();
     if length == SongLength::Unknown {
         eprintln!("{}", t.get("wav_no_loop"));
     }
-    let max_samples = RATE as usize * 60 * 12;
-    let mut samples = Vec::new();
-    let mut chunk = vec![0.0f32; 4096];
-    while player.state() == PlayState::Playing && samples.len() / 2 < max_samples {
-        if length == SongLength::Unknown && samples.len() / 2 >= RATE as usize * 180 {
-            break;
-        }
-        player.render(&mut chunk);
-        samples.extend_from_slice(&chunk);
+    let rendered = export::render(
+        &|| source.player(),
+        index,
+        length,
+        &options,
+        &files,
+        &AtomicBool::new(false),
+        &mut |_| {},
+    )
+    .map_err(|e| match e {
+        export::Error::Failed(e) => t.fmt("err_playback", &[("error", &e)]),
+        export::Error::Cancelled => String::new(),
+    })?;
+    let secs = format!("{:.1}", rendered.secs);
+    for (_, path) in &files {
+        println!(
+            "{}",
+            t.fmt(
+                "wav_written",
+                &[
+                    ("title", &names.song(index)),
+                    ("secs", &secs),
+                    ("path", &path.display())
+                ]
+            )
+        );
     }
-    if let PlayState::Failed(e) = player.state() {
-        return Err(t.fmt("err_playback", &[("error", &e)]));
-    }
-    write_wav(out, &samples).map_err(|e| e.to_string())?;
-    let secs = format!("{:.1}", samples.len() as f64 / 2.0 / RATE as f64);
-    println!(
-        "{}",
-        t.fmt(
-            "wav_written",
-            &[
-                ("title", &names.song(index)),
-                ("secs", &secs),
-                ("path", &out)
-            ]
-        )
-    );
     Ok(())
-}
-
-fn write_wav(path: &str, samples: &[f32]) -> std::io::Result<()> {
-    let mut f = std::io::BufWriter::new(std::fs::File::create(path)?);
-    let data_len = (samples.len() * 2) as u32;
-    f.write_all(b"RIFF")?;
-    f.write_all(&(36 + data_len).to_le_bytes())?;
-    f.write_all(b"WAVEfmt ")?;
-    f.write_all(&16u32.to_le_bytes())?;
-    f.write_all(&1u16.to_le_bytes())?; // PCM
-    f.write_all(&2u16.to_le_bytes())?; // stereo
-    f.write_all(&RATE.to_le_bytes())?;
-    f.write_all(&(RATE * 4).to_le_bytes())?;
-    f.write_all(&4u16.to_le_bytes())?;
-    f.write_all(&16u16.to_le_bytes())?;
-    f.write_all(b"data")?;
-    f.write_all(&data_len.to_le_bytes())?;
-    for s in samples {
-        f.write_all(&((s.clamp(-1.0, 1.0) * 32767.0) as i16).to_le_bytes())?;
-    }
-    f.flush()
 }

@@ -6,6 +6,9 @@ import type { Draft } from "./theme";
 import type {
   Background,
   Console,
+  ExportPlan,
+  ExportProgress,
+  ExportTarget,
   Library,
   Profile,
   Relink,
@@ -82,10 +85,20 @@ export const api = {
   setMiniOnTop: (on: boolean) => invoke<void>("set_mini_on_top", { on }),
   /** Show the notes on the mini player's screen instead of the oscilloscope. */
   setMiniNotes: (on: boolean) => invoke<void>("set_mini_notes", { on }),
+  exportPlan: (target: ExportTarget) => invoke<ExportPlan>("export_plan", { target }),
+  /** Resolves to the folder picked, or `null`. */
+  pickExportDir: (dir: string | null) => invoke<string | null>("pick_export_dir", { dir }),
+  /** Starts the export in the background; its progress comes with `onExport`. */
+  startExport: (target: ExportTarget, loops: number, stems: boolean, dir: string) =>
+    invoke<void>("start_export", { target, loops, stems, dir }),
+  cancelExport: () => invoke<void>("cancel_export"),
 };
 
 export const onLibrary = (f: (l: Library) => void): Promise<UnlistenFn> =>
   listen<Library>("library", (e) => f(e.payload));
+
+export const onExport = (f: (p: ExportProgress) => void): Promise<UnlistenFn> =>
+  listen<ExportProgress>("export", (e) => f(e.payload));
 
 export const onTick = (f: (t: Tick) => void): Promise<UnlistenFn> =>
   listen<Tick>("tick", (e) => f(e.payload));

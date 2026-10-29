@@ -6,6 +6,7 @@ mod analyzer;
 mod audio;
 mod cli;
 mod console;
+mod export;
 mod gui;
 mod i18n;
 mod settings;

@@ -5,8 +5,8 @@
 usage = """usage:
   gb-player [--lang <code>] [rom]
   gb-player [--lang <code>] --info <rom>
-  gb-player [--lang <code>] --wav <rom> <song#> <out.wav> [loops] [line|gbc-speaker]
-<rom> can also be an audio file (song 1)"""
+  gb-player [--lang <code>] --wav <rom> <song#> <out.wav> [loops] [line|gbc-speaker] [stems]
+<rom> can also be an audio file (song 1); stems also writes a file per channel"""
 info_loops = "intro {intro}s, loop {loop}s"
 info_ends = "ends at {at}s"
 info_unknown = "no loop found"
@@ -19,6 +19,8 @@ err_no_song = "no such song"
 err_loops = "loops must be a number"
 err_profile = "the output must be line or gbc-speaker"
 err_playback = "playback failed: {error}"
+err_wav_arg = "after <out.wav> come the loops, line or gbc-speaker, and stems"
+err_stems_audio = "an audio file has no channels to write stems of"
 
 # Window
 open_rom = "Open…"
@@ -184,3 +186,27 @@ history_empty = "Songs played for a few seconds appear here, latest first."
 history_remove = "Remove from history"
 history_clear = "Clear history"
 history_clear_confirm = "Clear the list of recently played songs?"
+
+# Export
+export = "Export…"
+export_title = "Export"
+export_loops = "Loops"
+export_loops_forever = "The player loops forever; the files loop this many times, then fade out."
+export_output = "Output"
+export_noise = "with the console's noise"
+export_stems = "Also write each channel"
+export_stems_hint = "Pulse 1, pulse 2, wave and noise in a file each, as long as the mix, to line up in a DAW."
+export_stems_noise = "The console's noise gets a file of its own."
+export_stems_none = "Audio files have no channels."
+export_stems_some = "Only for the {n} songs from ROMs or GBS files."
+export_folder = "Folder"
+export_folder_none = "Not chosen"
+export_choose = "Choose…"
+export_start = "Export"
+export_running = "Exporting {done}/{total}"
+export_done = "{n} songs exported"
+export_cancelled = "Export cancelled ({n} songs written)"
+export_errors = "Some songs could not be exported:"
+export_busy = "Another export is still running"
+export_no_dir = "The folder {path} is not there"
+export_console_noise = "Console noise"

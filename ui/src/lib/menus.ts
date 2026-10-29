@@ -1,9 +1,10 @@
-// What the right-click menu holds: window items on the title bar, play, copy, favourite and add
-// to a playlist on a song, Close on an open ROM, the playlist items on a playlist and its songs, and
-// playback elsewhere. Text fields keep the WebView's Cut / Copy / Paste.
+// What the right-click menu holds: window items on the title bar, play, copy, export, favourite
+// and add to a playlist on a song, Export and Close on an open ROM, the playlist items on a
+// playlist and its songs, and playback elsewhere. Text fields keep the WebView's Cut / Copy / Paste.
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { RESTART_AFTER, api, previous } from "./api";
 import { clearHistory, deletePlaylist, locateEntry } from "./actions";
+import { openExport } from "./Export";
 import type { MenuItem } from "./ContextMenu";
 import { notify } from "./Toasts";
 import type { Translate } from "./format";
@@ -42,6 +43,10 @@ export async function menuFor(
   if (library && rom && song) {
     return [
       ...songItems(rom.id, song.index, song.title, t),
+      {
+        label: t("export"),
+        onSelect: () => openExport({ kind: "rom", rom: rom.id, songs: [song.index] }, song.title),
+      },
       "separator",
       {
         label: song.favorite ? t("favorite_remove") : t("favorite_add"),
@@ -51,8 +56,17 @@ export async function menuFor(
     ];
   }
   const romItem = target.closest<HTMLElement>("[data-rom-item]")?.dataset.romItem;
-  if (romItem && library?.roms.some((r) => r.id === romItem)) {
-    return [{ label: t("rom_close"), onSelect: () => api.closeRom(romItem) }];
+  const openRom = library?.roms.find((r) => r.id === romItem);
+  if (romItem && openRom) {
+    return [
+      {
+        label: t("export"),
+        onSelect: () =>
+          openExport({ kind: "rom", rom: romItem, songs: null }, openRom.game || openRom.title),
+      },
+      "separator",
+      { label: t("rom_close"), onSelect: () => api.closeRom(romItem) },
+    ];
   }
   const entryRow = target.closest<HTMLElement>("[data-entry]");
   const listId = target.closest<HTMLElement>("[data-playlist]")?.dataset.playlist;
@@ -117,6 +131,11 @@ function entryItems(id: string, position: number, library: Library, t: Translate
               current && tick?.state === "paused" ? api.toggle() : api.playEntry(id, position),
           },
     { label: t("copy_title"), onSelect: () => copyText(entry.title, t) },
+    {
+      label: t("export"),
+      disabled: entry.missing,
+      onSelect: () => openExport({ kind: "playlist", id, positions: [position] }, entry.title),
+    },
     "separator",
     // Taking a song out of the favourites is all removing it from them does.
     ...(list.kind === "favorites"
@@ -149,10 +168,16 @@ function playlistItems(list: PlaylistView, t: Translate, actions: MenuActions): 
       api.playEntry(list.id, first);
     },
   };
-  if (list.kind === "favorites") return [play];
+  const exportAll: MenuItem = {
+    label: t("export"),
+    disabled: first < 0,
+    onSelect: () => openExport({ kind: "playlist", id: list.id, positions: null }, list.name),
+  };
+  if (list.kind === "favorites") return [play, exportAll];
   if (list.kind === "history") {
     return [
       play,
+      exportAll,
       "separator",
       {
         label: t("history_clear"),
@@ -163,6 +188,7 @@ function playlistItems(list: PlaylistView, t: Translate, actions: MenuActions): 
   }
   return [
     play,
+    exportAll,
     "separator",
     { label: t("playlist_rename"), onSelect: () => actions.renamePlaylist(list.id) },
     { label: t("playlist_delete"), onSelect: () => deletePlaylist(list.id, list.name, t) },

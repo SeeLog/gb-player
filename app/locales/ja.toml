@@ -4,8 +4,8 @@
 usage = """使い方:
   gb-player [--lang <言語コード>] [rom]
   gb-player [--lang <言語コード>] --info <rom>
-  gb-player [--lang <言語コード>] --wav <rom> <曲番号> <出力.wav> [ループ回数] [line|gbc-speaker]
-<rom> には音声ファイルも指定できます(曲番号は1)"""
+  gb-player [--lang <言語コード>] --wav <rom> <曲番号> <出力.wav> [ループ回数] [line|gbc-speaker] [stems]
+<rom> には音声ファイルも指定できます(曲番号は1)。stems を付けるとチャンネルごとのファイルも書き出します"""
 info_loops = "イントロ {intro}秒, ループ {loop}秒"
 info_ends = "{at}秒で終了"
 info_unknown = "ループ不明"
@@ -18,6 +18,8 @@ err_no_song = "その番号の曲はありません"
 err_loops = "ループ回数は数字で指定してください"
 err_profile = "出力先は line か gbc-speaker で指定してください"
 err_playback = "再生に失敗しました: {error}"
+err_wav_arg = "<出力.wav> の後に指定できるのはループ回数、line か gbc-speaker、stems です"
+err_stems_audio = "音声ファイルにはチャンネルがないため、チャンネルごとには書き出せません"
 
 # ウィンドウ
 open_rom = "開く…"
@@ -183,3 +185,27 @@ history_empty = "数秒以上再生した曲が、新しい順にここに並び
 history_remove = "履歴から外す"
 history_clear = "履歴を消去"
 history_clear_confirm = "最近再生した曲の履歴をすべて消去しますか？"
+
+# 書き出し
+export = "書き出し…"
+export_title = "書き出し"
+export_loops = "ループ回数"
+export_loops_forever = "再生は無限ループの設定です。ファイルにはこの回数ループしてからフェードアウトして書き出します。"
+export_output = "出力"
+export_noise = "本体のノイズあり"
+export_stems = "チャンネルごとにも書き出す"
+export_stems_hint = "矩形波1・矩形波2・波形メモリ・ノイズを1ファイルずつ、ミックスと同じ長さで書き出します(DAWで頭をそろえられます)。"
+export_stems_noise = "本体のノイズも別のファイルになります。"
+export_stems_none = "音声ファイルにはチャンネルがありません。"
+export_stems_some = "ROM・GBSファイルの {n} 曲だけが対象です。"
+export_folder = "書き出し先"
+export_folder_none = "未選択"
+export_choose = "選ぶ…"
+export_start = "書き出す"
+export_running = "書き出し中 {done}/{total}"
+export_done = "{n} 曲を書き出しました"
+export_cancelled = "書き出しを中止しました({n} 曲は書き出し済み)"
+export_errors = "書き出せなかった曲があります:"
+export_busy = "別の書き出しが進行中です"
+export_no_dir = "フォルダ {path} がありません"
+export_console_noise = "本体ノイズ"
