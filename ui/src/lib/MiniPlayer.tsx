@@ -96,14 +96,7 @@ export default function MiniPlayer({ library, t }: { library: Library; t: Transl
       />
       <div className="relative flex h-full flex-col px-4 pt-1 pb-3">
         <TopEdge library={library} t={t} model={model} />
-        <Screen
-          library={library}
-          t={t}
-          volume={volume}
-          flash={flash}
-          model={model}
-          logo={logo}
-        />
+        <Screen library={library} t={t} volume={volume} flash={flash} model={model} logo={logo} />
         {model === "dmg" && (
           <div className="mt-2 pl-1 text-[17px] font-bold tracking-tight italic">GB Player</div>
         )}
@@ -293,7 +286,9 @@ function Screen({
         </div>
         <div className="flex h-[156px] min-w-0 flex-1 flex-col gap-1 [text-shadow:none] bg-[linear-gradient(160deg,var(--lcd-hi),var(--lcd)_60%,var(--lcd-lo))] px-2 pt-1 pb-1.5 text-lcd-ink shadow-[inset_0_0_0_1px_var(--lcd-shadow),inset_0_2px_6px_var(--lcd-shadow)]">
           <div className="flex justify-between gap-2 text-[10px] font-bold opacity-80">
-            <span className="num">{song ? `#${String(song.index + 1).padStart(2, "0")}` : "--"}</span>
+            <span className="num">
+              {song ? `#${String(song.index + 1).padStart(2, "0")}` : "--"}
+            </span>
             <span className="truncate tracking-[0.06em] uppercase">
               {flash ?? t(`state_${state}`)}
             </span>
@@ -366,9 +361,7 @@ function CrossPad({
     "absolute grid size-[25px] place-items-center text-white/35 hover:text-white/70 active:bg-black/25";
   return (
     // On the colour model the pad's middle is a quarter of the way across, level with A and B.
-    <div
-      className={`absolute size-[75px] ${model === "dmg" ? "top-3 left-1" : "top-6 left-4"}`}
-    >
+    <div className={`absolute size-[75px] ${model === "dmg" ? "top-3 left-1" : "top-6 left-4"}`}>
       {/* On the colour model the pad sits in a dark round part a little wider than the cross,
           with a cross-shaped opening for it, and that part sits in a round hollow on rubber that
           a clear shell shows (about 1.4 times the cross). */}
@@ -568,7 +561,10 @@ function Speaker({ model }: { model: Model }) {
   }
   return (
     // Clear of the big rounded corner.
-    <div className="pointer-events-none absolute right-4 bottom-1 flex gap-[5px]" aria-hidden="true">
+    <div
+      className="pointer-events-none absolute right-4 bottom-1 flex gap-[5px]"
+      aria-hidden="true"
+    >
       {Array.from({ length: 6 }, (_, i) => (
         <span
           key={i}

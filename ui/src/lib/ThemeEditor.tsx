@@ -32,8 +32,7 @@ const heading = "mb-0.5 text-xs font-bold tracking-[0.08em] uppercase text-muted
 const fieldBase =
   "rounded-[7px] border bg-panel-2 px-2 font-normal tracking-normal normal-case text-text outline-none focus:border-accent";
 const field = `${fieldBase} h-[30px] border-line text-[13px]`;
-const buttonBase =
-  "rounded-lg border font-semibold enabled:hover:border-faint disabled:opacity-50";
+const buttonBase = "rounded-lg border font-semibold enabled:hover:border-faint disabled:opacity-50";
 const button = `${buttonBase} h-8 px-3.5 border-line bg-panel-2 text-text`;
 const smallButton = `${buttonBase} h-7 px-2.5 text-xs whitespace-nowrap border-line bg-panel-2 text-text`;
 const primaryButton = `${buttonBase} h-8 px-3.5 border-accent bg-accent text-accent-ink`;
@@ -172,8 +171,7 @@ function ThemeEditor({
   /** bg so opaque that a background image barely shows through it. */
   const bgHidesImage = splitColor(value("bg")).alpha >= 0.9;
 
-  const stopTyping = (token: string) =>
-    setTyping(({ [token]: _, ...rest }) => rest);
+  const stopTyping = (token: string) => setTyping(({ [token]: _, ...rest }) => rest);
 
   const setColor = (token: string, color: string) =>
     setDraft({ ...draft, colors: { ...draft.colors, [token]: color } });
@@ -246,10 +244,7 @@ function ThemeEditor({
       }}
     >
       {/* The window has no system frame: this bar is its title bar. */}
-      <div
-        data-tauri-drag-region
-        className="-mx-4 flex items-center justify-between px-4 pt-3"
-      >
+      <div data-tauri-drag-region className="-mx-4 flex items-center justify-between px-4 pt-3">
         <h2 className="pointer-events-none text-[15px] font-bold">{t("theme_editor")}</h2>
         <Tip text={t("theme_close")}>
           <button
@@ -467,11 +462,7 @@ function ThemeEditor({
           <button className={button} onClick={reset}>
             {t("theme_reset")}
           </button>
-          <button
-            className={primaryButton}
-            onClick={save}
-            disabled={saving || !draft.name.trim()}
-          >
+          <button className={primaryButton} onClick={save} disabled={saving || !draft.name.trim()}>
             {t("theme_save_as")}
           </button>
         </div>

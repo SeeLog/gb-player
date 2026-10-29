@@ -81,7 +81,10 @@ export default memo(function Sidebar({
               >
                 <span className="line-clamp-2 flex-1">{name}</span>
                 {playingRom === rom.id ? (
-                  <span className="eq inline-flex h-3 items-end gap-0.5 group-hover:invisible group-focus-within:invisible" aria-hidden="true">
+                  <span
+                    className="eq inline-flex h-3 items-end gap-0.5 group-hover:invisible group-focus-within:invisible"
+                    aria-hidden="true"
+                  >
                     <i />
                     <i />
                     <i />

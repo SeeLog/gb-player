@@ -49,9 +49,7 @@ export default memo(function PlaylistView({
 
   useEffect(() => {
     if (position === null) return;
-    rows.current
-      ?.querySelector(`[data-entry="${position}"]`)
-      ?.scrollIntoView({ block: "nearest" });
+    rows.current?.querySelector(`[data-entry="${position}"]`)?.scrollIntoView({ block: "nearest" });
   }, [position]);
 
   function activate(i: number) {
@@ -126,9 +124,7 @@ export default memo(function PlaylistView({
         onPointerCancel={() => setDrag(null)}
       >
         {list.entries.length === 0 && (
-          <p className="mx-6 mt-8 text-center text-muted">
-            {t(EMPTY[list.kind])}
-          </p>
+          <p className="mx-6 mt-8 text-center text-muted">{t(EMPTY[list.kind])}</p>
         )}
         {list.entries.map((entry, i) => {
           const active = i === position;
@@ -162,9 +158,7 @@ export default memo(function PlaylistView({
                 }}
                 className={`group grid w-full cursor-default grid-cols-[44px_minmax(0,1fr)_auto_24px] items-center gap-2 rounded-lg px-2.5 py-[7px] text-left outline-none select-none focus-visible:ring-1 focus-visible:ring-accent-2 ${gapLine} ${
                   drag?.gap != null && drag.from === i ? "opacity-50" : ""
-                } ${
-                  active ? "bg-playing" : "hover:bg-hover"
-                }`}
+                } ${active ? "bg-playing" : "hover:bg-hover"}`}
               >
                 <span className="num pr-1.5 text-right text-faint">
                   {active && playing ? (
@@ -178,7 +172,9 @@ export default memo(function PlaylistView({
                   )}
                 </span>
                 <span className={`flex min-w-0 flex-col ${entry.missing ? "text-faint" : ""}`}>
-                  <span className={`truncate ${active ? "font-semibold text-[color:var(--row-text,var(--accent))]" : ""}`}>
+                  <span
+                    className={`truncate ${active ? "font-semibold text-[color:var(--row-text,var(--accent))]" : ""}`}
+                  >
                     {entry.title}
                   </span>
                   <span className="truncate text-xs text-muted">{entry.game}</span>

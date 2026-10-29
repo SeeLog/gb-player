@@ -61,7 +61,11 @@ export default function Export({ t }: { t: Translate }) {
         p.cancelled ? t("export_cancelled", { n: p.written }) : t("export_done", { n: p.written }),
       );
       if (p.errors.length > 0) {
-        ask({ message: `${t("export_errors")}\n${p.errors.join("\n")}`, ok: t("ok"), cancel: null });
+        ask({
+          message: `${t("export_errors")}\n${p.errors.join("\n")}`,
+          ok: t("ok"),
+          cancel: null,
+        });
       }
     });
     return () => void unlisten.then((f) => f());
@@ -137,7 +141,10 @@ export default function Export({ t }: { t: Translate }) {
 
               <span className="text-muted">{t("export_folder")}</span>
               <div className="flex min-w-0 items-center gap-2">
-                <span className={`min-w-0 flex-1 truncate ${dir ? "" : "text-muted"}`} title={dir ?? ""}>
+                <span
+                  className={`min-w-0 flex-1 truncate ${dir ? "" : "text-muted"}`}
+                  title={dir ?? ""}
+                >
                   {dir ?? t("export_folder_none")}
                 </span>
                 <button
@@ -167,7 +174,9 @@ export default function Export({ t }: { t: Translate }) {
             </div>
 
             <div className="flex justify-end gap-2">
-              <Dialog.Close className={`${button} border-line bg-panel-2 text-text hover:border-faint`}>
+              <Dialog.Close
+                className={`${button} border-line bg-panel-2 text-text hover:border-faint`}
+              >
                 {t("cancel")}
               </Dialog.Close>
               <button
@@ -204,7 +213,10 @@ function Progress({
       <div className="flex items-center gap-2">
         <div className="min-w-0 flex-1">
           <div className="font-semibold">
-            {t("export_running", { done: Math.min(progress.done + 1, progress.total), total: progress.total })}
+            {t("export_running", {
+              done: Math.min(progress.done + 1, progress.total),
+              total: progress.total,
+            })}
           </div>
           <div className="truncate text-xs text-muted">{progress.title}</div>
         </div>

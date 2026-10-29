@@ -215,7 +215,8 @@ function dotted(g: CanvasRenderingContext2D, ink: string, dpr: number) {
   t.fillRect(s, s, s, s);
   const pattern = g.createPattern(tile, "repeat") ?? ink;
   // The pattern is laid out in CSS pixels by the transform; undo it so a dot is a device pixel.
-  if (typeof pattern !== "string") pattern.setTransform(new DOMMatrix([1 / dpr, 0, 0, 1 / dpr, 0, 0]));
+  if (typeof pattern !== "string")
+    pattern.setTransform(new DOMMatrix([1 / dpr, 0, 0, 1 / dpr, 0, 0]));
   dotCache = { ink, dpr, pattern };
   return pattern;
 }

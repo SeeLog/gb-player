@@ -49,7 +49,8 @@
   --radius: 10px;
   /* Segoe UI has no Japanese, so kana and kanji come from the next one: BIZ UDPGothic stays clear
      at small sizes, where Yu Gothic UI is thin (it and Meiryo are left for Windows without it). */
-  --font: "Segoe UI Variable", "Segoe UI", "BIZ UDPGothic", "Yu Gothic UI", "Meiryo", system-ui,
+  --font:
+    "Segoe UI Variable", "Segoe UI", "BIZ UDPGothic", "Yu Gothic UI", "Meiryo", system-ui,
     sans-serif;
 }
 

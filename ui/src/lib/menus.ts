@@ -11,7 +11,16 @@ import type { Translate } from "./format";
 import type { Library, PlaylistView } from "./types";
 import { tickStore } from "./tick";
 
-const NOT_TEXT = new Set(["checkbox", "radio", "range", "button", "submit", "reset", "color", "file"]);
+const NOT_TEXT = new Set([
+  "checkbox",
+  "radio",
+  "range",
+  "button",
+  "submit",
+  "reset",
+  "color",
+  "file",
+]);
 
 /** Whether a right-click here should get the WebView's own menu (to cut, copy and paste). */
 export function wantsNativeMenu(el: Element): boolean {

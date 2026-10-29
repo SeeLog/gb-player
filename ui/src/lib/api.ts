@@ -60,8 +60,7 @@ export const api = {
   setShuffle: (shuffle: Shuffle) => invoke<void>("set_shuffle", { shuffle }),
   setVolume: (volume: number) => invoke<void>("set_volume", { volume }),
   setTempo: (percent: number) => invoke<void>("set_tempo", { percent }),
-  setProfile: (profile: Profile, noise: boolean) =>
-    invoke<void>("set_profile", { profile, noise }),
+  setProfile: (profile: Profile, noise: boolean) => invoke<void>("set_profile", { profile, noise }),
   setChannelVolume: (channel: number, volume: number) =>
     invoke<void>("set_channel_volume", { channel, volume }),
   setMuted: (channel: number, muted: boolean) => invoke<void>("set_muted", { channel, muted }),
@@ -118,6 +117,5 @@ export const RESTART_AFTER = 3;
 export function previous(tick: Tick | null) {
   if (tick?.rom != null && tick.current != null && tick.position > RESTART_AFTER) {
     api.play(tick.rom, tick.current);
-  }
-  else api.skip(-1);
+  } else api.skip(-1);
 }

@@ -59,7 +59,9 @@ export function Dialogs() {
           </AlertDialog.Description>
           <div className="flex justify-end gap-2">
             {asked?.cancel != null && (
-              <AlertDialog.Close className={`${button} border-line bg-panel-2 text-text hover:border-faint`}>
+              <AlertDialog.Close
+                className={`${button} border-line bg-panel-2 text-text hover:border-faint`}
+              >
                 {asked.cancel}
               </AlertDialog.Close>
             )}

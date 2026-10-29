@@ -31,7 +31,13 @@ export default function ColorPicker({
         <span className="block size-full rounded-[3px]" style={{ background: hex }} />
       </Popover.Trigger>
       <Popover.Portal>
-        <Popover.Positioner side="left" align="start" sideOffset={8} collisionPadding={4} className="z-50">
+        <Popover.Positioner
+          side="left"
+          align="start"
+          sideOffset={8}
+          collisionPadding={4}
+          className="z-50"
+        >
           <Popover.Popup className={`${popupClass} flex min-w-0 flex-col gap-1.5 p-2`}>
             <HexColorPicker color={hex} onChange={onChange} className="color-picker" />
             <HslSliders hex={hex} onChange={onChange} t={t} />

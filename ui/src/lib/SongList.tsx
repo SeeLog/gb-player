@@ -46,9 +46,7 @@ export default memo(function SongList({
 
   const songs = useMemo(() => {
     const f = filter.trim().toLowerCase();
-    const found = f
-      ? rom.songs.filter((s) => s.title.toLowerCase().includes(f))
-      : rom.songs;
+    const found = f ? rom.songs.filter((s) => s.title.toLowerCase().includes(f)) : rom.songs;
     if (!sort) return found;
     const dir = sort.desc ? -1 : 1;
     let compare: (a: Song, b: Song) => number;
@@ -73,9 +71,7 @@ export default memo(function SongList({
   // Keep the playing song in view when the playlist moves on.
   useEffect(() => {
     if (current === null) return;
-    list.current
-      ?.querySelector(`[data-index="${current}"]`)
-      ?.scrollIntoView({ block: "nearest" });
+    list.current?.querySelector(`[data-index="${current}"]`)?.scrollIntoView({ block: "nearest" });
   }, [current]);
 
   /** A column title that sorts by `key`, or returns to song order when it is null. */

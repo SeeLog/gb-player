@@ -42,11 +42,7 @@ export default function WindowControls({ t, onMini }: { t: Translate; onMini: ()
         </button>
       </Tip>
       <Tip text={t("window_minimize")}>
-        <button
-          className={button}
-          onClick={() => win.minimize()}
-          aria-label={t("window_minimize")}
-        >
+        <button className={button} onClick={() => win.minimize()} aria-label={t("window_minimize")}>
           <Glyph d="M0 5.5h10" />
         </button>
       </Tip>

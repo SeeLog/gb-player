@@ -232,8 +232,7 @@ export function toHsl(hex: string): Hsl {
   const d = max - min;
   if (d === 0) return { h: 0, s: 0, l: l * 100 };
   const s = d / (1 - Math.abs(2 * l - 1));
-  const h =
-    max === r ? ((g - b) / d + 6) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  const h = max === r ? ((g - b) / d + 6) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
   return { h: h * 60, s: s * 100, l: l * 100 };
 }
 

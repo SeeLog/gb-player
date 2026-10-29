@@ -393,7 +393,9 @@ export function Progress({
         </Slider.Root>
       ) : (
         // No song, or one whose length is not known yet (striped): nothing to seek in.
-        <div className={`${bar.track} ${lcd ? "flex-1" : ""} ${song ? bar.analysing : bar.empty}`} />
+        <div
+          className={`${bar.track} ${lcd ? "flex-1" : ""} ${song ? bar.analysing : bar.empty}`}
+        />
       )}
       {lcd ? (
         lapBadge
@@ -423,9 +425,7 @@ function Failure() {
 function Transport({ t }: { t: Translate }) {
   const playing = useTick((tick) => tick?.state === "playing");
   // Previous restarts the song once it has played a little (see `previous`).
-  const restarts = useTick(
-    (tick) => tick?.current != null && tick.position > RESTART_AFTER,
-  );
+  const restarts = useTick((tick) => tick?.current != null && tick.position > RESTART_AFTER);
   const prev = restarts ? t("prev_restart") : t("prev");
   return (
     <div className="flex items-center justify-center gap-3.5">
@@ -520,7 +520,9 @@ function Channels({ library, t }: { library: Library; t: Translate }) {
                 <span className="flex items-center gap-[7px] text-xs font-semibold">
                   <span
                     className={`size-2 rounded-full ${
-                      muted ? "bg-faint" : "bg-accent shadow-[0_0_6px_var(--accent-edge,var(--accent))]"
+                      muted
+                        ? "bg-faint"
+                        : "bg-accent shadow-[0_0_6px_var(--accent-edge,var(--accent))]"
                     }`}
                   />
                   <span className={`flex-1 ${muted ? "line-through" : ""}`}>{t(key)}</span>
@@ -575,7 +577,9 @@ function Row({
   return (
     <div className={`flex gap-2.5 ${center ? "items-center" : "items-start"}`}>
       <Tip text={label}>
-        <span className={`grid w-[18px] flex-none place-items-center text-muted ${center ? "" : "h-9"}`}>
+        <span
+          className={`grid w-[18px] flex-none place-items-center text-muted ${center ? "" : "h-9"}`}
+        >
           <Icon name={icon} size={18} />
         </span>
       </Tip>
