@@ -4,6 +4,7 @@
 
 mod commands;
 mod editor;
+mod media;
 mod mini;
 mod playlists;
 mod session;
@@ -172,6 +173,9 @@ pub fn run(initial_rom: Option<PathBuf>, language: Option<String>) {
                     let _ = window.show();
                 }
             }
+            let main = handle.get_webview_window("main");
+            handle.manage(media::Media::new(main.as_ref()));
+            let mut shown = None;
             std::thread::spawn(move || loop {
                 std::thread::sleep(TICK);
                 let app = handle.state::<App>();
@@ -180,7 +184,12 @@ pub fn run(initial_rom: Option<PathBuf>, language: Option<String>) {
                 if changed {
                     emit_library(&handle, &s);
                 }
+                let now = s.now_playing();
                 drop(s);
+                if shown.as_ref() != Some(&now) {
+                    media::show(&handle, now.clone());
+                    shown = Some(now);
+                }
                 let _ = handle.emit("tick", view);
             });
             Ok(())

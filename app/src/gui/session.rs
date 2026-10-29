@@ -11,6 +11,7 @@ use gb_music::{
     SongLength, FRAME_RATE,
 };
 
+use super::media::{NowPlaying, Playback};
 use super::playlists::{self, Entry, Playlist};
 use super::shuffle::{Order, Rng};
 use super::views::{
@@ -1206,6 +1207,28 @@ impl Session {
                     }
                 })
                 .collect(),
+        }
+    }
+
+    /// The song in the audio output and whether it plays, for the OS media controls.
+    pub fn now_playing(&self) -> NowPlaying {
+        let info = self.with_player(|p| (p.current(), p.state(), p.paused()));
+        let Some((Some(index), state, paused)) = info else {
+            return NowPlaying {
+                title: String::new(),
+                game: String::new(),
+                playback: Playback::Stopped,
+            };
+        };
+        let rom = self.loaded_rom();
+        NowPlaying {
+            title: rom.map_or_else(String::new, |r| r.names.song(index).to_string()),
+            game: rom.map_or_else(String::new, |r| r.names.game.clone()),
+            playback: match state {
+                PlayState::Playing if paused => Playback::Paused,
+                PlayState::Playing => Playback::Playing,
+                _ => Playback::Stopped,
+            },
         }
     }
 
