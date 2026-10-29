@@ -100,6 +100,8 @@ pub struct LibraryView {
     pub auto_next: bool,
     pub shuffle: Shuffle,
     pub volume: f32,
+    /// The tempo games' songs play at, in percent of their own.
+    pub tempo: u32,
     pub profile: Profile,
     pub speaker_noise: bool,
     /// The volume of each channel, from 0 to 1.
@@ -129,9 +131,12 @@ pub struct TickView {
     /// `none` (no ROM), `stopped`, `playing`, `paused`, `finished` or `failed`.
     pub state: &'static str,
     pub failure: Option<String>,
-    /// Seconds since the song started.
+    /// Seconds since the song started, as the song counts them: at another tempo they go by
+    /// faster or slower, as do the lengths.
     pub position: f64,
     pub length: LengthView,
+    /// The tempo the song plays at, in percent of its own; 100 for audio files.
+    pub tempo: u32,
     pub levels: [f32; 4],
     /// The latest output samples, oldest first.
     pub scope: Vec<f32>,

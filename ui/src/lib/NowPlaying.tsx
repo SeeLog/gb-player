@@ -21,6 +21,11 @@ const CHANNELS = ["channel_pulse1", "channel_pulse2", "channel_wave", "channel_n
 const LOOP_COUNTS: (number | null)[] = [null, 1, 2, 3];
 const SHUFFLES: Shuffle[] = ["off", "list", "all"];
 const PROFILES: Profile[] = ["line", "gbcSpeaker"];
+/** The tempos (percent) the slider stops at: 5 apart below 100 and 10 above, so that half and
+ * double speed are as far from 100 either way. */
+const TEMPOS = [
+  50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190, 200,
+];
 
 const round =
   "grid size-[42px] place-items-center rounded-full border border-line bg-panel-2 text-text hover:border-faint";
@@ -113,12 +118,69 @@ export default memo(function NowPlaying({ library, t }: { library: Library; t: T
             </span>
           </div>
         </Row>
+
+        <Tempo library={library} t={t} />
       </div>
 
       <GameChannels library={library} t={t} />
     </aside>
   );
 });
+
+/** The tempo of games' songs, beside the volume; audio files keep their own. */
+function Tempo({ library, t }: { library: Library; t: Translate }) {
+  const [tempo, setTempo] = useState(library.tempo);
+  useEffect(() => setTempo(library.tempo), [library.tempo]);
+  const rom = useTick((tick) => tick?.rom ?? null);
+  const files = library.roms.find((r) => r.id === rom)?.folder ?? false;
+  const change = (percent: number) => {
+    setTempo(percent);
+    api.setTempo(percent);
+  };
+  const stop = TEMPOS.reduce(
+    (best, v, i) => (Math.abs(v - tempo) < Math.abs(TEMPOS[best] - tempo) ? i : best),
+    0,
+  );
+  return (
+    <Row icon="tempo" label={t("tempo")} center>
+      <Tip text={files ? t("tempo_files") : undefined}>
+        <div className={`flex items-center gap-2.5 ${files ? "opacity-45" : ""}`}>
+          <VolumeSlider
+            value={stop}
+            min={0}
+            max={TEMPOS.length - 1}
+            step={1}
+            onChange={(i) => change(TEMPOS[i])}
+            onDoubleClick={() => change(100)}
+            disabled={files}
+            label={t("tempo")}
+            className="flex-1"
+          />
+          <Tip text={files ? undefined : t("tempo_reset")}>
+            <button
+              className={`num w-9 text-right text-xs hover:text-text disabled:pointer-events-none ${
+                tempo === 100 ? "text-muted" : "text-text"
+              }`}
+              onClick={() => change(100)}
+              disabled={files}
+            >
+              {tempo}%
+            </button>
+          </Tip>
+        </div>
+      </Tip>
+    </Row>
+  );
+}
+
+/** A length in seconds at `tempo` times the song's own speed. */
+function atTempo(length: Length | null, tempo: number): Length | null {
+  if (!length || tempo === 1) return length;
+  if (length.kind === "loops") {
+    return { ...length, intro: length.intro / tempo, period: length.period / tempo };
+  }
+  return length.kind === "ends" ? { ...length, at: length.at / tempo } : length;
+}
 
 function Lcd({ library, t, volume }: { library: Library; t: Translate; volume: number }) {
   const song = useSong(library);
@@ -217,7 +279,10 @@ export function Progress({
   lcd?: boolean;
 }) {
   const song = useSong(library);
-  const tickPosition = useTick((tick) => tick?.position ?? 0);
+  // Everything here is in seconds as they go by: at another tempo, the song's own seconds (of
+  // the position, the lengths and seeks) are fewer or more.
+  const tempo = useTick((tick) => tick?.tempo ?? 100) / 100;
+  const tickPosition = useTick((tick) => tick?.position ?? 0) / tempo;
   const ended = useTick((tick) => tick?.state !== "playing" && tick?.state !== "paused");
   // Where the playhead is being dragged to, and then sought to until a tick gets there. A seek
   // far into a song takes a while, and the song keeps playing from where it was meanwhile.
@@ -235,14 +300,14 @@ export function Progress({
   useEffect(() => () => clearTimeout(release.current), []);
 
   const position = held ?? tickPosition;
-  const length = song?.length ?? null;
+  const length = atTempo(song?.length ?? null, tempo);
   const progress = song ? progressOf(length, position) : null;
   // The lap the song is in, not the one the playhead is dragged into.
   const lap = progressOf(length, tickPosition)?.lap ?? 0;
 
   const seek = (secs: number) => {
     setHeld(Math.max(secs, 0));
-    api.seek(Math.max(secs, 0));
+    api.seek(Math.max(secs, 0) * tempo);
     // Let go of the playhead in the end, whatever happens.
     clearTimeout(release.current);
     release.current = window.setTimeout(() => setHeld(null), SEEK_GIVE_UP);

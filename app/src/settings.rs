@@ -15,6 +15,8 @@ pub struct Settings {
     pub channel_volumes: [f32; 4],
     /// Loops before fading out; `None` loops forever.
     pub loop_count: Option<u32>,
+    /// The tempo games' songs play at, in percent of their own.
+    pub tempo: u32,
     /// Where the sound comes out: the line out, or a console's speaker.
     pub profile: Profile,
     /// Whether the speaker plays the console's own noise too.
@@ -127,6 +129,7 @@ impl Default for Settings {
             volume: 0.8,
             channel_volumes: [1.0; 4],
             loop_count: None,
+            tempo: 100,
             profile: Profile::Line,
             speaker_noise: true,
             auto_next: true,
@@ -185,6 +188,7 @@ mod tests {
             volume: 0.5,
             channel_volumes: [1.0, 0.5, 0.25, 0.0],
             loop_count: Some(2),
+            tempo: 150,
             profile: Profile::GbcSpeaker,
             speaker_noise: false,
             auto_next: false,
@@ -230,6 +234,7 @@ mod tests {
         assert_eq!(partial.volume, 0.25);
         assert_eq!(partial.channel_volumes, [1.0; 4]);
         assert_eq!(partial.loop_count, None);
+        assert_eq!(partial.tempo, 100);
         assert_eq!(partial.profile, Profile::Line);
         assert!(partial.speaker_noise);
         assert!(partial.auto_next);

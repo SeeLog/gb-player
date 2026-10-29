@@ -157,6 +157,17 @@ impl Driver {
     pub fn run_frame(&self, m: &mut Machine, phase: &mut u32) -> Result<u32, CallError> {
         self.playback.run_frame(m, phase)
     }
+
+    /// Play one video frame during which `music` T-cycles of the music's clock pass; see
+    /// [`Playback::run_scaled`].
+    pub fn run_scaled(
+        &self,
+        m: &mut Machine,
+        phase: &mut u32,
+        music: u32,
+    ) -> Result<u32, CallError> {
+        self.playback.run_scaled(m, phase, music)
+    }
 }
 
 impl Engine {

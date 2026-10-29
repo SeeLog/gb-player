@@ -16,6 +16,7 @@ export default function Slider({
   step = 0.01,
   small = false,
   track,
+  disabled = false,
   className = "",
   ...passed
 }: Passed & {
@@ -30,6 +31,7 @@ export default function Slider({
   small?: boolean;
   /** A background for the whole track in place of the fill, such as the range of a colour. */
   track?: string;
+  disabled?: boolean;
   className?: string;
 }) {
   return (
@@ -39,11 +41,12 @@ export default function Slider({
       max={max}
       step={step}
       onValueChange={(v) => onChange(v as number)}
+      disabled={disabled}
       className={className}
       {...passed}
     >
       {/* The control is taller than the track, so it is easy to grab. */}
-      <Base.Control className="group flex cursor-pointer touch-none items-center py-1.5 select-none">
+      <Base.Control className="group flex cursor-pointer touch-none items-center py-1.5 select-none data-disabled:cursor-default">
         <Base.Track
           className={`w-full rounded-full bg-panel-2 shadow-[inset_0_0_0_1px_var(--line)] ${
             track ? "h-2" : small ? "h-1" : "h-1.5"

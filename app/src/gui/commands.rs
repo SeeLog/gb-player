@@ -308,6 +308,11 @@ pub fn set_volume(app: State<'_, App>, volume: f32) {
 }
 
 #[tauri::command]
+pub fn set_tempo(app: State<'_, App>, percent: u32) {
+    app.lock().set_tempo(percent);
+}
+
+#[tauri::command]
 pub fn set_profile(handle: AppHandle, app: State<'_, App>, profile: Profile, noise: bool) {
     let mut s = app.lock();
     s.set_profile(profile, noise);
