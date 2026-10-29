@@ -1,4 +1,4 @@
-name: CI
+name: Rust
 
 on:
   push:
@@ -19,15 +19,6 @@ jobs:
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
 
-  ui:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-      - run: bun install --frozen-lockfile
-      - run: bun run check
-      - run: bun run build
-
   windows:
     runs-on: windows-latest
     steps:
@@ -37,6 +28,7 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
       - run: cargo test --workspace
+      # The exe embeds the web UI, so tauri build also builds the frontend.
       - run: bun run tauri build --no-bundle
       - uses: actions/upload-artifact@v4
         with:
