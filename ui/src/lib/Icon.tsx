@@ -24,11 +24,17 @@ const paths: Record<string, string> = {
   expand: "M14 4h6v6M20 4l-7 7M10 20H4v-6M4 20l7-7",
   tempo: "M9.5 3.5h5l4 17h-13zM12 15.5l4.5-9.5M7.3 15.5h9.4",
   shuffle: "M4 7h3.5c4.5 0 4.5 10 9 10H20M4 17h3.5c1.6 0 2.6-1.3 3.3-3M13.2 10c.7-1.7 1.7-3 3.3-3H20M17.5 4.5 20 7l-2.5 2.5M17.5 14.5 20 17l-2.5 2.5",
+  star: "M12 3.8l2.5 5.2 5.7.8-4.1 4 1 5.7-5.1-2.7-5.1 2.7 1-5.7-4.1-4 5.7-.8z",
+  starFilled: "M12 3.8l2.5 5.2 5.7.8-4.1 4 1 5.7-5.1-2.7-5.1 2.7 1-5.7-4.1-4 5.7-.8z",
+  history: "M4.5 12a7.5 7.5 0 1 0 2.2-5.3L4.5 9M4.5 4.5V9H9M12 8v4.5l3 2",
 };
 const filled = new Set(["play", "pause", "stop", "prev", "next"]);
+/** Filled and outlined, so they are as big as the outlines they stand in for. */
+const solid = new Set(["starFilled"]);
 
 export default function Icon({ name, size = 20 }: { name: string; size?: number }) {
   const fill = filled.has(name);
+  const inside = fill || solid.has(name);
   return (
     <svg
       width={size}
@@ -36,7 +42,7 @@ export default function Icon({ name, size = 20 }: { name: string; size?: number 
       viewBox="0 0 24 24"
       aria-hidden="true"
       className="shrink-0"
-      fill={fill ? "currentColor" : "none"}
+      fill={inside ? "currentColor" : "none"}
       stroke={fill ? "none" : "currentColor"}
       strokeWidth="1.8"
       strokeLinecap="round"

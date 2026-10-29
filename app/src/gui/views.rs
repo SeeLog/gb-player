@@ -37,6 +37,7 @@ pub struct SongView {
     pub title: String,
     /// `None` while the song is still being analysed.
     pub length: Option<LengthView>,
+    pub favorite: bool,
 }
 
 /// An open ROM, or a folder of audio files, and its songs.
@@ -69,11 +70,23 @@ pub struct EntryView {
     pub path: String,
     /// Whether the ROM file is not where the playlist says.
     pub missing: bool,
+    pub favorite: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PlaylistKind {
+    /// Made by the user.
+    Playlist,
+    Favorites,
+    History,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct PlaylistView {
     pub id: String,
+    pub kind: PlaylistKind,
+    /// The favourites' and the history's in the UI language.
     pub name: String,
     pub entries: Vec<EntryView>,
 }

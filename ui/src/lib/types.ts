@@ -10,6 +10,7 @@ export interface SongView {
   title: string;
   /** `null` while the song is still being analysed. */
   length: Length | null;
+  favorite: boolean;
 }
 
 /** An open ROM, or a folder of audio files. */
@@ -75,10 +76,16 @@ export interface EntryView {
   path: string;
   /** Whether the ROM file is not there any more. */
   missing: boolean;
+  favorite: boolean;
 }
+
+/** A playlist the user made, or one of the two the app keeps (first in the list): they cannot be
+ * renamed or deleted, and the history cannot be reordered. */
+export type PlaylistKind = "playlist" | "favorites" | "history";
 
 export interface PlaylistView {
   id: string;
+  kind: PlaylistKind;
   name: string;
   entries: EntryView[];
 }

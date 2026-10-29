@@ -1,6 +1,7 @@
-// The left column: the open ROMs and the playlists, one of which the middle column shows. A
-// playlist is renamed in place (double-click it, or Rename in its right-click menu); a ROM is
-// closed with its × (or Close in its right-click menu).
+// The left column: the open ROMs and the playlists, one of which the middle column shows. The
+// favourites and the history come first; a playlist of the user's is renamed in place
+// (double-click it, or Rename in its right-click menu). A ROM is closed with its × (or Close in
+// its right-click menu).
 import { memo, useEffect, useRef, useState } from "react";
 import { api } from "./api";
 import type { Translate } from "./format";
@@ -44,7 +45,9 @@ export default memo(function Sidebar({
 
   async function newPlaylist() {
     const id = await api.createPlaylist(
-      t("playlist_default_name", { n: library.playlists.length + 1 }),
+      t("playlist_default_name", {
+        n: library.playlists.filter((l) => l.kind === "playlist").length + 1,
+      }),
       null,
       [],
     );
@@ -131,8 +134,11 @@ export default memo(function Sidebar({
             data-playlist-item={list.id}
             className={`${item} ${selected({ kind: "playlist", id: list.id })}`}
             onClick={() => setView({ kind: "playlist", id: list.id })}
-            onDoubleClick={() => setRenaming(list.id)}
+            onDoubleClick={() => list.kind === "playlist" && setRenaming(list.id)}
           >
+            {list.kind !== "playlist" && (
+              <Icon name={list.kind === "favorites" ? "starFilled" : "history"} size={16} />
+            )}
             <span className="line-clamp-2 flex-1">{list.name}</span>
             {playingList === list.id ? (
               <span className="eq inline-flex h-3 items-end gap-0.5" aria-hidden="true">

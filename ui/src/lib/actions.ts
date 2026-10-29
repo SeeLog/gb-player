@@ -14,6 +14,17 @@ export async function deletePlaylist(id: string, name: string, t: Translate) {
   if (yes) await api.deletePlaylist(id);
 }
 
+/** Clear the history once the user agrees. */
+export async function clearHistory(t: Translate) {
+  const yes = await ask({
+    message: t("history_clear_confirm"),
+    ok: t("history_clear"),
+    cancel: t("cancel"),
+    danger: true,
+  });
+  if (yes) await api.clearHistory();
+}
+
 /** Let the user point an entry whose ROM is missing at its file. A file holding a different ROM
  * than the one the entry was made from is taken only once the user agrees. */
 export async function locateEntry(id: string, position: number, t: Translate) {
