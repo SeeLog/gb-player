@@ -55,7 +55,8 @@ export default memo(function SongList({
       compare = (a, b) => dir * collator.compare(a.title, b.title) || a.index - b.index;
     } else {
       // Songs still being analysed or with no known length go last either way.
-      const secs = (s: Song) => (s.length ? playTime(s.length, library.loopCount) : null);
+      const secs = (s: Song) =>
+        s.length ? playTime(s.length, library.loopCount, library.fadeSecs) : null;
       compare = (a, b) => {
         const x = secs(a);
         const y = secs(b);
@@ -66,7 +67,7 @@ export default memo(function SongList({
       };
     }
     return [...found].sort(compare);
-  }, [rom.songs, library.language, library.loopCount, filter, sort]);
+  }, [rom.songs, library.language, library.loopCount, library.fadeSecs, filter, sort]);
 
   // Keep the playing song in view when the playlist moves on.
   useEffect(() => {
@@ -179,7 +180,12 @@ export default memo(function SongList({
                 >
                   {song.title}
                 </span>
-                <Duration t={t} length={song.length} loopCount={library.loopCount} />
+                <Duration
+                  t={t}
+                  length={song.length}
+                  loopCount={library.loopCount}
+                  fadeSecs={library.fadeSecs}
+                />
               </button>
               <span className="absolute top-1/2 right-2.5 -translate-y-1/2">
                 <Star
@@ -229,13 +235,15 @@ export function Duration({
   t,
   length,
   loopCount,
+  fadeSecs,
 }: {
   t: Translate;
   length: Length | null;
   loopCount: number | null;
+  fadeSecs: number;
 }) {
   if (!length) return <span className="text-xs text-faint italic">{t("analyzing")}</span>;
-  const secs = playTime(length, loopCount);
+  const secs = playTime(length, loopCount, fadeSecs);
   return (
     <Tip text={length.kind === "ends" ? undefined : describe(t, length)}>
       <span className="num text-xs text-muted">{secs === null ? "—" : fmtDuration(secs)}</span>

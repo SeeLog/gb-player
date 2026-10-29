@@ -38,13 +38,26 @@ export function useSong(library: Library): SongView | undefined {
   return library.roms.find((r) => r.id === rom)?.songs.find((s) => s.index === current);
 }
 
-export default memo(function NowPlaying({ library, t }: { library: Library; t: Translate }) {
+/** The look of an LCD: its gradient, the shade inside its edge and the bezel round it. */
+export const lcdScreen =
+  "rounded-xl bg-[linear-gradient(160deg,var(--lcd-hi),var(--lcd)_60%,var(--lcd-lo))] text-lcd-ink shadow-[inset_0_0_0_1px_var(--lcd-shadow),inset_0_2px_10px_var(--lcd-shadow),0_0_0_6px_var(--bezel)]";
+
+export default memo(function NowPlaying({
+  library,
+  t,
+  onBig,
+}: {
+  library: Library;
+  t: Translate;
+  /** Show the screen big, over the window. */
+  onBig: () => void;
+}) {
   const [volume, setVolume] = useState(library.volume);
   useEffect(() => setVolume(library.volume), [library.volume]);
 
   return (
     <aside className="flex flex-col gap-3.5 overflow-y-auto bg-panel px-[18px] py-3.5">
-      <Lcd library={library} t={t} volume={volume} />
+      <Lcd library={library} t={t} volume={volume} onBig={onBig} />
       <Progress library={library} t={t} />
       <Failure />
       <Transport t={t} />
@@ -97,6 +110,7 @@ export default memo(function NowPlaying({ library, t }: { library: Library; t: T
             <Toggle
               checked={library.speakerNoise}
               onChange={(on) => api.setProfile(library.profile, on)}
+              tip={t("speaker_noise_hint")}
             >
               {t("speaker_noise")}
             </Toggle>
@@ -183,15 +197,40 @@ function atTempo(length: Length | null, tempo: number): Length | null {
   return length.kind === "ends" ? { ...length, at: length.at / tempo } : length;
 }
 
-function Lcd({ library, t, volume }: { library: Library; t: Translate; volume: number }) {
+function Lcd({
+  library,
+  t,
+  volume,
+  onBig,
+}: {
+  library: Library;
+  t: Translate;
+  volume: number;
+  onBig: () => void;
+}) {
   const song = useSong(library);
   const rom = useTick((tick) => tick?.rom ?? null);
   const state = useTick((tick) => tick?.state ?? "none");
+  // Audio files have no channels to show the notes of.
+  const channels = !library.roms.find((r) => r.id === rom)?.folder;
+  const notes = channels && library.notes;
+  const switchTo = t(notes ? "show_scope" : "show_notes");
   return (
-    <div className="rounded-xl bg-[linear-gradient(160deg,var(--lcd-hi),var(--lcd)_60%,var(--lcd-lo))] px-3.5 pt-3 pb-2.5 text-lcd-ink shadow-[inset_0_0_0_1px_var(--lcd-shadow),inset_0_2px_10px_var(--lcd-shadow),0_0_0_6px_var(--bezel)]">
-      <div className="flex justify-between text-xs font-bold opacity-80">
-        <span className="num">{song ? `#${String(song.index + 1).padStart(2, "0")}` : "--"}</span>
-        <span className="tracking-[0.08em] uppercase">{t(`state_${state}`)}</span>
+    <div className={`${lcdScreen} px-3.5 pt-3 pb-2.5`}>
+      <div className="flex items-center gap-1.5 text-xs font-bold">
+        <span className="num flex-1 opacity-80">
+          {song ? `#${String(song.index + 1).padStart(2, "0")}` : "--"}
+        </span>
+        <span className="tracking-[0.08em] uppercase opacity-80">{t(`state_${state}`)}</span>
+        <Tip text={`${t("big_view")} (F)`}>
+          <button
+            className="-my-1 -mr-1 grid size-6 place-items-center rounded-md opacity-80 hover:bg-lcd-ink/12 hover:opacity-100"
+            onClick={onBig}
+            aria-label={t("big_view")}
+          >
+            <Icon name="expand" size={14} />
+          </button>
+        </Tip>
       </div>
       {/* A new element for each song, so the name comes in afresh even mid-way through the last,
           and a long one starts scrolling from its beginning. */}
@@ -201,15 +240,21 @@ function Lcd({ library, t, volume }: { library: Library; t: Translate; volume: n
       >
         <Marquee text={song?.title ?? t("not_playing")} />
       </div>
-      <div className="mt-1.5 h-[72px]">
-        <Scope volume={volume} />
-      </div>
-      {/* Audio files have no channels to show. */}
-      {!library.roms.find((r) => r.id === rom)?.folder && (
-        <div className="mt-1 h-[84px]">
-          <Notes muted={library.muted} />
-        </div>
-      )}
+      {/* A click switches the screen between the waveform and the notes. */}
+      <Tip text={channels ? switchTo : undefined}>
+        <button
+          className="mt-1.5 block h-[160px] w-full cursor-pointer disabled:cursor-default"
+          disabled={!channels}
+          onClick={() => api.setNotes(!library.notes)}
+          aria-label={channels ? switchTo : undefined}
+        >
+          {notes ? (
+            <Notes muted={library.muted} keyboard={18} frameWidth={2} />
+          ) : (
+            <Scope volume={volume} />
+          )}
+        </button>
+      </Tip>
     </div>
   );
 }
@@ -422,7 +467,7 @@ function Failure() {
   return failure ? <div className="text-xs text-danger">{failure}</div> : null;
 }
 
-function Transport({ t }: { t: Translate }) {
+export function Transport({ t }: { t: Translate }) {
   const playing = useTick((tick) => tick?.state === "playing");
   // Previous restarts the song once it has played a little (see `previous`).
   const restarts = useTick((tick) => tick?.current != null && tick.position > RESTART_AFTER);
@@ -588,27 +633,31 @@ function Row({
   );
 }
 
-// A switch with its label beside it.
-function Toggle({
+// A switch with its label beside it, and what it does on hovering it when `tip` says.
+export function Toggle({
   checked,
   onChange,
+  tip,
   children,
 }: {
   checked: boolean;
   onChange: (on: boolean) => void;
+  tip?: string;
   children: ReactNode;
 }) {
   return (
-    <label className="mt-1 flex cursor-pointer items-center gap-2.5 text-[13px] text-muted hover:text-text">
-      <Switch.Root
-        checked={checked}
-        onCheckedChange={onChange}
-        className="flex h-5 w-[34px] flex-none rounded-[10px] border border-line bg-panel-2 p-[2px] transition-colors data-checked:border-[var(--accent-edge,var(--accent))] data-checked:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent motion-reduce:transition-none"
-      >
-        <Switch.Thumb className="size-3.5 rounded-full bg-muted transition-[translate,background-color] data-checked:translate-x-3.5 data-checked:bg-[var(--knob-on,var(--accent-ink))] data-checked:shadow-[0_1px_2px_rgba(0,0,0,0.3)] motion-reduce:transition-none" />
-      </Switch.Root>
-      <span>{children}</span>
-    </label>
+    <Tip text={tip}>
+      <label className="mt-1 flex cursor-pointer items-center gap-2.5 text-[13px] text-muted hover:text-text">
+        <Switch.Root
+          checked={checked}
+          onCheckedChange={onChange}
+          className="flex h-5 w-[34px] flex-none rounded-[10px] border border-line bg-panel-2 p-[2px] transition-colors data-checked:border-[var(--accent-edge,var(--accent))] data-checked:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent motion-reduce:transition-none"
+        >
+          <Switch.Thumb className="size-3.5 rounded-full bg-muted transition-[translate,background-color] data-checked:translate-x-3.5 data-checked:bg-[var(--knob-on,var(--accent-ink))] data-checked:shadow-[0_1px_2px_rgba(0,0,0,0.3)] motion-reduce:transition-none" />
+        </Switch.Root>
+        <span>{children}</span>
+      </label>
+    </Tip>
   );
 }
 

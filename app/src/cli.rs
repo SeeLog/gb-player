@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 
 use gb_music::songdb::Names;
-use gb_music::{frames_to_secs, Player, Profile, SongLength};
+use gb_music::{frames_to_secs, Player, Profile, SongLength, DEFAULT_FADE_SECS};
 
 use crate::export::{self, length_of, Options, Part, Source};
 use crate::i18n::Text;
@@ -108,6 +108,7 @@ fn wav(t: &Text, path: &str, song: &str, out: &str, rest: &[String]) -> Result<(
         loops: 2,
         profile: Profile::Line,
         noise: true,
+        fade_secs: DEFAULT_FADE_SECS,
     };
     let mut stems = false;
     for arg in rest {

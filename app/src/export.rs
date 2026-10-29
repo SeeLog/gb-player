@@ -65,6 +65,8 @@ pub struct Options {
     pub profile: Profile,
     /// The console's own noise, with the GBC speaker.
     pub noise: bool,
+    /// The fade-out after the last loop.
+    pub fade_secs: f32,
 }
 
 /// What one file of a song holds.
@@ -193,8 +195,11 @@ pub fn render(
         for c in 0..4 {
             p.set_muted(c, !matches!(part, Part::Mix) && part != Part::Channel(c));
         }
+        // Nothing shows the notes.
+        p.notes_ahead = false;
         p.play(index);
         p.loop_count = Some(options.loops);
+        p.fade_secs = options.fade_secs;
         p.set_length(index, length);
         players.push(p);
     }

@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use gb_music::{Profile, Song};
+use gb_music::{Profile, Song, DEFAULT_FADE_SECS};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -15,6 +15,8 @@ pub struct Settings {
     pub channel_volumes: [f32; 4],
     /// Loops before fading out; `None` loops forever.
     pub loop_count: Option<u32>,
+    /// How long the fade-out after the last loop takes, in seconds.
+    pub fade_secs: f32,
     /// The tempo games' songs play at, in percent of their own.
     pub tempo: u32,
     /// Where the sound comes out: the line out, or a console's speaker.
@@ -26,6 +28,10 @@ pub struct Settings {
     pub shuffle: Shuffle,
     /// A built-in palette such as `dmg`, or `custom:<file stem>` for a custom theme.
     pub theme: String,
+    /// Whether the files open when the app closed are opened again on startup.
+    pub reopen: bool,
+    /// How many songs the history keeps.
+    pub history_len: usize,
     /// The ROM and GBS files that were open, in the order of the list, opened again on startup.
     pub open_roms: Vec<PathBuf>,
     /// The one of them whose songs were shown.
@@ -39,6 +45,11 @@ pub struct Settings {
     /// The id of the playlist shown instead of the ROM's songs.
     pub open_playlist: Option<String>,
     pub mini: Mini,
+    /// Whether the main window's screen shows the notes instead of the oscilloscope.
+    pub notes: bool,
+    /// How many times a second the playback state is sent to the UI: the waveform, the meters
+    /// and the progress move this often. 0 follows the monitor's refresh rate.
+    pub fps: u32,
     /// The folder songs were last exported to.
     pub export_dir: Option<PathBuf>,
 }
@@ -134,12 +145,15 @@ impl Default for Settings {
             volume: 0.8,
             channel_volumes: [1.0; 4],
             loop_count: None,
+            fade_secs: DEFAULT_FADE_SECS,
             tempo: 100,
             profile: Profile::Line,
             speaker_noise: true,
             auto_next: true,
             shuffle: Shuffle::Off,
             theme: "dmg".into(),
+            reopen: true,
+            history_len: 100,
             open_roms: Vec::new(),
             shown_rom: None,
             last_rom: None,
@@ -148,6 +162,8 @@ impl Default for Settings {
             open_playlist: None,
             export_dir: None,
             mini: Mini::default(),
+            notes: false,
+            fps: 0,
         }
     }
 }
@@ -194,12 +210,15 @@ mod tests {
             volume: 0.5,
             channel_volumes: [1.0, 0.5, 0.25, 0.0],
             loop_count: Some(2),
+            fade_secs: 3.0,
             tempo: 150,
             profile: Profile::GbcSpeaker,
             speaker_noise: false,
             auto_next: false,
             shuffle: Shuffle::All,
             theme: "custom:night".into(),
+            reopen: false,
+            history_len: 250,
             open_roms: vec![
                 PathBuf::from("C:/roms/game.gb"),
                 PathBuf::from("C:/roms/other.gbs"),
@@ -216,6 +235,8 @@ mod tests {
             }),
             open_playlist: Some("a1".into()),
             export_dir: Some(PathBuf::from("C:/music")),
+            notes: true,
+            fps: 120,
             mini: Mini {
                 on: true,
                 on_top: false,
@@ -242,6 +263,10 @@ mod tests {
         assert_eq!(partial.volume, 0.25);
         assert_eq!(partial.channel_volumes, [1.0; 4]);
         assert_eq!(partial.loop_count, None);
+        assert_eq!(partial.fade_secs, DEFAULT_FADE_SECS);
+        assert!(partial.reopen);
+        assert_eq!(partial.history_len, 100);
+        assert_eq!(partial.fps, 0);
         assert_eq!(partial.tempo, 100);
         assert_eq!(partial.profile, Profile::Line);
         assert!(partial.speaker_noise);

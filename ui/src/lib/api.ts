@@ -9,6 +9,7 @@ import type {
   ExportPlan,
   ExportProgress,
   ExportTarget,
+  Folder,
   Library,
   Profile,
   Relink,
@@ -57,6 +58,13 @@ export const api = {
   seek: (secs: number) => invoke<void>("seek", { secs }),
   setLoopCount: (count: number | null) => invoke<void>("set_loop_count", { count }),
   setAutoNext: (autoNext: boolean) => invoke<void>("set_auto_next", { autoNext }),
+  setFade: (secs: number) => invoke<void>("set_fade", { secs }),
+  setReopen: (reopen: boolean) => invoke<void>("set_reopen", { reopen }),
+  setHistoryLen: (len: number) => invoke<void>("set_history_len", { len }),
+  /** 0 follows the monitor. */
+  setFps: (fps: number) => invoke<void>("set_fps", { fps }),
+  /** The monitor's refresh rate, as measured (see lib/refresh.ts). */
+  setDisplayRate: (hz: number) => invoke<void>("set_display_rate", { hz }),
   setShuffle: (shuffle: Shuffle) => invoke<void>("set_shuffle", { shuffle }),
   setVolume: (volume: number) => invoke<void>("set_volume", { volume }),
   setTempo: (percent: number) => invoke<void>("set_tempo", { percent }),
@@ -77,6 +85,10 @@ export const api = {
   pickThemeImage: () => invoke<string | null>("pick_theme_image"),
   /** Opens the theme editor's window, or brings it to the front. */
   openThemeEditor: () => invoke<void>("open_theme_editor"),
+  /** Opens the settings window, or brings it to the front. */
+  openSettings: () => invoke<void>("open_settings"),
+  /** Shows a folder of the user's own files in the file manager. */
+  openFolder: (folder: Folder) => invoke<void>("open_folder", { folder }),
   setLanguage: (language: string) => invoke<void>("set_language", { language }),
   dismissErrors: () => invoke<void>("dismiss_errors"),
   /** Turn the window into the mini player, or back into the full window. */
@@ -84,6 +96,8 @@ export const api = {
   setMiniOnTop: (on: boolean) => invoke<void>("set_mini_on_top", { on }),
   /** Show the notes on the mini player's screen instead of the oscilloscope. */
   setMiniNotes: (on: boolean) => invoke<void>("set_mini_notes", { on }),
+  /** Show the notes on the main window's screen instead of the oscilloscope. */
+  setNotes: (on: boolean) => invoke<void>("set_notes", { on }),
   exportPlan: (target: ExportTarget) => invoke<ExportPlan>("export_plan", { target }),
   /** Resolves to the folder picked, or `null`. */
   pickExportDir: (dir: string | null) => invoke<string | null>("pick_export_dir", { dir }),
@@ -106,8 +120,9 @@ export const onTick = (f: (t: Tick) => void): Promise<UnlistenFn> =>
 export const onThemeDraft = (f: (d: Draft | null) => void): Promise<UnlistenFn> =>
   listen<Draft | null>("theme-draft", (e) => f(e.payload));
 
-/** Shows the editor's draft in the main window. */
-export const sendThemeDraft = (d: Draft) => emitTo("main", "theme-draft", d);
+/** Shows the editor's draft in the main window, and tells the settings window it is open. */
+export const sendThemeDraft = (d: Draft) =>
+  Promise.all([emitTo("main", "theme-draft", d), emitTo("settings", "theme-draft", d)]);
 
 /** Seconds into a song after which Previous starts it again instead of going back a song. */
 export const RESTART_AFTER = 3;

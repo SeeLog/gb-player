@@ -52,8 +52,8 @@ pub fn hash(data: &[u8]) -> String {
 pub const FAVORITES: &str = "favorites";
 /// The id of the songs played lately, the latest first.
 pub const HISTORY: &str = "history";
-/// How many songs the history keeps.
-pub const HISTORY_LEN: usize = 100;
+/// The choices of how many songs the history keeps (see `Settings::history_len`).
+pub const HISTORY_LENS: [usize; 4] = [50, 100, 200, 500];
 
 /// Whether `id` is one of the lists the app keeps itself.
 pub fn is_auto(id: &str) -> bool {
@@ -87,14 +87,14 @@ pub fn same_song(a: &Entry, b: &Entry) -> bool {
 }
 
 /// Put `entry` at the top of the history `entries`, dropping its earlier play and the songs
-/// beyond [`HISTORY_LEN`].
-pub fn record(entries: &mut Vec<Entry>, entry: Entry) {
+/// beyond the `len` latest.
+pub fn record(entries: &mut Vec<Entry>, entry: Entry, len: usize) {
     entries.retain(|e| !same_song(e, &entry));
     entries.insert(0, entry);
-    entries.truncate(HISTORY_LEN);
+    entries.truncate(len);
 }
 
-fn dir() -> Option<PathBuf> {
+pub fn dir() -> Option<PathBuf> {
     Some(gb_music::songdb::user_dir()?.parent()?.join("playlists"))
 }
 
@@ -278,16 +278,16 @@ mod tests {
     fn the_history_keeps_the_latest_play_of_each_song_up_to_its_length() {
         let mut h = Vec::new();
         for song in [1, 2, 3, 2] {
-            record(&mut h, entry("fnv1a64:1", "a.gb", song));
+            record(&mut h, entry("fnv1a64:1", "a.gb", song), 100);
         }
         let songs: Vec<usize> = h.iter().map(|e| e.song).collect();
         assert_eq!(songs, [2, 3, 1]);
-        for song in 0..HISTORY_LEN + 10 {
-            record(&mut h, entry("fnv1a64:2", "b.gb", song));
+        for song in 0..60 {
+            record(&mut h, entry("fnv1a64:2", "b.gb", song), 50);
         }
-        assert_eq!(h.len(), HISTORY_LEN);
-        assert_eq!(h[0].song, HISTORY_LEN + 9);
-        assert_eq!(h[HISTORY_LEN - 1].song, 10);
+        assert_eq!(h.len(), 50);
+        assert_eq!(h[0].song, 59);
+        assert_eq!(h[49].song, 10);
     }
 
     #[test]

@@ -4,11 +4,11 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { api, onLibrary, onThemeDraft, onTick, previous } from "./lib/api";
 import { translator, type Translate } from "./lib/format";
 import type { Library } from "./lib/types";
+import BigView from "./lib/BigView";
 import ContextMenu, { type MenuState } from "./lib/ContextMenu";
 import Icon from "./lib/Icon";
 import { menuFor, wantsNativeMenu, type MenuActions } from "./lib/menus";
 import PlaylistView from "./lib/PlaylistView";
-import Select from "./lib/Select";
 import Tip, { Tooltips } from "./lib/Tip";
 import { Dialogs } from "./lib/Dialog";
 import Export from "./lib/Export";
@@ -21,6 +21,7 @@ import WindowControls from "./lib/WindowControls";
 import { applyTheme, imageUrl, type Draft } from "./lib/theme";
 import { tickStore } from "./lib/tick";
 import { useLeaving } from "./lib/leaving";
+import { watchRefreshRate } from "./lib/refresh";
 
 const headerControl =
   "flex h-[30px] flex-none items-center gap-1.5 rounded-lg border border-line bg-panel-2 whitespace-nowrap text-text hover:border-faint";
@@ -111,6 +112,8 @@ export default function App() {
     if (library) document.documentElement.lang = library.language;
   }, [library?.language]);
 
+  useEffect(watchRefreshRate, []);
+
   // A draft from the theme editor's window is shown instead of the chosen theme while it is open.
   const [draft, setDraft] = useState<Draft | null>(null);
   useEffect(() => {
@@ -157,6 +160,21 @@ export default function App() {
     document.documentElement.toggleAttribute("data-mini", mini);
   }, [mini]);
 
+  // Whether the main view is up (it is not without a ROM or a list to show), and whether the
+  // screen is shown big over it.
+  const hasMain =
+    !!library &&
+    !mini &&
+    (hasRom || library.playlists.some((l) => l.kind === "playlist" || l.entries.length > 0));
+  const [big, setBig] = useState(false);
+  const showBig = useCallback(() => setBig(true), []);
+  const hideBig = useCallback(() => setBig(false), []);
+  const bigState = useRef({ big, hasMain });
+  bigState.current = { big, hasMain };
+  useEffect(() => {
+    if (!hasMain) setBig(false);
+  }, [hasMain]);
+
   // Our right-click menu in place of the WebView's. Shift+right-click in a dev build still gives
   // the WebView's, for Inspect.
   const [menu, setMenu] = useState<MenuState | null>(null);
@@ -167,6 +185,8 @@ export default function App() {
     showPlaylist: (id) => setView({ kind: "playlist", id }),
     renamePlaylist: setRenaming,
     pickRom,
+    big: () => (bigState.current.hasMain ? bigState.current.big : null),
+    setBig,
   });
   useEffect(() => {
     const onContextMenu = async (e: MouseEvent) => {
@@ -202,6 +222,9 @@ export default function App() {
       } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
         e.preventDefault();
         search.current?.focus();
+      } else if ((e.ctrlKey || e.metaKey) && e.key === ",") {
+        e.preventDefault();
+        api.openSettings();
       } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "m") {
         e.preventDefault();
         const library = latest.current.library;
@@ -210,6 +233,8 @@ export default function App() {
         if (e.key === "Escape") (e.target as HTMLElement).blur();
       } else if (inPopup) {
         return;
+      } else if (e.key.toLowerCase() === "f" && !(e.ctrlKey || e.metaKey || e.altKey)) {
+        if (bigState.current.hasMain) setBig((on) => !on);
       } else if (e.key === " ") {
         e.preventDefault();
         api.toggle();
@@ -266,41 +291,15 @@ export default function App() {
                 <span className={headerLabel}>{t("open_rom")}</span>
               </button>
             </Tip>
-            {library && (
-              <>
-                <Select
-                  className={headerButton}
-                  label={t("theme")}
-                  icon={<Icon name="palette" size={18} />}
-                  valueClassName={`max-w-[12em] truncate ${headerLabel}`}
-                  value={library.theme}
-                  options={library.themes.map((th) => ({ value: th.id, label: th.name }))}
-                  onChange={(id) => api.setTheme(id)}
-                  disabled={!!draft}
-                />
-                <Tip text={t("edit_theme")}>
-                  <button
-                    className={`${headerControl} w-[30px] justify-center ${
-                      draft ? "border-accent! text-accent" : ""
-                    }`}
-                    onClick={() => api.openThemeEditor()}
-                    aria-label={t("edit_theme")}
-                    aria-pressed={!!draft}
-                  >
-                    <Icon name="edit" size={18} />
-                  </button>
-                </Tip>
-                <Select
-                  className={headerButton}
-                  label={t("language")}
-                  icon={<Icon name="globe" size={18} />}
-                  valueClassName={headerLabel}
-                  value={library.language}
-                  options={library.languages.map((l) => ({ value: l.code, label: l.name }))}
-                  onChange={(code) => api.setLanguage(code)}
-                />
-              </>
-            )}
+            <Tip text={`${t("settings")} (Ctrl+,)`}>
+              <button
+                className={`${headerControl} w-[30px] justify-center`}
+                onClick={() => api.openSettings()}
+                aria-label={t("settings")}
+              >
+                <Icon name="settings" size={18} />
+              </button>
+            </Tip>
             <WindowControls t={t} onMini={() => api.setMini(true)} />
           </header>
         )}
@@ -328,10 +327,8 @@ export default function App() {
 
         {library?.mini ? (
           <MiniPlayer library={library} t={t} />
-        ) : library &&
-          (hasRom ||
-            library.playlists.some((l) => l.kind === "playlist" || l.entries.length > 0)) ? (
-          <main className="grid min-h-0 flex-1 grid-cols-[200px_minmax(0,1fr)_380px]">
+        ) : library && hasMain ? (
+          <main className="relative grid min-h-0 flex-1 grid-cols-[200px_minmax(0,1fr)_380px]">
             <Sidebar
               library={library}
               t={t}
@@ -353,7 +350,8 @@ export default function App() {
                 <OpenPrompt t={t} onOpen={pickRom} />
               </div>
             )}
-            <NowPlaying library={library} t={t} />
+            <NowPlaying library={library} t={t} onBig={showBig} />
+            {big && <BigView library={library} t={t} onClose={hideBig} />}
           </main>
         ) : (
           <div className="flex flex-1 flex-col items-center justify-center gap-3">

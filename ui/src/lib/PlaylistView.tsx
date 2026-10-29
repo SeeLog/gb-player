@@ -184,7 +184,12 @@ export default memo(function PlaylistView({
                     {t("playlist_locate")}
                   </span>
                 ) : entry.length ? (
-                  <Duration t={t} length={entry.length} loopCount={library.loopCount} />
+                  <Duration
+                    t={t}
+                    length={entry.length}
+                    loopCount={library.loopCount}
+                    fadeSecs={library.fadeSecs}
+                  />
                 ) : (
                   <span className="num text-xs text-faint">—</span>
                 )}

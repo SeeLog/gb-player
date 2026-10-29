@@ -22,19 +22,20 @@ export function fmtDuration(secs: number): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
-/** The player's fade-out (`Player::fade_secs` in gb-music), which the GUI leaves at its default. */
-const FADE_SECS = 8;
-
 /**
  * How long the song plays with the given loop setting: one pass through the loop when it loops
- * forever, or until the fade-out after the last loop has finished.
+ * forever, or until the fade-out of `fadeSecs` after the last loop has finished.
  */
-export function playTime(length: Length, loopCount: number | null): number | null {
+export function playTime(
+  length: Length,
+  loopCount: number | null,
+  fadeSecs: number,
+): number | null {
   switch (length.kind) {
     case "loops":
       return loopCount === null
         ? length.intro + length.period
-        : length.intro + length.period * Math.max(loopCount, 1) + FADE_SECS;
+        : length.intro + length.period * Math.max(loopCount, 1) + fadeSecs;
     case "ends":
       return length.at;
     case "unknown":

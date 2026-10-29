@@ -8,13 +8,15 @@ mod export;
 mod media;
 mod mini;
 mod playlists;
+mod prefs;
 mod session;
 mod shuffle;
+mod side;
 mod views;
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use tauri::{AppHandle, Emitter, Manager, RunEvent, WindowEvent};
 use tauri_plugin_window_state::StateFlags;
@@ -23,9 +25,6 @@ use crate::audio::{AudioOut, Scope, SharedPlayer, SCOPE_LEN};
 use crate::i18n::{system_language, Text};
 use crate::settings::Settings;
 use session::Session;
-
-/// How often the playback state is sent to the UI.
-const TICK: Duration = Duration::from_millis(33);
 
 struct App {
     session: Mutex<Session>,
@@ -94,7 +93,7 @@ pub fn run(initial_rom: Option<PathBuf>, language: Option<String>) {
             // opens beside the main window each time instead.
             tauri_plugin_window_state::Builder::new()
                 .with_state_flags(StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED)
-                .with_denylist(&[editor::LABEL])
+                .with_denylist(&[editor::LABEL, prefs::LABEL])
                 .build(),
         )
         .manage(app)
@@ -124,6 +123,11 @@ pub fn run(initial_rom: Option<PathBuf>, language: Option<String>) {
             commands::skip,
             commands::set_loop_count,
             commands::set_auto_next,
+            commands::set_fade,
+            commands::set_reopen,
+            commands::set_history_len,
+            commands::set_fps,
+            commands::set_display_rate,
             commands::set_shuffle,
             commands::set_volume,
             commands::set_tempo,
@@ -133,6 +137,7 @@ pub fn run(initial_rom: Option<PathBuf>, language: Option<String>) {
             commands::set_mini,
             commands::set_mini_on_top,
             commands::set_mini_notes,
+            commands::set_notes,
             commands::set_language,
             commands::dismiss_errors,
             commands::set_theme,
@@ -140,6 +145,8 @@ pub fn run(initial_rom: Option<PathBuf>, language: Option<String>) {
             commands::theme_image,
             commands::pick_theme_image,
             commands::open_theme_editor,
+            commands::open_settings,
+            commands::open_folder,
             export::export_plan,
             export::pick_export_dir,
             export::start_export,
@@ -147,18 +154,20 @@ pub fn run(initial_rom: Option<PathBuf>, language: Option<String>) {
         ])
         .on_window_event(|window, event| match event {
             // The window is gone by the time the app exits: keep where the mini player is now.
-            // The theme editor goes with it.
+            // The theme editor and the settings go with it.
             WindowEvent::CloseRequested { .. } if window.label() == "main" => {
                 if let Some(main) = window.get_webview_window("main") {
                     mini::remember(&main, window.state::<App>().lock().mini());
                 }
-                if let Some(editor) = window.get_webview_window(editor::LABEL) {
-                    let _ = editor.close();
+                for label in [editor::LABEL, prefs::LABEL] {
+                    if let Some(side) = window.get_webview_window(label) {
+                        let _ = side.close();
+                    }
                 }
             }
             // However the editor was closed, the main window shows the chosen theme again.
             WindowEvent::Destroyed if window.label() == editor::LABEL => {
-                let _ = window.emit_to("main", editor::DRAFT_EVENT, ());
+                let _ = window.emit(editor::DRAFT_EVENT, ());
             }
             _ => {}
         })
@@ -187,9 +196,18 @@ pub fn run(initial_rom: Option<PathBuf>, language: Option<String>) {
             let main = handle.get_webview_window("main");
             handle.manage(media::Media::new(main.as_ref()));
             let mut shown = None;
+            // The playback state goes to the UI as often as the settings say, on a steady beat
+            // that the time taken to send it does not slow.
+            let mut next = Instant::now();
             std::thread::spawn(move || loop {
-                std::thread::sleep(TICK);
                 let app = handle.state::<App>();
+                let period = Duration::from_secs_f64(1.0 / app.lock().fps() as f64);
+                next += period;
+                let now = Instant::now();
+                if next < now {
+                    next = now;
+                }
+                std::thread::sleep(next - now);
                 let mut s = app.lock();
                 let (view, changed) = s.tick();
                 if changed {

@@ -9,6 +9,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Manager, State, WebviewWindow};
 use tauri_plugin_dialog::DialogExt;
 
+use super::prefs::{self, Folder};
 use super::session::folder_id;
 use super::views::LibraryView;
 use super::{editor, mini, playlists};
@@ -332,6 +333,47 @@ pub fn set_auto_next(handle: AppHandle, app: State<'_, App>, auto_next: bool) {
     emit_library(&handle, &s);
 }
 
+/// Fade out over `secs` after the last loop.
+#[tauri::command]
+pub fn set_fade(handle: AppHandle, app: State<'_, App>, secs: f32) {
+    let mut s = app.lock();
+    s.set_fade(secs);
+    emit_library(&handle, &s);
+}
+
+/// Whether the files open when the app closes are opened again on startup.
+#[tauri::command]
+pub fn set_reopen(handle: AppHandle, app: State<'_, App>, reopen: bool) {
+    let mut s = app.lock();
+    s.set_reopen(reopen);
+    emit_library(&handle, &s);
+}
+
+/// How many times a second the playback state is sent to the UI.
+#[tauri::command]
+pub fn set_fps(handle: AppHandle, app: State<'_, App>, fps: u32) {
+    let mut s = app.lock();
+    s.set_fps(fps);
+    emit_library(&handle, &s);
+}
+
+/// The monitor's refresh rate, as the main window measured it.
+#[tauri::command]
+pub fn set_display_rate(handle: AppHandle, app: State<'_, App>, hz: u32) {
+    let mut s = app.lock();
+    if s.set_display_rate(hz) {
+        emit_library(&handle, &s);
+    }
+}
+
+/// How many songs the history keeps.
+#[tauri::command]
+pub fn set_history_len(handle: AppHandle, app: State<'_, App>, len: usize) {
+    let mut s = app.lock();
+    s.set_history_len(len);
+    emit_library(&handle, &s);
+}
+
 #[tauri::command]
 pub fn set_volume(app: State<'_, App>, volume: f32) {
     app.lock().set_volume(volume);
@@ -411,6 +453,14 @@ pub fn set_mini_notes(handle: AppHandle, app: State<'_, App>, on: bool) {
     emit_library(&handle, &s);
 }
 
+/// Show the notes on the main window's screen instead of the oscilloscope, or not.
+#[tauri::command]
+pub fn set_notes(handle: AppHandle, app: State<'_, App>, on: bool) {
+    let mut s = app.lock();
+    s.set_notes(on);
+    emit_library(&handle, &s);
+}
+
 #[tauri::command]
 pub fn set_language(handle: AppHandle, app: State<'_, App>, language: String) {
     let mut s = app.lock();
@@ -484,4 +534,24 @@ pub async fn pick_theme_image(handle: AppHandle) -> Result<Option<String>, Strin
     let app = handle.state::<App>();
     let text = Text::new(app.lock().text().language());
     themes::import_image(&path, &text).map(Some)
+}
+
+/// Open the settings window beside the main window, or bring it to the front. Async for the
+/// same reason as [`open_theme_editor`].
+#[tauri::command]
+pub async fn open_settings(handle: AppHandle) -> Result<(), String> {
+    let title = handle
+        .state::<App>()
+        .lock()
+        .text()
+        .get("settings")
+        .to_string();
+    prefs::open(&handle, &title).map_err(|e| e.to_string())
+}
+
+/// Show one of the folders of the user's own files.
+#[tauri::command]
+pub fn open_folder(folder: Folder) -> Result<(), String> {
+    let path = folder.path().ok_or("no folder")?;
+    prefs::reveal(&path).map_err(|e| format!("{}: {e}", path.display()))
 }

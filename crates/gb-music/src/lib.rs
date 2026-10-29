@@ -20,5 +20,5 @@ pub use driver::{Driver, Engine, Song};
 pub use effects::Profile;
 pub use gb_core::{midi_note, read_rom, ChannelState};
 pub use length::{frames_to_secs, SongLength, FRAME_RATE};
-pub use player::{Failure, LoadError, PlayState, Player, Seek, TEMPO_RANGE};
+pub use player::{Failure, LoadError, PlayState, Player, Seek, DEFAULT_FADE_SECS, TEMPO_RANGE};
 pub use track::{is_audio, Track};

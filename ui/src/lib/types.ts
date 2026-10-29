@@ -99,6 +99,18 @@ export interface Library {
   /** The ROM whose songs were last shown. */
   shownRom: string | null;
   loopCount: number | null;
+  /** How long the fade-out after the last loop takes, in seconds. */
+  fadeSecs: number;
+  /** Whether the files open when the app closes are opened again on startup. */
+  reopen: boolean;
+  /** How many songs the history keeps, and the choices. */
+  historyLen: number;
+  historyLens: number[];
+  /** How many times a second the playback state comes, 0 for as often as the monitor refreshes
+   * (`displayRate`), and the choices. */
+  fps: number;
+  displayRate: number;
+  fpsChoices: number[];
   autoNext: boolean;
   shuffle: Shuffle;
   volume: number;
@@ -122,8 +134,13 @@ export interface Library {
   miniOnTop: boolean;
   /** Whether the mini player's screen shows the notes instead of the oscilloscope. */
   miniNotes: boolean;
+  /** Whether the main window's screen shows the notes instead of the oscilloscope. */
+  notes: boolean;
   error: string | null;
 }
+
+/** A folder of the user's own files (`Folder` in app/src/gui/prefs.rs). */
+export type Folder = "themes" | "songNames" | "playlists";
 
 export type PlayState = "none" | "stopped" | "playing" | "paused" | "finished" | "failed";
 
@@ -147,6 +164,8 @@ export interface Tick {
    * note (for the noise, that of its clock), the volume (0 silent to 15) and whether it was keyed
    * on. Empty for audio files. */
   notes: [number, number, boolean][][];
+  /** How many frames the last of `notes` is ahead of the music. */
+  notesAhead: number;
 }
 
 /** How pointing a playlist entry at a file went (see app/src/gui/commands.rs). */

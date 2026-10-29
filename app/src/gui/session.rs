@@ -31,6 +31,13 @@ const SCOPE_POINTS: usize = 1024;
 /// Seconds a song plays before it goes into the history, so that songs skipped past do not.
 const HISTORY_AFTER: f64 = 5.0;
 
+/// The choices of how many times a second the playback state is sent to the UI: the common
+/// monitor refresh rates, and 30 to go easy on the CPU. Besides them, 0 follows the monitor.
+pub const FPS_CHOICES: [u32; 7] = [30, 60, 75, 120, 144, 165, 240];
+
+/// The shortest and longest fade-out after the last loop, in seconds.
+pub const FADE_RANGE: std::ops::RangeInclusive<f32> = 1.0..=20.0;
+
 pub struct Session {
     player: SharedPlayer,
     scope: Scope,
@@ -47,6 +54,8 @@ pub struct Session {
     shown: Option<String>,
     muted: [bool; 4],
     levels: [f32; 4],
+    /// The refresh rate of the monitor the main window is on, as it measured it.
+    display_rate: u32,
     /// The channels' key-on counts in the last frame sent, to tell which frames key on.
     triggers: [u8; 4],
     themes: Vec<Theme>,
@@ -202,6 +211,7 @@ impl Session {
             shown: None,
             muted: [false; 4],
             levels: [0.0; 4],
+            display_rate: 60,
             triggers: [0; 4],
             themes: Vec::new(),
             theme_warnings: Vec::new(),
@@ -421,6 +431,7 @@ impl Session {
             return false;
         };
         next.volume = self.settings.volume;
+        next.fade_secs = self.settings.fade_secs;
         next.set_tempo(self.settings.tempo);
         next.set_profile(self.settings.profile, self.settings.speaker_noise);
         for (ch, &m) in self.muted.iter().enumerate() {
@@ -515,6 +526,9 @@ impl Session {
         // Settings from before several ROMs could be open name only the one.
         if paths.is_empty() {
             paths.extend(self.settings.last_rom.clone());
+        }
+        if !self.settings.reopen {
+            paths.clear();
         }
         let last = self.settings.last_rom.take();
         let shown = self.settings.shown_rom.take();
@@ -764,6 +778,59 @@ impl Session {
         self.with_player(|p| p.loop_count = count);
     }
 
+    /// Fade out over `secs` (within [`FADE_RANGE`]) after the last loop.
+    pub fn set_fade(&mut self, secs: f32) {
+        let secs = secs.clamp(*FADE_RANGE.start(), *FADE_RANGE.end());
+        self.settings.fade_secs = secs;
+        self.with_player(|p| p.fade_secs = secs);
+        self.settings.save();
+    }
+
+    /// Send the playback state to the UI `fps` times a second (one of [`FPS_CHOICES`]), or as
+    /// often as the monitor refreshes for 0.
+    pub fn set_fps(&mut self, fps: u32) {
+        if fps == 0 || FPS_CHOICES.contains(&fps) {
+            self.settings.fps = fps;
+            self.settings.save();
+        }
+    }
+
+    /// Take the monitor's refresh rate as the main window measured it; returns whether it
+    /// changed.
+    pub fn set_display_rate(&mut self, hz: u32) -> bool {
+        let hz = hz.clamp(FPS_CHOICES[0], FPS_CHOICES[FPS_CHOICES.len() - 1]);
+        std::mem::replace(&mut self.display_rate, hz) != hz
+    }
+
+    /// How many times a second the playback state is sent to the UI.
+    pub fn fps(&self) -> u32 {
+        match self.settings.fps {
+            0 => self.display_rate,
+            fps if FPS_CHOICES.contains(&fps) => fps,
+            _ => 60,
+        }
+    }
+
+    /// Whether the files open when the app closes are opened again on startup.
+    pub fn set_reopen(&mut self, reopen: bool) {
+        self.settings.reopen = reopen;
+        self.settings.save();
+    }
+
+    /// Keep the `len` latest songs in the history (one of [`playlists::HISTORY_LENS`]), dropping
+    /// older ones now.
+    pub fn set_history_len(&mut self, len: usize) {
+        if !playlists::HISTORY_LENS.contains(&len) {
+            return;
+        }
+        self.settings.history_len = len;
+        self.settings.save();
+        let have = self.playlist(HISTORY).map_or(0, |l| l.entries.len());
+        if have > len {
+            self.remove_from_playlist(HISTORY, &(len..have).collect::<Vec<_>>());
+        }
+    }
+
     pub fn set_auto_next(&mut self, auto_next: bool) {
         self.settings.auto_next = auto_next;
     }
@@ -832,6 +899,12 @@ impl Session {
         self.remember();
     }
 
+    /// Show the notes on the main window's screen instead of the oscilloscope, or not.
+    pub fn set_notes(&mut self, on: bool) {
+        self.settings.notes = on;
+        self.settings.save();
+    }
+
     /// The mini player settings, for [`super::mini`] to change; saved with the rest.
     pub fn mini(&mut self) -> &mut Mini {
         &mut self.settings.mini
@@ -875,6 +948,13 @@ impl Session {
                 .collect(),
             shown_rom: self.shown_rom().map(|r| r.id.clone()),
             loop_count: self.settings.loop_count,
+            fade_secs: self.settings.fade_secs,
+            reopen: self.settings.reopen,
+            history_len: self.settings.history_len,
+            history_lens: playlists::HISTORY_LENS.to_vec(),
+            fps: self.settings.fps,
+            display_rate: self.display_rate,
+            fps_choices: FPS_CHOICES.to_vec(),
             auto_next: self.settings.auto_next,
             shuffle: self.settings.shuffle,
             volume: self.settings.volume,
@@ -905,6 +985,7 @@ impl Session {
             mini: self.settings.mini.on,
             mini_on_top: self.settings.mini.on_top,
             mini_notes: self.settings.mini.notes,
+            notes: self.settings.notes,
             error: {
                 let errors: Vec<&str> = self
                     .error
@@ -1146,7 +1227,8 @@ impl Session {
         else {
             return false;
         };
-        self.edit_playlist(HISTORY, |l| playlists::record(&mut l.entries, entry));
+        let len = self.settings.history_len;
+        self.edit_playlist(HISTORY, |l| playlists::record(&mut l.entries, entry, len));
         true
     }
 
@@ -1395,6 +1477,7 @@ impl Session {
                 p.take_levels(),
                 p.tempo(),
                 p.take_notes(),
+                p.notes_lead(),
             )
         });
         let scope = {
@@ -1402,7 +1485,7 @@ impl Session {
             let skip = samples.len().saturating_sub(SCOPE_POINTS);
             samples.iter().skip(skip).copied().collect()
         };
-        let Some((current, state, paused, pos, length, levels, tempo, notes)) = info else {
+        let Some((current, state, paused, pos, length, levels, tempo, notes, lead)) = info else {
             let view = TickView {
                 rom: None,
                 current: None,
@@ -1415,11 +1498,14 @@ impl Session {
                 levels: [0.0; 4],
                 scope,
                 notes: Vec::new(),
+                notes_ahead: 0,
             };
             return (view, changed);
         };
+        // The meters fall back as fast whatever the rate: by 0.85 over each 30th of a second.
+        let fall = 0.85f32.powf(30.0 / self.fps() as f32);
         for (a, b) in self.levels.iter_mut().zip(levels) {
-            *a = (*a * 0.85).max(b);
+            *a = (*a * fall).max(b);
         }
         let (state, failure) = match state {
             PlayState::Stopped => ("stopped", None),
@@ -1450,6 +1536,7 @@ impl Session {
             levels: self.levels,
             scope,
             notes: notes.iter().map(|f| self.note_frame(f)).collect(),
+            notes_ahead: lead,
         };
         (view, changed)
     }
@@ -1523,13 +1610,15 @@ impl Session {
         }
     }
 
-    /// The loop count, the output and its noise, and the folder of the last export.
-    pub fn export_settings(&self) -> (Option<u32>, Profile, bool, Option<PathBuf>) {
+    /// The loop count, the output and its noise, the fade-out, and the folder of the last
+    /// export.
+    pub fn export_settings(&self) -> (Option<u32>, Profile, bool, f32, Option<PathBuf>) {
         let s = &self.settings;
         (
             s.loop_count,
             s.profile,
             s.speaker_noise,
+            s.fade_secs,
             s.export_dir.clone(),
         )
     }

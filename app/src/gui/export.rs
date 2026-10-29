@@ -101,7 +101,7 @@ const PROGRESS_EVERY: Duration = Duration::from_millis(100);
 pub fn export_plan(app: State<'_, App>, target: Target) -> Plan {
     let s = app.lock();
     let items = s.export_items(&target);
-    let (loop_count, profile, noise, dir) = s.export_settings();
+    let (loop_count, profile, noise, _, dir) = s.export_settings();
     Plan {
         songs: items.len(),
         with_channels: items.iter().filter(|i| i.channels).count(),
@@ -149,7 +149,7 @@ pub fn start_export(
         return Err(s.text().fmt("export_no_dir", &[("path", &dir.display())]));
     }
     let items = s.export_items(&target);
-    let (_, profile, noise, _) = s.export_settings();
+    let (_, profile, noise, fade_secs, _) = s.export_settings();
     s.set_export_dir(dir.clone());
     let text = Text::new(s.text().language());
     drop(s);
@@ -157,6 +157,7 @@ pub fn start_export(
         loops: loops.max(1),
         profile,
         noise,
+        fade_secs,
     };
     let cancel = Arc::new(AtomicBool::new(false));
     *running = Some(cancel.clone());

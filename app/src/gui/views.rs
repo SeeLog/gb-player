@@ -110,6 +110,18 @@ pub struct LibraryView {
     /// The ROM whose songs were last shown (on startup, the one shown when the app was closed).
     pub shown_rom: Option<String>,
     pub loop_count: Option<u32>,
+    /// How long the fade-out after the last loop takes, in seconds.
+    pub fade_secs: f32,
+    /// Whether the files open when the app closes are opened again on startup.
+    pub reopen: bool,
+    /// How many songs the history keeps, and the choices.
+    pub history_len: usize,
+    pub history_lens: Vec<usize>,
+    /// How many times a second the playback state comes, 0 for as often as the monitor
+    /// refreshes (`display_rate`), and the choices.
+    pub fps: u32,
+    pub display_rate: u32,
+    pub fps_choices: Vec<u32>,
     pub auto_next: bool,
     pub shuffle: Shuffle,
     pub volume: f32,
@@ -131,6 +143,8 @@ pub struct LibraryView {
     pub mini_on_top: bool,
     /// Whether the mini player's screen shows the notes instead of the oscilloscope.
     pub mini_notes: bool,
+    /// Whether the main window's screen shows the notes instead of the oscilloscope.
+    pub notes: bool,
     pub error: Option<String>,
 }
 
@@ -156,8 +170,9 @@ pub struct TickView {
     /// The latest output samples, oldest first.
     pub scope: Vec<f32>,
     /// What the four channels played in each frame since the last tick, oldest first; empty
-    /// for audio files.
+    /// for audio files. They come ahead of the music, by `notes_ahead` frames for the last.
     pub notes: Vec<[NoteView; 4]>,
+    pub notes_ahead: u32,
 }
 
 /// What a channel played in a frame: its MIDI note (for the noise, the note of its clock), its

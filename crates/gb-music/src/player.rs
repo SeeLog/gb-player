@@ -43,10 +43,22 @@ impl From<CartridgeError> for LoadError {
 const SNAPSHOT_INTERVAL: u32 = 300;
 
 /// Most frames of channel states kept between calls to [`Player::take_notes`].
-const MAX_NOTE_FRAMES: usize = 64;
+const MAX_NOTE_FRAMES: usize = 256;
+
+/// How many frames ahead of the music the notes come, about 16 seconds: a copy of the machine
+/// runs that far ahead, so that a piano roll can show the notes before they sound, across a wide
+/// screen at a steady speed.
+pub const NOTES_AHEAD: u32 = 960;
+
+/// How many frames more the copy runs on each frame until it is [`NOTES_AHEAD`] ahead, after
+/// the song starts, a seek or a change of tempo: the notes nearest come first.
+const NOTES_CATCH_UP: u32 = 8;
 
 /// Most snapshots kept for one song (about 170 KiB each), enough for 20 minutes of music.
 const MAX_SNAPSHOTS: usize = 240;
+
+/// The fade-out after the last loop that a new player starts with.
+pub const DEFAULT_FADE_SECS: f32 = 8.0;
 
 /// The slowest and fastest tempo, in percent of the game's own.
 pub const TEMPO_RANGE: std::ops::RangeInclusive<u32> = 50..=200;
@@ -189,6 +201,20 @@ struct Game {
     /// Whether the machine is as it would be with the song played at its own tempo from the
     /// start: only then is it a snapshot of its frame, or a place for a seek to run on from.
     exact: bool,
+    /// The copy of the machine the notes come from; `None` when it failed, until the next start.
+    ahead: Option<Box<Ahead>>,
+}
+
+/// A copy of a game's machine run ahead of the music, without making any sound. The sound
+/// engine does the same from the same state, so what its channels play is what the music will
+/// play `lead` frames later.
+struct Ahead {
+    machine: Machine,
+    phase: u32,
+    /// As [`Player::sub`], for the copy.
+    sub: u64,
+    /// How many frames it is ahead of the music.
+    lead: u32,
 }
 
 struct Files {
@@ -228,6 +254,9 @@ pub struct Player {
     levels: [f32; 4],
     /// What the channels played at the end of each frame since the last [`Player::take_notes`].
     notes: Vec<[ChannelState; 4]>,
+    /// Whether the notes come from a copy of the machine run ahead of the music (see
+    /// [`NOTES_AHEAD`]); off where nothing shows them, as in an export.
+    pub notes_ahead: bool,
 }
 
 impl Player {
@@ -259,6 +288,7 @@ impl Player {
                 phase: 0,
                 snapshots: Vec::new(),
                 exact: true,
+                ahead: None,
             })),
             sample_rate,
         ))
@@ -298,7 +328,7 @@ impl Player {
             sub: 0,
             length: SongLength::Unknown,
             loop_count: None,
-            fade_secs: 8.0,
+            fade_secs: DEFAULT_FADE_SECS,
             volume: 0.8,
             tempo: 100,
             profile: Profile::Line,
@@ -309,6 +339,7 @@ impl Player {
             buf_pos: 0,
             levels: [0.0; 4],
             notes: Vec::new(),
+            notes_ahead: true,
         }
     }
 
@@ -376,7 +407,16 @@ impl Player {
     /// they take longer or shorter in step. It takes effect from the next frame, without a
     /// jump. Audio files keep their own tempo.
     pub fn set_tempo(&mut self, percent: u32) {
-        self.tempo = percent.clamp(*TEMPO_RANGE.start(), *TEMPO_RANGE.end());
+        let percent = percent.clamp(*TEMPO_RANGE.start(), *TEMPO_RANGE.end());
+        if percent == self.tempo {
+            return;
+        }
+        self.tempo = percent;
+        // The notes ahead were run at the old tempo.
+        let sub = self.sub;
+        if let Some(g) = self.game_mut().filter(|g| g.ahead.is_some()) {
+            g.run_ahead_from_here(sub);
+        }
     }
 
     /// The tempo songs play at, in percent: always 100 for audio files.
@@ -427,9 +467,19 @@ impl Player {
     }
 
     /// What the APU's channels played at the end of each frame since the last call, oldest
-    /// first, for showing the notes; empty for audio files.
+    /// first, for showing the notes; empty for audio files. The last of them is
+    /// [`Player::notes_lead`] frames ahead of the music.
     pub fn take_notes(&mut self) -> Vec<[ChannelState; 4]> {
         std::mem::take(&mut self.notes)
+    }
+
+    /// How many frames the latest notes are ahead of the music: up to [`NOTES_AHEAD`], or 0
+    /// when they come from the machine playing.
+    pub fn notes_lead(&self) -> u32 {
+        match self.game().and_then(|g| g.ahead.as_ref()) {
+            Some(a) if self.notes_ahead => a.lead,
+            _ => 0,
+        }
     }
 
     /// Where the sound comes out, and whether the console's own noise comes with it.
@@ -461,7 +511,13 @@ impl Player {
         self.effects.reset();
         let sample_rate = self.sample_rate;
         let started = match &mut self.source {
-            Source::Game(g) => g.start(index, sample_rate).map_err(Failure::Call),
+            Source::Game(g) => {
+                let started = g.start(index, sample_rate).map_err(Failure::Call);
+                if self.notes_ahead {
+                    g.run_ahead_from_here(0);
+                }
+                started
+            }
             Source::Files(f) => {
                 let track = &f.tracks[index];
                 self.length = track.length;
@@ -539,10 +595,7 @@ impl Player {
                 for (a, b) in self.levels.iter_mut().zip(lv) {
                     *a = a.max(b);
                 }
-                if self.notes.len() == MAX_NOTE_FRAMES {
-                    self.notes.remove(0);
-                }
-                self.notes.push(g.machine.mem.apu.channel_states());
+                g.run_notes(self.tempo, self.notes_ahead, &mut self.notes);
                 g.machine.mem.apu.take_samples()
             }
             Source::Files(f) => {
@@ -732,6 +785,9 @@ impl Player {
                         g.machine = *m;
                         g.phase = phase;
                         g.exact = true;
+                        if self.notes_ahead {
+                            g.run_ahead_from_here(0);
+                        }
                         None
                     }
                 }
@@ -794,7 +850,53 @@ impl Game {
         let started = self.driver.play(&mut self.machine, &song);
         // Samples produced while starting the song are discarded.
         self.machine.mem.apu.take_samples();
+        self.ahead = None;
         started
+    }
+
+    /// Start the copy for the notes afresh from the machine as it is, `sub` into its frame.
+    fn run_ahead_from_here(&mut self, sub: u64) {
+        let mut machine = self.machine.clone();
+        machine.mem.apu.set_output_enabled(false);
+        self.ahead = Some(Box::new(Ahead {
+            machine,
+            phase: self.phase,
+            sub,
+            lead: 0,
+        }));
+    }
+
+    /// Add the notes of the frame just played to `notes`: those of the copy run ahead, which
+    /// runs on one frame, or a few more while it catches up; without it (or with `ahead` off),
+    /// the machine's own.
+    fn run_notes(&mut self, tempo: u32, ahead: bool, notes: &mut Vec<[ChannelState; 4]>) {
+        let mut push = |frame| {
+            if notes.len() == MAX_NOTE_FRAMES {
+                notes.remove(0);
+            }
+            notes.push(frame);
+        };
+        let Some(a) = self.ahead.as_mut().filter(|_| ahead) else {
+            push(self.machine.mem.apu.channel_states());
+            return;
+        };
+        let frames = 1 + NOTES_CATCH_UP.min(NOTES_AHEAD - a.lead);
+        let music = CYCLES_PER_FRAME as u64 * tempo as u64;
+        for _ in 0..frames {
+            // As `Player::run_frame` steps the music.
+            let cycles = (a.sub + music) / 100 - a.sub / 100;
+            a.sub = (a.sub + music) % FRAME_SUB;
+            let run = self
+                .driver
+                .run_scaled(&mut a.machine, &mut a.phase, cycles as u32);
+            if run.is_err() {
+                self.ahead = None;
+                push(self.machine.mem.apu.channel_states());
+                return;
+            }
+            push(a.machine.mem.apu.channel_states());
+        }
+        a.lead += frames - 1;
     }
 }
 
@@ -1033,6 +1135,60 @@ mod tests {
             assert_eq!(p.position_frames(), frame);
             assert_eq!(p.game().unwrap().machine.state_hash(), state_at(frame));
         }
+    }
+
+    /// The state of the copy run ahead for the notes, and how far ahead it is.
+    fn ahead(p: &Player) -> (u64, u32) {
+        let a = p.game().unwrap().ahead.as_ref().unwrap();
+        (a.machine.state_hash(), a.lead)
+    }
+
+    #[test]
+    fn the_notes_come_from_where_the_music_will_be() {
+        let mut p = counting_player();
+        // It catches up a few frames at a time, then stays as far ahead.
+        let catching = NOTES_AHEAD.div_ceil(NOTES_CATCH_UP);
+        p.run_frame();
+        assert_eq!(ahead(&p).1, NOTES_CATCH_UP);
+        run_frames(&mut p, catching + 9);
+        assert_eq!(p.notes_lead(), NOTES_AHEAD);
+        assert_eq!(
+            ahead(&p),
+            (state_at(catching + 10 + NOTES_AHEAD), NOTES_AHEAD)
+        );
+        // A frame of notes for each frame it ran: one a frame, and the catching up.
+        assert_eq!(p.take_notes().len(), MAX_NOTE_FRAMES);
+        p.run_frame();
+        assert_eq!(p.take_notes().len(), 1);
+        // A seek starts it again from there.
+        p.seek(40);
+        assert_eq!(ahead(&p), (state_at(40), 0));
+        run_frames(&mut p, catching);
+        assert_eq!(ahead(&p).0, state_at(40 + catching + NOTES_AHEAD));
+    }
+
+    #[test]
+    fn the_notes_ahead_follow_a_change_of_tempo() {
+        let mut p = counting_player();
+        run_frames(&mut p, 50);
+        p.set_tempo(150);
+        assert_eq!(ahead(&p).1, 0);
+        run_frames(&mut p, 120);
+        // At 150%, the music is 50 + 180 frames in, and the copy 1.5 times its lead further.
+        assert_eq!(p.position_frames(), 230);
+        assert_eq!(ahead(&p).1, NOTES_AHEAD);
+        assert_eq!(ahead(&p).0, state_at(230 + NOTES_AHEAD * 3 / 2));
+    }
+
+    #[test]
+    fn without_notes_ahead_there_is_no_copy() {
+        let mut p = counting_player();
+        p.notes_ahead = false;
+        p.play(0);
+        run_frames(&mut p, 10);
+        assert!(p.game().unwrap().ahead.is_none());
+        assert_eq!(p.notes_lead(), 0);
+        assert_eq!(p.take_notes().len(), 10);
     }
 
     #[test]

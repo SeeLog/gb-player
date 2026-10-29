@@ -1,6 +1,7 @@
 // What the right-click menu holds: window items on the title bar, play, copy, export, favourite
 // and add to a playlist on a song, Export and Close on an open ROM, the playlist items on a
-// playlist and its songs, and playback elsewhere. Text fields keep the WebView's Cut / Copy / Paste.
+// playlist and its songs, and playback and the big view elsewhere. Text fields keep the WebView's
+// Cut / Copy / Paste.
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { RESTART_AFTER, api, previous } from "./api";
 import { clearHistory, deletePlaylist, locateEntry } from "./actions";
@@ -35,6 +36,9 @@ export interface MenuActions {
   renamePlaylist: (id: string) => void;
   /** Open a ROM the user picks, and show its songs. */
   pickRom: () => void;
+  /** Whether the screen is shown big, or `null` when there is nothing to show it over. */
+  big: () => boolean | null;
+  setBig: (on: boolean) => void;
 }
 
 /** The items for a right-click on `target`, or `null` to show no menu. */
@@ -44,7 +48,7 @@ export async function menuFor(
   t: Translate,
   actions: MenuActions,
 ): Promise<MenuItem[] | null> {
-  if (target.closest("header")) return windowItems(t);
+  if (target.closest("header")) return windowItems(t, actions);
   const row = target.closest<HTMLElement>("[data-index]");
   const romId = target.closest<HTMLElement>("[data-rom]")?.dataset.rom;
   const rom = library?.roms.find((r) => r.id === romId);
@@ -204,12 +208,13 @@ function playlistItems(list: PlaylistView, t: Translate, actions: MenuActions): 
   ];
 }
 
-async function windowItems(t: Translate): Promise<MenuItem[]> {
+async function windowItems(t: Translate, actions: MenuActions): Promise<MenuItem[]> {
   const win = getCurrentWindow();
   const [onTop, maximized] = await Promise.all([win.isAlwaysOnTop(), win.isMaximized()]);
   return [
     { label: t("always_on_top"), checked: onTop, onSelect: () => win.setAlwaysOnTop(!onTop) },
     { label: t("mini_player"), shortcut: "Ctrl+M", onSelect: () => api.setMini(true) },
+    ...bigItems(t, actions),
     "separator",
     { label: t("window_minimize"), onSelect: () => win.minimize() },
     {
@@ -257,8 +262,18 @@ function playbackItems(hasRom: boolean, t: Translate, actions: MenuActions): Men
     },
     { label: t("next"), shortcut: "→", disabled: !hasRom, onSelect: () => api.skip(1) },
     "separator",
+    ...bigItems(t, actions),
     { label: t("open_rom"), shortcut: "Ctrl+O", onSelect: actions.pickRom },
   ];
+}
+
+/** Show the screen big, or the window again; nothing when there is no view to show it over. */
+function bigItems(t: Translate, actions: MenuActions): MenuItem[] {
+  const big = actions.big();
+  if (big === null) return [];
+  return big
+    ? [{ label: t("big_view_close"), shortcut: "Esc", onSelect: () => actions.setBig(false) }]
+    : [{ label: t("big_view"), shortcut: "F", onSelect: () => actions.setBig(true) }];
 }
 
 /** Copy a song's title, and say so. */
