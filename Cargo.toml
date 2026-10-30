@@ -6,6 +6,7 @@ members = ["crates/gb-core", "crates/gb-music", "app"]
 edition = "2021"
 license = "MIT"
 version = "0.1.0"
+publish = false
 
 [profile.dev]
 opt-level = 1

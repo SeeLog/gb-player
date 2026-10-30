@@ -1,0 +1,71 @@
+name: Release
+
+# A tag such as v0.1.0 makes a draft Release to check and publish by hand. A manual run only
+# keeps the files as artifacts.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    env:
+      # So that the exe doesn't need the VC++ runtime to be installed.
+      RUSTFLAGS: -C target-feature=+crt-static
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: oven-sh/setup-bun@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-about@0.9
+      - run: bun install --frozen-lockfile
+      - id: version
+        run: |
+          version=$(cargo pkgid -p gb-player | sed 's/.*[#@]//')
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "The tag $GITHUB_REF_NAME doesn't match the version $version in Cargo.toml"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - run: cargo test --workspace
+      - run: |
+          cargo about generate --config release/about.toml release/about.hbs -o THIRD_PARTY_LICENSES.txt
+          bun release/frontend-licenses.ts >> THIRD_PARTY_LICENSES.txt
+      - run: >
+          bun run tauri build --config
+          '{"bundle":{"resources":{"../LICENSE":"LICENSE","../THIRD_PARTY_LICENSES.txt":"THIRD_PARTY_LICENSES.txt"}}}'
+      - env:
+          NAME: gb-player-${{ steps.version.outputs.version }}-windows-x64
+        run: |
+          mkdir -p out "$NAME"
+          cp target/release/bundle/nsis/*-setup.exe "out/$NAME-setup.exe"
+          cp target/release/gb-player.exe LICENSE THIRD_PARTY_LICENSES.txt "$NAME/"
+          7z a "out/$NAME.zip" "$NAME"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows
+          path: out/*
+          if-no-files-found: error
+
+  release:
+    if: github.ref_type == 'tag'
+    needs: windows
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: windows
+          path: out
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" out/* --repo "$GITHUB_REPOSITORY" --draft --verify-tag --generate-notes
