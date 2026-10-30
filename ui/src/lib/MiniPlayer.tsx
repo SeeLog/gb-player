@@ -96,9 +96,11 @@ export default function MiniPlayer({ library, t }: { library: Library; t: Transl
       }`}
     >
       {clear && <Insides model={model} />}
-      {/* The shell, over the insides, with a lit edge so a clear one still has an outline. */}
+      {/* The shell, over the insides, with a lit edge so a clear one still has an outline. A clear
+          shell is deeper in colour towards its edges, where the plastic is thicker: its colour
+          once more along the rim, which cannot be seen on an opaque one. */}
       <div
-        className="absolute inset-0 rounded-[inherit] bg-[linear-gradient(165deg,color-mix(in_srgb,var(--shell)_88%,white),var(--shell)_35%,color-mix(in_srgb,var(--shell)_92%,black))] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.5),inset_0_0_0_2px_rgba(0,0,0,0.15)]"
+        className="absolute inset-0 rounded-[inherit] bg-[linear-gradient(165deg,color-mix(in_srgb,var(--shell)_88%,white),var(--shell)_35%,color-mix(in_srgb,var(--shell)_92%,black))] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.5),inset_0_0_0_2px_rgba(0,0,0,0.15),inset_0_0_14px_4px_var(--shell)]"
         aria-hidden="true"
       />
       <div className="relative flex h-full flex-col px-4 pt-1 pb-3">
