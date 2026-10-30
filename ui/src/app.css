@@ -91,6 +91,10 @@
   --shell-frame: #8e8d9b;
   --key: #982a5b;
   --key-ink: #f1e4ea;
+  /* The rubber under the keys, seen through a clear shell. */
+  --rubber: #86d3c5;
+  /* The board inside, seen through a clear shell. */
+  --board: #d3d8da;
   /* The knobs of the sliders and switches. */
   --knob: #dbe8c8;
 }
@@ -123,6 +127,10 @@
   --shell-frame: #7a7d86;
   --key: #4b4f58;
   --key-ink: #e2e4e8;
+  /* The rubber under the keys, seen through a clear shell. */
+  --rubber: #86d3c5;
+  /* The board inside, seen through a clear shell. */
+  --board: #d3d8da;
   /* The knobs of the sliders and switches. */
   --knob: #e6e7e8;
 }
@@ -158,6 +166,10 @@
   --shell-frame: #1f1d26;
   --key: #c8352a;
   --key-ink: #fff1ec;
+  /* The rubber under the keys, seen through a clear shell. */
+  --rubber: #86d3c5;
+  /* The board inside, seen through a clear shell. */
+  --board: #d3d8da;
   /* The knobs of the sliders and switches. */
   --knob: #e8e9f5;
 }
@@ -199,6 +211,10 @@
   --shell-frame: #1f1d26;
   --key: #34313c;
   --key-ink: #d7d3e0;
+  /* The rubber under the keys, seen through a clear shell. */
+  --rubber: #86d3c5;
+  /* The board inside, seen through a clear shell. */
+  --board: #d3d8da;
   /* The knobs of the sliders and switches. */
   --knob: #f4eeff;
 }
@@ -241,6 +257,10 @@
   --shell-frame: #1f1d26;
   --key: #34313c;
   --key-ink: #d7d3e0;
+  /* The rubber under the keys, seen through a clear shell. */
+  --rubber: #86d3c5;
+  /* The board inside, seen through a clear shell. */
+  --board: #d3d8da;
   /* The knobs of the sliders and switches. */
   --knob: #ffffff;
 }
@@ -279,6 +299,10 @@
   --shell-frame: #a9a8b4;
   --key: #982a5b;
   --key-ink: #f6ecf0;
+  /* The rubber under the keys, seen through a clear shell. */
+  --rubber: #86d3c5;
+  /* The board inside, seen through a clear shell. */
+  --board: #d3d8da;
   /* The knobs of the sliders and switches. */
   --knob: #ffffff;
 }

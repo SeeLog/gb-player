@@ -32,7 +32,7 @@ pub fn current_id(id: &str) -> &str {
 }
 
 /// The colour tokens a theme may set, the CSS custom properties without the leading `--`.
-pub const TOKENS: [&str; 28] = [
+pub const TOKENS: [&str; 30] = [
     "backdrop",
     "bg",
     "panel",
@@ -60,6 +60,8 @@ pub const TOKENS: [&str; 28] = [
     "shell-frame",
     "key",
     "key-ink",
+    "rubber",
+    "board",
     "knob",
 ];
 

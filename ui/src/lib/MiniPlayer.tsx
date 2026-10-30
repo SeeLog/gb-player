@@ -1,12 +1,12 @@
 // The mini player: the whole window drawn as a handheld console, with the song, the oscilloscope
 // and the progress on its screen. The cross pad goes back and forward (left, right) and sets the
-// volume (up, down), A plays or pauses, B stops, SELECT changes the shuffle and START goes back to
-// the full window. The colours of the body come from the theme (shell, shell-ink, shell-frame, key,
-// key-ink). A see-through shell colour shows the insides, as clear plastic does: the board fills
-// most of the body, and only around the rim does the desktop show through (the window is
-// transparent). The color palette is drawn as the later colour model, the
-// others as the first model, unless the theme says which. The body has the console's outline:
-// the desktop shows around it.
+// volume (up, down), A plays or pauses, B stops, SELECT changes the shuffle and START the loop
+// count; the button by the pin goes back to the full window. The colours of the body come from
+// the theme (shell, shell-ink, shell-frame, key, key-ink, rubber, board). A see-through shell
+// colour shows the insides, as clear plastic does: the board fills most of the body, and only
+// around the rim does the desktop show through (the window is transparent). The color palette is
+// drawn as the later colour model, the others as the first model, unless the theme says which. The
+// body has the console's outline: the desktop shows around it.
 // The Rust side shapes the window (gui/mini.rs). Anywhere but the controls drags the window.
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -23,6 +23,8 @@ import Tip from "./Tip";
 import { tickStore, useTick } from "./tick";
 
 const SHUFFLES: Shuffle[] = ["off", "list", "all"];
+const LOOP_COUNTS: (number | null)[] = [null, 1, 2, 3];
+const loopText = (n: number | null) => (n === null ? "∞" : `×${n}`);
 /** How much a press on the cross pad changes the volume. */
 const VOLUME_STEP = 0.1;
 /** How long a message stays on the screen, in milliseconds. */
@@ -78,6 +80,11 @@ export default function MiniPlayer({ library, t }: { library: Library; t: Transl
     api.setShuffle(mode);
     say(`${t("shuffle")}: ${t(`shuffle_${mode}`)}`);
   };
+  const nextLoop = () => {
+    const n = LOOP_COUNTS[(LOOP_COUNTS.indexOf(library.loopCount) + 1) % LOOP_COUNTS.length];
+    api.setLoopCount(n);
+    say(`${t("loop_label")}: ${loopText(n)}`);
+  };
 
   return (
     <div
@@ -89,9 +96,11 @@ export default function MiniPlayer({ library, t }: { library: Library; t: Transl
       }`}
     >
       {clear && <Insides model={model} />}
-      {/* The shell, over the insides, with a lit edge so a clear one still has an outline. */}
+      {/* The shell, over the insides, with a lit edge so a clear one still has an outline. A clear
+          shell is deeper in colour towards its edges, where the plastic is thicker: its colour
+          once more along the rim, which cannot be seen on an opaque one. */}
       <div
-        className="absolute inset-0 rounded-[inherit] bg-[linear-gradient(165deg,color-mix(in_srgb,var(--shell)_88%,white),var(--shell)_35%,color-mix(in_srgb,var(--shell)_92%,black))] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.5),inset_0_0_0_2px_rgba(0,0,0,0.15)]"
+        className="absolute inset-0 rounded-[inherit] bg-[linear-gradient(165deg,color-mix(in_srgb,var(--shell)_88%,white),var(--shell)_35%,color-mix(in_srgb,var(--shell)_92%,black))] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.5),inset_0_0_0_2px_rgba(0,0,0,0.15),inset_0_0_14px_4px_var(--shell)]"
         aria-hidden="true"
       />
       <div className="relative flex h-full flex-col px-4 pt-1 pb-3">
@@ -119,8 +128,8 @@ export default function MiniPlayer({ library, t }: { library: Library; t: Transl
             />
             <Pill
               label="START"
-              title={`${t("mini_exit")} (Ctrl+M)`}
-              onClick={() => api.setMini(false)}
+              title={`${t("loop_label")}: ${loopText(library.loopCount)}`}
+              onClick={nextLoop}
               model={model}
               clear={clear}
             />
@@ -132,22 +141,24 @@ export default function MiniPlayer({ library, t }: { library: Library; t: Transl
   );
 }
 
-// The rubber under the keys, seen through a clear shell of the colour model: the shell's colour
-// is laid over it, so a tinted shell tints it (faint under clear purple, mint under clear).
+// The rubber under the keys, seen through a clear shell of the colour model, in the theme's
+// rubber colour (greyer under SELECT and START): the shell's colour is laid over it, so a tinted
+// shell tints it (faint under clear purple, mint under clear).
 const RUBBER =
-  "[background:linear-gradient(var(--shell),var(--shell)),#86d3c5] shadow-[inset_0_1px_3px_rgba(0,0,0,0.2)]";
+  "[background:linear-gradient(var(--shell),var(--shell)),var(--rubber)] shadow-[inset_0_1px_3px_rgba(0,0,0,0.2)]";
 const RUBBER_SMALL =
-  "[background:linear-gradient(var(--shell),var(--shell)),#9fb6c4] shadow-[inset_0_1px_2px_rgba(0,0,0,0.25)]";
+  "[background:linear-gradient(var(--shell),var(--shell)),color-mix(in_srgb,var(--rubber)_45%,#a9b3c2)] shadow-[inset_0_1px_2px_rgba(0,0,0,0.25)]";
 
 /** What is inside the body, drawn only under a see-through shell: the board and the frame that
- * hold it, which fill the body all but a rim about 10px wide (where the desktop shows through), a
+ * hold it (in the theme's board colour; a white one makes a tinted shell look pale, as on the
+ * console), which fill the body all but a rim about 10px wide (where the desktop shows through), a
  * ribbon cable, screw posts and the speaker's magnet. */
 function Insides({ model }: { model: Model }) {
   return (
     <div className="pointer-events-none absolute inset-0" aria-hidden="true">
       {/* The same outline as the body, 10px in. */}
       <div
-        className={`absolute inset-2.5 bg-[#d3d8da] ${
+        className={`absolute inset-2.5 bg-(--board) ${
           model === "dmg" ? "rounded-[6px_6px_46px_6px]" : "rounded-[10px_10px_34px_34px]"
         }`}
       />
@@ -173,7 +184,8 @@ function Insides({ model }: { model: Model }) {
   );
 }
 
-/** The top of the body: the power switch's marks, and the window's own buttons. */
+/** The top of the body: the power switch's marks, and the window's own buttons (always on top,
+ * back to the full window, close). */
 function TopEdge({ library, t, model }: { library: Library; t: Translate; model: Model }) {
   const onTop = library.miniOnTop;
   const button =
@@ -192,6 +204,15 @@ function TopEdge({ library, t, model }: { library: Library; t: Translate; model:
           aria-pressed={onTop}
         >
           <Icon name="pin" size={14} />
+        </button>
+      </Tip>
+      <Tip text={`${t("mini_exit")} (Ctrl+M)`}>
+        <button
+          className={`${button} opacity-60 hover:opacity-100`}
+          onClick={() => api.setMini(false)}
+          aria-label={t("mini_exit")}
+        >
+          <Icon name="expand" size={14} />
         </button>
       </Tip>
       <Tip text={t("window_close")}>

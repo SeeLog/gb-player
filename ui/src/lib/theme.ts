@@ -32,6 +32,8 @@ export const TOKENS = [
   "shell-frame",
   "key",
   "key-ink",
+  "rubber",
+  "board",
   "knob",
 ] as const;
 
