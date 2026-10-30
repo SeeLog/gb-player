@@ -1,12 +1,12 @@
 // The mini player: the whole window drawn as a handheld console, with the song, the oscilloscope
 // and the progress on its screen. The cross pad goes back and forward (left, right) and sets the
-// volume (up, down), A plays or pauses, B stops, SELECT changes the shuffle and START goes back to
-// the full window. The colours of the body come from the theme (shell, shell-ink, shell-frame, key,
-// key-ink). A see-through shell colour shows the insides, as clear plastic does: the board fills
-// most of the body, and only around the rim does the desktop show through (the window is
-// transparent). The color palette is drawn as the later colour model, the
-// others as the first model, unless the theme says which. The body has the console's outline:
-// the desktop shows around it.
+// volume (up, down), A plays or pauses, B stops, SELECT changes the shuffle and START the loop
+// count; the button by the pin goes back to the full window. The colours of the body come from
+// the theme (shell, shell-ink, shell-frame, key, key-ink). A see-through shell
+// colour shows the insides, as clear plastic does: the board fills most of the body, and only
+// around the rim does the desktop show through (the window is transparent). The color palette is
+// drawn as the later colour model, the others as the first model, unless the theme says which. The
+// body has the console's outline: the desktop shows around it.
 // The Rust side shapes the window (gui/mini.rs). Anywhere but the controls drags the window.
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -23,6 +23,8 @@ import Tip from "./Tip";
 import { tickStore, useTick } from "./tick";
 
 const SHUFFLES: Shuffle[] = ["off", "list", "all"];
+const LOOP_COUNTS: (number | null)[] = [null, 1, 2, 3];
+const loopText = (n: number | null) => (n === null ? "∞" : `×${n}`);
 /** How much a press on the cross pad changes the volume. */
 const VOLUME_STEP = 0.1;
 /** How long a message stays on the screen, in milliseconds. */
@@ -78,6 +80,11 @@ export default function MiniPlayer({ library, t }: { library: Library; t: Transl
     api.setShuffle(mode);
     say(`${t("shuffle")}: ${t(`shuffle_${mode}`)}`);
   };
+  const nextLoop = () => {
+    const n = LOOP_COUNTS[(LOOP_COUNTS.indexOf(library.loopCount) + 1) % LOOP_COUNTS.length];
+    api.setLoopCount(n);
+    say(`${t("loop_label")}: ${loopText(n)}`);
+  };
 
   return (
     <div
@@ -119,8 +126,8 @@ export default function MiniPlayer({ library, t }: { library: Library; t: Transl
             />
             <Pill
               label="START"
-              title={`${t("mini_exit")} (Ctrl+M)`}
-              onClick={() => api.setMini(false)}
+              title={`${t("loop_label")}: ${loopText(library.loopCount)}`}
+              onClick={nextLoop}
               model={model}
               clear={clear}
             />
@@ -173,7 +180,8 @@ function Insides({ model }: { model: Model }) {
   );
 }
 
-/** The top of the body: the power switch's marks, and the window's own buttons. */
+/** The top of the body: the power switch's marks, and the window's own buttons (always on top,
+ * back to the full window, close). */
 function TopEdge({ library, t, model }: { library: Library; t: Translate; model: Model }) {
   const onTop = library.miniOnTop;
   const button =
@@ -192,6 +200,15 @@ function TopEdge({ library, t, model }: { library: Library; t: Translate; model:
           aria-pressed={onTop}
         >
           <Icon name="pin" size={14} />
+        </button>
+      </Tip>
+      <Tip text={`${t("mini_exit")} (Ctrl+M)`}>
+        <button
+          className={`${button} opacity-60 hover:opacity-100`}
+          onClick={() => api.setMini(false)}
+          aria-label={t("mini_exit")}
+        >
+          <Icon name="expand" size={14} />
         </button>
       </Tip>
       <Tip text={t("window_close")}>
