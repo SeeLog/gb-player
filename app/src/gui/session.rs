@@ -1195,8 +1195,8 @@ impl Session {
     /// history leave it as it is, so that it can be played through. Returns whether the
     /// history changed.
     fn note_play(&mut self) -> bool {
-        let Some((current, state, pos)) =
-            self.with_player(|p| (p.current(), p.state(), p.position_frames()))
+        let Some((current, state, pos, repeats)) =
+            self.with_player(|p| (p.current(), p.state(), p.position_frames(), p.repeats()))
         else {
             return false;
         };
@@ -1206,7 +1206,8 @@ impl Session {
         let song = (rom, index);
         let secs = frames_to_secs(pos);
         let listened = match state {
-            PlayState::Playing => secs >= HISTORY_AFTER,
+            // A song that started over by itself has been played to its end.
+            PlayState::Playing => secs >= HISTORY_AFTER || repeats > 0,
             PlayState::Finished => true,
             _ => false,
         };

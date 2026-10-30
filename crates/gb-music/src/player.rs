@@ -236,9 +236,12 @@ pub struct Player {
     frame: u32,
     sub: u64,
     length: SongLength,
-    /// Number of times to play the looping part before fading out; `None` loops forever. An
-    /// audio file has no loop of its own: it plays once, or over and over for `None`.
+    /// Number of times to play the looping part before fading out; `None` loops forever. A
+    /// song without a loop of its own (a game's jingle, an audio file) plays once, or over and
+    /// over for `None`.
     pub loop_count: Option<u32>,
+    /// Times the song has started over by itself since it was played.
+    repeats: u32,
     pub fade_secs: f32,
     /// Applied after the [`Profile`]'s effects, as the console's volume wheel comes after the
     /// chip: turning it down makes everything quieter but changes nothing else.
@@ -328,6 +331,7 @@ impl Player {
             sub: 0,
             length: SongLength::Unknown,
             loop_count: None,
+            repeats: 0,
             fade_secs: DEFAULT_FADE_SECS,
             volume: 0.8,
             tempo: 100,
@@ -432,6 +436,12 @@ impl Player {
         self.length
     }
 
+    /// Times a song without a loop of its own has started over by itself since it was played,
+    /// when the songs loop forever.
+    pub fn repeats(&self) -> u32 {
+        self.repeats
+    }
+
     /// Provide the result of [`crate::analyze`] for the current song.
     pub fn set_length(&mut self, song: usize, length: SongLength) {
         if self.current == Some(song) {
@@ -502,6 +512,7 @@ impl Player {
         }
         self.current = Some(index);
         self.plays += 1;
+        self.repeats = 0;
         self.frame = 0;
         self.sub = 0;
         self.length = SongLength::Unknown;
@@ -615,6 +626,7 @@ impl Player {
                     let more = decoder.read(&mut samples, want - got);
                     if more > 0 {
                         self.frame = 0;
+                        self.repeats += 1;
                     }
                     got += more;
                 }
@@ -644,7 +656,42 @@ impl Player {
 
         if self.end_frame().is_some_and(|end| self.frame >= end) {
             self.state = PlayState::Finished;
+        } else if self.jingle_end().is_some_and(|end| self.frame >= end) {
+            // Played over and over: on from the start.
+            self.start_over();
         }
+    }
+
+    /// Take a game's song back to its start, as it was when played.
+    fn start_over(&mut self) {
+        let (Some(index), sample_rate, ahead) = (self.current, self.sample_rate, self.notes_ahead)
+        else {
+            return;
+        };
+        let Some(g) = self.game_mut() else { return };
+        match g.snapshots.iter().find(|s| s.frame == 0) {
+            Some(s) => {
+                let mut machine = s.machine.clone();
+                machine.mem.apu.mute = g.machine.mem.apu.mute;
+                machine.mem.apu.gain = g.machine.mem.apu.gain;
+                g.machine = machine;
+                g.phase = s.phase;
+                g.exact = true;
+            }
+            None => {
+                if let Err(e) = g.start(index, sample_rate) {
+                    self.state = PlayState::Failed(Failure::Call(e));
+                    return;
+                }
+            }
+        }
+        if ahead {
+            g.run_ahead_from_here(0);
+        }
+        self.frame = 0;
+        self.sub = 0;
+        self.repeats += 1;
+        self.keep_snapshot();
     }
 
     /// Remember the machine at the current frame if it starts a new snapshot interval.
@@ -662,12 +709,20 @@ impl Player {
     }
 
     /// The frame at which the song stops with the current settings, if it does: after the
-    /// fade-out of a looping song; a game's jingle once its last note has rung out for a
-    /// second. An audio file without a loop stops at its end.
+    /// fade-out of a looping song; at the [`Player::jingle_end`] of a game's jingle. An audio
+    /// file without a loop stops at its end.
     fn end_frame(&self) -> Option<u32> {
-        match (self.fade_start(), self.length) {
-            (Some(start), _) => Some(start.saturating_add(self.fade_frames())),
-            (_, SongLength::Ends { at }) if self.loop_count.is_some() && self.game().is_some() => {
+        match self.fade_start() {
+            Some(start) => Some(start.saturating_add(self.fade_frames())),
+            None => self.jingle_end().filter(|_| self.loop_count.is_some()),
+        }
+    }
+
+    /// The frame at which a game's jingle is over, once its last note has rung out for a
+    /// second: it stops there, or starts over when the songs loop forever.
+    fn jingle_end(&self) -> Option<u32> {
+        match self.length {
+            SongLength::Ends { at } if self.game().is_some() => {
                 Some(at.saturating_add(FRAME_RATE as u32))
             }
             _ => None,
@@ -715,7 +770,7 @@ impl Player {
                 });
             }
         };
-        let frame = match self.end_frame() {
+        let frame = match self.end_frame().or(self.jingle_end()) {
             Some(end) => frame.min(end.saturating_sub(1)),
             None => frame,
         };
@@ -968,6 +1023,32 @@ mod tests {
         let mut p = counting_player();
         run_frames(&mut p, frame);
         p.game().unwrap().machine.state_hash()
+    }
+
+    #[test]
+    fn a_jingle_stops_after_its_loops_or_starts_over_forever() {
+        let jingle = |loop_count| {
+            let mut p = counting_player();
+            p.set_length(0, SongLength::Ends { at: 100 });
+            p.loop_count = loop_count;
+            run_frames(&mut p, 100 + FRAME_RATE as u32 - 1);
+            assert_eq!(p.state(), PlayState::Playing);
+            p.run_frame();
+            p
+        };
+        assert_eq!(jingle(Some(1)).state(), PlayState::Finished);
+        // A second after the last note, it is back at its start.
+        let mut p = jingle(None);
+        assert_eq!(p.state(), PlayState::Playing);
+        assert_eq!((p.position_frames(), p.repeats()), (0, 1));
+        assert_eq!(p.game().unwrap().machine.state_hash(), state_at(0));
+        // The copy for the notes starts over with it.
+        assert_eq!(p.game().unwrap().ahead.as_ref().unwrap().lead, 0);
+        run_frames(&mut p, 30);
+        assert_eq!(p.game().unwrap().machine.state_hash(), state_at(30));
+        // Seeking stays within the one pass.
+        p.seek(1000);
+        assert_eq!(p.position_frames(), 100 + FRAME_RATE as u32 - 1);
     }
 
     #[test]
@@ -1276,6 +1357,7 @@ mod tests {
             "{}",
             p.position_frames()
         );
+        assert_eq!(p.repeats(), 2);
         assert!(out[48_000 * 4..].iter().any(|&s| s.abs() > 0.1));
     }
 
