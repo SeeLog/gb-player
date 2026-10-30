@@ -2,7 +2,7 @@
 // and the progress on its screen. The cross pad goes back and forward (left, right) and sets the
 // volume (up, down), A plays or pauses, B stops, SELECT changes the shuffle and START the loop
 // count; the button by the pin goes back to the full window. The colours of the body come from
-// the theme (shell, shell-ink, shell-frame, key, key-ink). A see-through shell
+// the theme (shell, shell-ink, shell-frame, key, key-ink, rubber, board). A see-through shell
 // colour shows the insides, as clear plastic does: the board fills most of the body, and only
 // around the rim does the desktop show through (the window is transparent). The color palette is
 // drawn as the later colour model, the others as the first model, unless the theme says which. The
@@ -141,22 +141,24 @@ export default function MiniPlayer({ library, t }: { library: Library; t: Transl
   );
 }
 
-// The rubber under the keys, seen through a clear shell of the colour model: the shell's colour
-// is laid over it, so a tinted shell tints it (faint under clear purple, mint under clear).
+// The rubber under the keys, seen through a clear shell of the colour model, in the theme's
+// rubber colour (greyer under SELECT and START): the shell's colour is laid over it, so a tinted
+// shell tints it (faint under clear purple, mint under clear).
 const RUBBER =
-  "[background:linear-gradient(var(--shell),var(--shell)),#86d3c5] shadow-[inset_0_1px_3px_rgba(0,0,0,0.2)]";
+  "[background:linear-gradient(var(--shell),var(--shell)),var(--rubber)] shadow-[inset_0_1px_3px_rgba(0,0,0,0.2)]";
 const RUBBER_SMALL =
-  "[background:linear-gradient(var(--shell),var(--shell)),#9fb6c4] shadow-[inset_0_1px_2px_rgba(0,0,0,0.25)]";
+  "[background:linear-gradient(var(--shell),var(--shell)),color-mix(in_srgb,var(--rubber)_45%,#a9b3c2)] shadow-[inset_0_1px_2px_rgba(0,0,0,0.25)]";
 
 /** What is inside the body, drawn only under a see-through shell: the board and the frame that
- * hold it, which fill the body all but a rim about 10px wide (where the desktop shows through), a
+ * hold it (in the theme's board colour; a white one makes a tinted shell look pale, as on the
+ * console), which fill the body all but a rim about 10px wide (where the desktop shows through), a
  * ribbon cable, screw posts and the speaker's magnet. */
 function Insides({ model }: { model: Model }) {
   return (
     <div className="pointer-events-none absolute inset-0" aria-hidden="true">
       {/* The same outline as the body, 10px in. */}
       <div
-        className={`absolute inset-2.5 bg-[#d3d8da] ${
+        className={`absolute inset-2.5 bg-(--board) ${
           model === "dmg" ? "rounded-[6px_6px_46px_6px]" : "rounded-[10px_10px_34px_34px]"
         }`}
       />
