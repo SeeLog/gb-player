@@ -10,11 +10,11 @@ GB Player plays the music in Game Boy and Game Boy Color ROMs by running each ga
 | --- | --- |
 | ![The full window in the Prism theme with the piano roll](docs/screenshots/en-prism-notes.png) | ![The full window in the Nebula theme with the waveform](docs/screenshots/en-nebula-wave.png) |
 
-| Mini player, clear purple | Mini player, original model |
+| Mini player, clear purple | Mini player, classic style |
 | --- | --- |
-| ![The mini player as a clear purple Game Boy Color with the piano roll](docs/screenshots/en-mini-gbc-notes.png) | ![The mini player as an original Game Boy with the waveform](docs/screenshots/en-mini-dmg-wave.png) |
+| ![The mini player in clear purple with the piano roll](docs/screenshots/en-mini-gbc-notes.png) | ![The mini player in the classic style with the waveform](docs/screenshots/en-mini-dmg-wave.png) |
 
-- Mini player shaped like a Game Boy or Game Boy Color, with buttons that work
+- Game Boy-style mini player with buttons that work
 - Piano roll and waveform, with a mute and level meter per channel
 - Effect that recreates a real GBC's speaker
 - Tempo from 50% to 200% at the same pitch

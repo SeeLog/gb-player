@@ -10,11 +10,11 @@
 | --- | --- |
 | ![Prism テーマでピアノロールを表示した全体画面](docs/screenshots/ja-prism-notes.png) | ![Nebula テーマで波形を表示した全体画面](docs/screenshots/ja-nebula-wave.png) |
 
-| ミニプレイヤー、クリアパープル | ミニプレイヤー、初代型 |
+| ミニプレイヤー、クリアパープル | ミニプレイヤー、クラシック風 |
 | --- | --- |
-| ![クリアパープルのゲームボーイカラー型のミニプレイヤーでピアノロールを表示](docs/screenshots/ja-mini-gbc-notes.png) | ![初代ゲームボーイ型のミニプレイヤーで波形を表示](docs/screenshots/ja-mini-dmg-wave.png) |
+| ![クリアパープルのミニプレイヤーでピアノロールを表示](docs/screenshots/ja-mini-gbc-notes.png) | ![クラシック風のミニプレイヤーで波形を表示](docs/screenshots/ja-mini-dmg-wave.png) |
 
-- ゲームボーイやゲームボーイカラーの形をしたミニプレイヤー(ボタンで操作できます)
+- ゲームボーイ風のミニプレイヤー(ボタンで操作できます)
 - ピアノロールと波形の表示、チャンネルごとのミュートとレベルメーター
 - GBC実機のスピーカーを再現する音響エフェクト
 - 音程を変えずにテンポを50%〜200%に変更
