@@ -1,115 +1,108 @@
-# 曲データベース
+English | [日本語](README.ja.md)
 
-ROMには曲名が入っていないので、どのゲームにどの曲があり、各言語で何と呼ぶかをここで管理しています。
-ファイルはビルド時にプレイヤーへ埋め込まれます。
+# Song database
+
+ROMs don't contain song names, so this folder records which songs each game has and what they are called in each language. The files are embedded in the player when it is built.
 
 ```
 songdb/
-  pokemon-gen1/      赤・緑・青・ピカチュウ(第1世代サウンドエンジン)
-    songs.toml       ゲームの照合と、ROM内の曲ID → 曲キー(言語に依存しない)
-    en.toml          曲キー → 英語名
-    ja.toml          曲キー → 日本語名
-  pokemon-gen2/      金・銀・クリスタル(第2世代サウンドエンジン)
+  pokemon-gen1/      Red, Green, Blue, Yellow (Gen 1 sound engine)
+    songs.toml       matches the game, and maps song IDs in the ROM to song keys (language-neutral)
+    en.toml          song key -> English title
+    ja.toml          song key -> Japanese title
+  pokemon-gen2/      Gold, Silver, Crystal (Gen 2 sound engine)
     ...
 ```
 
-ディレクトリはソフト1本ではなく「サウンドエンジンと曲セットを共有するシリーズ」単位です。
-版違い(赤/緑/青など)や言語違いは、同じシリーズの `songs.toml` の中で `[[game]]` として区別します。
+A folder is a series that shares a sound engine and a set of songs, not a single game. Revisions (Red, Green, Blue and so on) and regional versions are separate `[[game]]` entries in the same `songs.toml`.
 
 ## songs.toml
 
 ```toml
 [[game]]
-id = "red-green-blue"                                # 言語ファイルの [games] で名前を付けるID
-titles = ["POKEMON RED", "POKEMON GREEN", "POKEMON BLUE"]  # カートリッジヘッダのタイトル($0134〜)
-checksums = [0x91E6]                                # 任意: グローバルチェックサム($014E〜)。同じタイトルの版を分けたいときだけ
+id = "red-green-blue"                                # the ID the language files name in [games]
+titles = ["POKEMON RED", "POKEMON GREEN", "POKEMON BLUE"]  # cartridge header title ($0134 on)
+checksums = [0x91E6]                                # optional: global checksum ($014E on), only to tell apart versions with the same title
 songs = [
-    { bank = 1, id = 0xBA, key = "pallet_town" },   # 第1世代: オーディオバンクの順番(1〜)とサウンドID
+    { bank = 1, id = 0xBA, key = "pallet_town" },   # Gen 1: audio bank number (from 1) and sound ID
     { bank = 1, id = 0xBD, key = "pokecenter", intro = 1.82, loop = 28.93 },
     { bank = 1, id = 0xB8, key = "some_jingle", hidden = true },
 ]
 ```
 
-- 第2世代は `bank` を書かず `{ id = 0x1C, key = "pallet_town" }` のように曲番号だけです。
-- `intro` / `loop`(秒)や `end`(ループしない曲の長さ、秒)を書くと、自動解析の代わりにその値を使います。
-- `hidden = true` の曲は一覧に出ません(効果音を曲と誤認する場合など)。
-- タイトル(とチェックサム)がどのゲームにも一致しないROMは、見つかった曲のうち `songs` で名前が付く曲がいちばん多いゲームとして扱います。
-- 曲キーはシリーズ内で共通の、言語に依存しない名前です。pret のラベルから作っています(`Music_PalletTown` → `pallet_town`)。
+- Gen 2 has no `bank`, only the song number: `{ id = 0x1C, key = "pallet_town" }`.
+- `intro` and `loop` (seconds), or `end` (the length of a song that doesn't loop, in seconds), replace the automatic analysis.
+- Songs with `hidden = true` are left out of the list, for example a sound effect that looks like a song.
+- A ROM whose title and checksum match no game is treated as the game whose `songs` name the most of the songs found in it.
+- Song keys are language-neutral names shared within a series, made from pret's labels (`Music_PalletTown` becomes `pallet_town`).
 
-## 言語ファイル (`<言語コード>.toml`)
+## Language files (`<language code>.toml`)
 
 ```toml
 [games]
-"red-green-blue" = "ポケットモンスター 赤・緑・青"
+"red-green-blue" = "Pokémon Red / Green / Blue"
 
 [songs]
-pallet_town = "マサラタウン"
+pallet_town = "Pallet Town Theme"
 ```
 
-- 書かれていない曲は英語名、それも無ければ曲キーで表示されます。一部の曲だけの翻訳でも大丈夫です。
-- `songs.toml` に無いキーを書くとテストが失敗します(タイプミス防止)。
-- 曲名は公式の曲名です。第1世代は Pokémon Game Sound Library、第2世代はリメイク版『ハートゴールド&ソウルシルバー』の
-  サウンドトラックにある同じ曲のアレンジの曲名です。
-  そこに無い曲や対応が確かでない曲は、場所や場面を表す説明的な名前です。
+- A song with no entry shows its English title, or its song key if that is missing too, so a partial translation is fine.
+- A key that isn't in `songs.toml` fails the tests, which catches typos.
+- Titles are the official ones: the Pokémon Game Sound Library for Gen 1, and for Gen 2 the HeartGold & SoulSilver soundtrack's title for the arrangement of the same song. Songs that aren't listed there, or whose match is uncertain, have a name describing the place or scene.
 
-新しい言語を追加したときは、`crates/gb-music/src/songdb.rs` の `BUILTIN` と `LANGUAGES` にも1行ずつ足してください。
+When you add a language, also add a line to `BUILTIN` and `LANGUAGES` in `crates/gb-music/src/songdb.rs`.
 
-## 手元だけで変えたいとき
+## Changing names on your own machine
 
-同じ形式の言語ファイルを次の場所に置くと、内蔵の名前より優先されます(再ビルド不要)。
+A language file in the same format takes priority over the built-in names, with no rebuild, when placed at:
 
-- Windows: `%APPDATA%\gb-player\songdb\<シリーズ>\<言語コード>.toml`
-- Linux / macOS: `$XDG_CONFIG_HOME/gb-player/songdb/...`(未設定なら `~/.config/gb-player/songdb/...`)
+- Windows: `%APPDATA%\gb-player\songdb\<series>\<language code>.toml`
+- Linux and macOS: `$XDG_CONFIG_HOME/gb-player/songdb/...` (`~/.config/gb-player/songdb/...` if unset)
 
-## 内蔵の検出器が無いゲーム(`[game.playback]`)
+## Games without a built-in detector (`[game.playback]`)
 
-ポケモン以外のゲームは、ゲームのサウンドドライバの「呼び方」を書けば鳴らせます。
-曲データの中身を書く必要はありません(ゲーム自身のドライバが読みます)。
-次のファイルを置くと、ヘッダタイトル(と `checksums`)が一致するROMを開いたときに使われます。
+A game other than Pokémon can play once you describe how to call its sound driver. You don't describe the song data, because the game's own driver reads it. The following file is used when a ROM's header title (and `checksums`) match:
 
-- Windows: `%APPDATA%\gb-player\songdb\<シリーズ>\songs.toml`(Linux / macOS は上と同じ場所)
-- `<シリーズ>` は英小文字・数字・`-` だけの名前です。同じフォルダの `<言語コード>.toml` が曲名になります。
+- Windows: `%APPDATA%\gb-player\songdb\<series>\songs.toml` (Linux and macOS: the same place as above)
+- `<series>` may contain only lowercase letters, digits and `-`. The `<language code>.toml` files in the same folder give the song names.
 
 ```toml
 [[game]]
 id = "some-game"
 titles = ["SOME GAME"]
 songs = [{ id = 0x01, key = "title" }, { id = 0x02, key = "field", intro = 1.5, loop = 30.0 }]
-song_range = { first = 0x01, last = 0x30 }    # 任意: songs に無い番号も「Song $XX」として出す
+song_range = { first = 0x01, last = 0x30 }    # optional: also list numbers not in songs, as "Song $XX"
 
 [game.playback]
-rate = "vblank"                               # 既定。タイマー割り込みのゲームは { timer = { tac = 0x04, tma = 0xC0 } }
-setup = [                                     # 任意: 曲ごとのリセット直後に1回
+rate = "vblank"                               # the default; for games on the timer interrupt, { timer = { tac = 0x04, tma = 0xC0 } }
+setup = [                                     # optional: once, after the reset for each song
   { write = 0xFF26, value = 0x80 },
-  { bank = 1, call = 0x4000 },                # ドライバの初期化
-  { frames = 30 },                            # update を30回空回し
+  { bank = 1, call = 0x4000 },                # initialise the driver
+  { frames = 30 },                            # run update 30 times
 ]
-start = [ { bank = 1, call = 0x4003, a = "song" } ]     # 曲を始める
-update = [ { bank = 1, call = 0x4006 } ]                # rate の間隔で(既定は毎フレーム 59.7Hz)
+start = [ { bank = 1, call = 0x4003, a = "song" } ]     # start the song
+update = [ { bank = 1, call = 0x4006 } ]                # at the rate (by default every frame, 59.7 Hz)
 
-[game.probe]                                  # 任意: 正確なループ検出用。無ければRAM全体で判定
-active  = { at = 0xC104, step = 0x32, mask = 0x01 }     # チャンネル c の値は at + c * step
-address = { at = 0xC107, step = 0x32, size = 2 }        # 次に読むコマンドのアドレス
-return  = { at = 0xC109, step = 0x32, size = 2 }        # サブルーチンの戻り先
-loop    = { at = 0xC119, step = 0x32 }                  # ループカウンタ
+[game.probe]                                  # optional: for exact loop detection; without it, all of RAM is compared
+active  = { at = 0xC104, step = 0x32, mask = 0x01 }     # the value for channel c is at + c * step
+address = { at = 0xC107, step = 0x32, size = 2 }        # address of the next command to read
+return  = { at = 0xC109, step = 0x32, size = 2 }        # where a subroutine returns to
+loop    = { at = 0xC119, step = 0x32 }                  # loop counter
 flags   = { at = 0xC104, step = 0x32, mask = 0x06 }
-timer   = { at = 0xC116, step = 0x32 }                  # 今の音符の残りフレーム
+timer   = { at = 0xC116, step = 0x32 }                  # frames left in the current note
 check   = { song_id = { at = 0xC101, step = 0x32, size = 2 }, all = false }
 ```
 
-`rate` の timer は TAC/TMA レジスタの値で、更新の間隔はタイマー割り込みと同じ(4096Hz / (256 - tma) など)になります。
-更新が1フレームに16回を超える設定は受け付けません。
+The `rate` timer takes TAC and TMA register values, and updates run as often as the timer interrupt would (4096 Hz / (256 - tma) and so on). Settings with more than 16 updates per frame are rejected.
 
-手順(ステップ)は次のどれか1つです。
+Each step is one of these:
 
-- `{ write = アドレス, value = 値 }`: 1バイト書く(RAM、I/O、バンク切替レジスタ)
-- `{ bank = 値 }`: $4000〜$7FFF のROMバンクを切り替える。`call` / `call_by` と組み合わせると呼ぶ直前に切り替える
-- `{ call = アドレス, a = 値, de = 値, ... }`: レジスタ(a b c d e h l bc de hl)を設定して呼ぶ
-- `{ call_by = アドレス, cases = [[値, 呼び先], ...], default = 呼び先 }`: RAMの値で呼び先を選ぶ
-- `{ frames = 回数 }`: update をその回数だけ実行する(setup / start のみ、合わせて300回まで)
+- `{ write = address, value = value }`: write one byte (RAM, I/O, bank switching registers)
+- `{ bank = value }`: switch the ROM bank at $4000 to $7FFF; with `call` or `call_by`, it switches just before the call
+- `{ call = address, a = value, de = value, ... }`: set registers (a b c d e h l bc de hl) and call
+- `{ call_by = address, cases = [[value, target], ...], default = target }`: choose the target by a value in RAM
+- `{ frames = count }`: run update that many times (`setup` and `start` only, up to 300 in total)
 
-値は数値、`"song"`(曲番号)、`"song_bank"`(曲の `bank`)、`{ ram = アドレス }`(そのときのRAMの値)のどれかです。
+A value is a number, `"song"` (the song number), `"song_bank"` (the song's `bank`) or `{ ram = address }` (the value in RAM at that moment).
 
-このファイルにできるのは、エミュレートしたマシンの中でバイトを書き、レジスタを設定し、アドレスを呼ぶことだけです。
-ファイルは1MiBまで、曲は512曲まで、手順は各64個まで、1回の呼び出しは約10フレーム分のCPU時間までに制限していて、
-外れたファイルやゲームは警告を出して読み飛ばします。
+This file can only write bytes, set registers and call addresses inside the emulated machine. Files are limited to 1 MiB, songs to 512, steps to 64 each and one call to about 10 frames of CPU time. Files and games outside those limits are skipped with a warning.

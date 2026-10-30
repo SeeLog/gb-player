@@ -40,7 +40,7 @@ You can listen to that output directly, or through an effect that recreates a re
 | Generation 1 | Pokémon Red, Blue, Yellow; Japanese Red, Green, Blue, Pikachu |
 | Generation 2 | Pokémon Gold, Silver, Crystal |
 
-These are the only games that work out of the box. GB Player finds their engine by its machine code, so other languages and revisions should work too. Any other game needs the addresses of its sound driver routines in a `songs.toml` ([format, in Japanese](songdb/README.md)), and you have to find those yourself. GBS files need none of this, but their songs have no names.
+These are the only games that work out of the box. GB Player finds their engine by its machine code, so other languages and revisions should work too. Any other game needs the addresses of its sound driver routines in a `songs.toml` ([format](songdb/README.md)), and you have to find those yourself. GBS files need none of this, but their songs have no names.
 
 ROMs and GBS files are not included. You need to provide your own.
 
