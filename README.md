@@ -1,273 +1,98 @@
-# gb-player
+English | [日本語](README.ja.md)
 
-Game Boy / Game Boy Color のROM(.gb / .gbc)を読み込み、ゲーム自身のサウンドエンジンを
-エミュレータ上で動かしてBGMをリアルタイム再生するRust製GUIプレイヤーです。
+<img src="docs/social-preview.png" alt="GB Player" width="480">
 
-- SM83 CPU・MBC1/2/3/5・APU(4チャンネル)を実装した最小限のエミュレーションコア
-- ゲームの「曲を再生する関数」と「毎フレーム呼ばれる更新関数」をROM内から自動検出して呼び出す(GBS方式)
-- ループ点を自動解析し、無限ループ再生/N回ループ後フェードアウトして次の曲へ、を選択可能
-- チャンネルごとのミュートとレベルメーター、出力波形のオシロスコープ表示
-- ROM・GBSの曲はテンポを50%〜200%に変えられる(音程はそのまま)。サウンドエンジンの更新関数を呼ぶ間隔だけを変え、
-  APUは実時間で動かすので、周波数レジスタで決まる音の高さは変わらない。曲の長さ・ループ・フェードもテンポに合わせて伸び縮みする
-- 各チャンネルが鳴らしている音のピアノロール表示。ドライバーに依らずAPUのレジスタ(周波数・キーオン・音量・DAC)から
-  音階を求めるので、どのゲームやGBSでも出る。エミュレータの写しを約16秒先まで走らせて、これから鳴る音を求めている
-  (サウンドエンジンは同じ状態からは同じ音を鳴らす)ので、音は右から流れてきて、左端の鍵盤に届いたときに鳴る。
-  鳴っている鍵は中間の濃さになる。矩形波1は塗り、矩形波2は枠、波形メモリは点々で、高さは鍵盤の1行分。
-  ノイズは下の帯に、クロックが低いほど濃く出る。ミュートしたチャンネルは描かない。液晶の画面のクリックで波形と切り替える。液晶の右上の拡大ボタンか F キーで、ピアノロールと波形をウィンドウいっぱいに大きく表示する
-  (再生のボタン付き。Esc か F で戻る。ウィンドウを最大化すれば画面いっぱいになる)。ピアノロールの音の範囲は
-  その曲で鳴った音を収めるオクターブ単位で、曲の途中では狭まらない
-- 出力は「ライン」(音源の出力そのまま)と「GBCスピーカー」から選べる。GBCスピーカーは実機のゲームボーイカラーで測った
-  スピーカーの特性と、液晶などから漏れる本体のノイズ(「実機のノイズを再現」、オフにもできる)を再現したモノラルの音
-- 一般の音声ファイル(WAV・FLAC・MP3・Ogg Vorbis・M4A(AAC/ALAC)・AIFF)も、フォルダ単位で開いて
-  ROMと同じように再生できる。GBCスピーカーの音もかけられる(タグの `LOOPSTART` / `LOOPLENGTH` か
-  WAVの `smpl` チャンクのループ点があれば、ROMの曲と同じようにループする。無ければ無限ループでは曲全体を繰り返す)
-- 曲名とUIは日本語・英語に対応(OSの言語に合わせて自動選択、切り替え可)
+# GB Player
 
-## 対応ソフト
+GB Player plays the music in Game Boy and Game Boy Color ROMs by running each game's own sound engine on a small emulator. Open a ROM, pick a song, and let it loop forever or fade out after a set number of loops.
 
-| ソフト | エンジン |
+| Prism theme, piano roll | Nebula theme, waveform |
 | --- | --- |
-| ポケットモンスター 赤・緑・青 / Pokémon Red・Blue | 第1世代 |
-| ポケットモンスター ピカチュウ / Pokémon Yellow | 第1世代(Yellow) |
-| ポケットモンスター 金・銀 / Pokémon Gold・Silver | 第2世代 |
-| ポケットモンスター クリスタル / Pokémon Crystal | 第2世代 |
+| ![The full window in the Prism theme with the piano roll](docs/screenshots/en-prism-notes.png) | ![The full window in the Nebula theme with the waveform](docs/screenshots/en-nebula-wave.png) |
 
-関数のアドレスは埋め込まず、機械語のパターンで探しているため、言語やバージョン違いでも
-同じサウンドエンジンなら動く設計です。ROMイメージはリポジトリに含めません。各自で吸い出したものを使ってください。
+| Mini player, clear purple | Mini player, original model |
+| --- | --- |
+| ![The mini player as a clear purple Game Boy Color with the piano roll](docs/screenshots/en-mini-gbc-notes.png) | ![The mini player as an original Game Boy with the waveform](docs/screenshots/en-mini-dmg-wave.png) |
 
-このほかのゲームは、サウンドドライバの呼び方を `songs.toml` に書けば鳴らせます(書き方は [songdb/README.md](songdb/README.md))。
-また、手元にあるGBSファイル(`.gbs`)も開けます。GBSファイルもゲームのデータなので、ROMと同じく各自で用意したものを使ってください。
+- Mini player shaped like a Game Boy or Game Boy Color, with buttons that work
+- Piano roll and waveform, with a mute and level meter per channel
+- Effect that recreates a real GBC's speaker
+- Tempo from 50% to 200% at the same pitch
+- WAV export, per channel too
+- Playlists across ROMs, favourites, history and shuffle
+- Editable [themes](themes/README.md), with background images
+- Also plays GBS files and audio files (MP3, FLAC and others)
 
-## 使い方
+## Supported games
 
-GUIは [Tauri](https://tauri.app/) 製で、画面はWeb技術(React + TypeScript + Tailwind CSS、`ui/`)で書いています。
-GUIのビルドには Rust に加えて [bun](https://bun.sh/) が必要です。
+| Sound engine | Games |
+| --- | --- |
+| Generation 1 | Pokémon Red, Blue, Yellow; Japanese Red, Green, Blue, Pikachu |
+| Generation 2 | Pokémon Gold, Silver, Crystal |
 
-```sh
-bun install                              # 初回のみ
-bun run tauri dev                        # 開発用に起動(画面の変更はその場で反映)
-bun run tauri dev -- -- pokemon.gb       # ROMを指定して開発用に起動
-bun run tauri build --no-bundle          # target/release/gb-player(.exe) をビルド
-bun run tauri build                      # Windowsならインストーラ(NSIS)も作る
-```
+These are the only games that work out of the box. GB Player finds their engine by its machine code, so other languages and revisions should work too. Any other game needs the addresses of its sound driver routines in a `songs.toml` ([format, in Japanese](songdb/README.md)), and you have to find those yourself. GBS files need none of this, but their songs have no names.
 
-ビルドしたexeの使い方:
+ROMs and GBS files are not included. You need to provide your own.
 
-```sh
-gb-player                                # GUIを起動(ROMや音声ファイルは「開く…」かドラッグ&ドロップ)
-gb-player pokemon.gb                     # ROMを指定して起動(前回開いていたROMに加えて開く)
-gb-player --info pokemon.gb              # 検出結果と全曲のループ長を表示
-gb-player --wav pokemon.gb 1 out.wav 2   # 1曲目を2ループ+フェードでWAV出力
-gb-player --wav pokemon.gb 1 out.wav 2 gbc-speaker   # 同じく、GBCのスピーカーの音で
-gb-player --wav song.mp3 1 out.wav 1 gbc-speaker     # 音声ファイルをGBCのスピーカーの音に
-gb-player --wav pokemon.gb 1 out.wav 2 stems         # out.wav に加えてチャンネルごとのWAVも(out - 矩形波1.wav など)
-gb-player --lang en pokemon.gb           # 言語を指定して起動(既定は前回選んだ言語かOSの言語。設定でも切り替え可)
-```
+## Build
 
-`--info` / `--wav` は bun なしの `cargo run --release -- --info pokemon.gb` でも動きます。
-
-GUIのキー操作: Space 再生/一時停止、← → 前/次の曲、Ctrl+O ROMを開く、Ctrl+F 検索、Ctrl+M ミニプレイヤーと切り替え、Ctrl+, 設定、F 大きく表示。
-キーボードのメディアキー(再生/一時停止・次・前・停止)とヘッドセットのボタンは、ウィンドウが裏にあってもミニプレイヤーでも効き、OSのメディア表示(Windowsの音量フライアウトなど)に曲名・ゲーム名(音声ファイルはフォルダ名)と再生状態が出ます。
-シークバーはクリックかドラッグで再生位置を動かせ、フォーカス中は ← → で5秒ずつ移動します。
-テンポはスライダーの右の数値をクリックするか、スライダーをダブルクリックすると100%に戻ります。
-言語・音量・テンポ・ループ・出力・テーマの設定は `%APPDATA%\gb-player\settings.toml`(Linux/macOSは `~/.config/gb-player/settings.toml`)に保存されます。
-ウィンドウの位置と大きさも次回の起動に引き継がれます。
-
-右上の歯車ボタンか Ctrl+, で、設定ウィンドウがメインウィンドウの横に開きます。一度決めたらあまり変えないものはここにあります。
-
-| 区分 | 設定 |
-|---|---|
-| 外観 | テーマ(「テーマを編集…」でテーマエディタ)、画面の更新頻度(既定はメインウィンドウのあるモニターのリフレッシュレートに合わせる。30・60・75・120・144・165・240 fps にも固定できる。波形・メーター・再生位置の滑らかさ)、言語 |
-| 再生 | フェードアウトの長さ(1〜20秒、既定8秒。書き出しにも使う)、起動時に前回開いていたファイルを開き直すか |
-| 履歴 | 「最近再生した曲」に残す曲数(50・100・200・500曲)、履歴の消去 |
-| フォルダ | テーマ・曲名データベース・プレイリストのフォルダをエクスプローラーなどで開く |
-
-ROMはいくつでも同時に開けます(ファイル選択で複数選ぶか、まとめてドロップ)。開いたROMは左の「開いているROM」に並び、
-クリックで曲リストを切り替えても再生中の曲はそのまま鳴り続けます。× か右クリックの「ROMを閉じる」で閉じられます。
-開いていたROMは次回の起動でもすべて開き直します(設定で切れます)。
-
-右側の「シャッフル」で次の曲の選び方を変えられます。「一覧の中」は再生中のROMの曲(プレイリストの再生中はそのプレイリストの曲)を、
-「全ROM」は開いているROMすべての曲(プレイリストの再生中はそのプレイリストの曲)を混ぜます。どちらも全曲を一巡するまで
-同じ曲は出ず、「前の曲」でシャッフルで聴いた順に戻れます。
-
-複数のROMの曲を混ぜたプレイリストを作れます。曲を右クリックして「プレイリストに追加」から
-追加先(または新しいプレイリスト)を選ぶと左の一覧に入り、プレイリスト内はドラッグで並べ替え、Deleteで外せます。
-プレイリストは `%APPDATA%\gb-player\playlists\*.json`(Linux/macOSは `~/.config/gb-player/playlists/`)に
-ROMのパスとファイルのハッシュで保存されます。ROMを移動して見つからなくなった曲はグレーで表示され、
-クリックするとファイルを選び直せます(ハッシュが違うROMを選ぶと確認が出ます。勝手にファイルを探し回ることはしません)。
-
-プレイリストの先頭には「お気に入り」と「最近再生した曲」が自動で入ります。曲の行の☆(または右クリックの「お気に入りに追加」)で
-ROM・GBS・音声ファイルの曲をお気に入りにでき、ふつうのプレイリストと同じように再生・シャッフル・並べ替えができます。
-「最近再生した曲」は5秒以上(短い曲は最後まで)再生した曲を新しい順に100曲(設定で変えられます)まで残し、同じ曲は最新の1件にまとめます。
-ここから再生した曲では順番は変わりません。消すときは一覧の「履歴を消去」か右クリックで。どちらもプレイリストと同じフォルダに
-同じ形式で `favorites.json` と `history.json` として保存されます。
-
-## 書き出し
-
-曲を右クリックして「書き出し…」で、その曲をWAV(44.1kHz・16bitステレオ)に書き出せます。左の一覧のROM・フォルダや
-プレイリストを右クリックすると、全曲をまとめてフォルダに書き出します。ファイル名は `01 曲名.wav` のように番号(ROMは曲番号、
-プレイリストは並び順)と表示中の言語の曲名で、ファイル名に使えない文字は `_` に置き換えます。
-
-ループ回数(無限ループの設定中は既定で2回)はダイアログで変えられ、フェードと出力(ライン/GBCスピーカー、実機のノイズ)は
-再生中の設定のままです。書き出しは裏で進むので、その間も再生できます。右下の表示で進み具合を見て、キャンセルもできます。
-
-「チャンネルごとにも書き出す」をオンにすると、ミックスに加えて矩形波1・矩形波2・波形メモリ・ノイズを1つずつ鳴らした
-WAV(`01 曲名 - 矩形波1.wav` など)も書き出します。どれもミックスと同じ長さなので、DAWに並べれば頭がそろいます。
-実機のノイズを再現する設定では、ノイズだけのファイル(`実機ノイズ`)も加わり、全部を足すとミックスに一致します
-(各ファイルの16bitへの丸めの分、最大で数LSBの差)。ROM・GBSファイルの曲だけが対象で、音声ファイルにはチャンネルがありません。
-
-## ミニプレイヤー
-
-右上のボタン(最小化の左)か Ctrl+M、タイトルバーの右クリックの「ミニプレイヤー」で、ウィンドウが携帯ゲーム機の形の
-小さなプレイヤーになります。画面に曲名・波形・再生位置が出て、ボタンで操作できます。
-
-- 十字キーの ← → で前/次の曲、↑ ↓ で音量
-- A で再生/一時停止、B で停止
-- SELECT でシャッフル、START でループ回数(∞・×1・×2・×3)の切り替え
-- 上のピンで常に手前に表示するかを切り替え、その隣のボタン(か Ctrl+M)で元の大きさに戻る
-- 画面の波形をクリックするとピアノロールに切り替わる(もう一度で波形に戻る)
-
-ミニプレイヤーの位置と、元のウィンドウの位置・大きさはそれぞれ覚えていて、ミニプレイヤーのまま閉じると次もミニプレイヤーで
-起動します。本体の形(初代型かカラー型か)と色はテーマで決まり、本体の色を半透明にすると、中の基板とラバーと、縁から後ろの画面が透けて見えます
-(縁ほど色が濃く見えます)。
-
-## テーマ
-
-設定ウィンドウの「テーマ」で配色を切り替えられます。内蔵は次の6つです。
-
-| テーマ | 配色 | ミニプレイヤー |
-|---|---|---|
-| DMG | 初代の4階調の緑 | 初代型・グレー |
-| Pocket | グレー | 初代型・シルバー |
-| Color | 紺と黄 | カラー型・黄色 |
-| Prism | 明るいグレーにパールのような虹色の光沢 | カラー型・クリア |
-| Nebula | 深い紫に夕焼けのような虹色の光沢 | カラー型・クリアパープル |
-| Daylight | 明るい背景に初代の緑 | 初代型・ホワイト |
-
-以前の名前の `clear` と `light` は、それぞれ Prism と Daylight として読み込みます。
-
-隣の「テーマを編集…」でテーマエディタがメインウィンドウの横に別ウィンドウで開き、色を変えるとその場でメインウィンドウに
-反映されます。編集中にミニプレイヤーに切り替えて、本体の色を見ながら調整することもできます。「名前を付けて保存…」で
-`%APPDATA%\gb-player\themes\<名前>.toml`(Linux/macOSは `~/.config/gb-player/themes/`)に保存され、メニューに追加されます。
-このフォルダ(設定の「フォルダ」から開けます)のファイルは手で書いても構いません(起動時と保存時に読み込みます)。
-
-[themes/](themes/) に自作テーマの例があります。このフォルダにコピーすると使えます。
-
-| テーマ | 色 |
-|---|---|
-| Mew | ミュウのピンクに青い目の色 |
-| Shiny Mew | 色違いミュウの水色に、差し色のピンク |
-
-```toml
-name = "夜のマサラタウン"   # 省略するとファイル名
-base = "color"              # 元にする内蔵テーマ: dmg / pocket / color / prism / nebula / daylight
-console = "gbc"             # ミニプレイヤーの本体: dmg(初代型)/ gbc(カラー型)。省略すると base に合わせる
-[colors]                    # 変えたい色だけ書く(書かなかった色は base のまま)
-bg = "#0b0d1e"
-accent = "#ff8fb1"
-lcd-grid = "rgba(30, 42, 63, 0.15)"
-panel = "#15183399"         # 末尾2桁(または rgba() の最後)が不透明度。半透明にすると背景画像が透ける
-
-[background]                # 背景画像(省略可)
-image = "images/sky.png"    # themes フォルダ内のファイル(png / jpg / webp / gif、20 MBまで)
-fit = "cover"               # cover(全体を覆う)/ contain(全体を表示)/ tile(並べる)
-blur = 6                    # ぼかし(0〜40 px)
-dim = 0.2                   # 暗さ(0〜1)
-
-[sheen]                     # 光沢(省略すると base のまま。colors = [] で光沢なし)
-angle = 115                 # グラデーションの角度(度)
-colors = ["#bdf3e4", "#d2c8fb", "#f8cbe4"]   # 8色まで
-```
-
-光沢があると、差し色で塗る部分(再生ボタンや選んでいる項目など)にそのグラデーションがかかります。
-差し色(`accent`)は文字だけに使い、縁やメーター、リストのハイライトは `accent-2` の色になります。
-
-重なり方は奥から `backdrop`(背景画像があるときは画像)→ `bg` → パネル類です。内蔵テーマの `bg` と
-`panel` `panel-2` は最初から半透明で、`backdrop` の上に重なると不透明な色と同じ見た目になるように
-作ってあるので、画像を設定するだけで透けて見えます。`bg` を不透明に近くすると画像はほとんど見えなくなります
-(エディタに注意が出ます)。エディタの「画像を選ぶ…」で選んだ画像は `themes\images\` にコピーされます。
-
-色の名前は `backdrop` `bg` `panel` `panel-2` `line` `text` `muted` `faint` `accent` `accent-2` `accent-ink`
-`meter-start` `meter-end`(チャンネルのレベルメーターの左端と右端。省略すると `accent-2` と `accent`)
-`lcd-hi` `lcd` `lcd-lo` `lcd-ink` `lcd-grid` `lcd-shadow`(液晶の内側の縁の影)`bezel`(液晶の外枠) `overlay` `danger` `knob`(スライダーとスイッチのつまみ)、
-ミニプレイヤーの `shell`(本体)`shell-ink`(本体の文字)`shell-frame`(画面の枠)`key`(A・Bボタン)`key-ink`
-(ボタンの文字)`rubber`(キーの下のラバー)`board`(中の基板)です。値は `#rgb` / `#rrggbb` /
-`#rrggbbaa` か、数値だけの `rgb()` `rgba()` `hsl()` `hsla()` に限ります。知らない名前や色でない値は無視され、
-画面上部に警告が出ます。
-
-## 曲名
-
-曲名はROMには入っていないので、`songdb/` の曲データベースから引いています。日本語の曲名は場所や場面を表す
-説明的な名前で、公式サウンドトラックの曲名ではありません。英語名は pret の逆アセンブルのラベルが元です。
-
-曲名の修正、他の言語の追加、新しいソフトの曲リストはPR歓迎です。書き方は [songdb/README.md](songdb/README.md) を参照してください。
-手元だけで名前を変えたいときは、同じ形式のファイルを `%APPDATA%\gb-player\songdb\<シリーズ>\<言語>.toml` に置くと内蔵の名前より優先されます。
-
-ROMは `rom/` に置くのがおすすめです(`.gitignore` で除外済み、`*.gb` / `*.gbc` / `*.gbs` もどこに置いてもコミットされません)。
-
-## ビルド環境
-
-### Windows
-
-MSVC版のRustツールチェーンを使ってください。GNU版(`x86_64-pc-windows-gnu`)だとMinGWの
-`dlltool.exe` が必要になり、無い環境では `error calling dlltool 'dlltool.exe': program not found` で失敗します。
-
-```powershell
-# C++ビルドツール(リンカ)を入れる
-winget install -e --id Microsoft.VisualStudio.2022.BuildTools --override "--quiet --wait --norestart --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
-# MSVC版ツールチェーンを既定にする
-rustup toolchain install stable-x86_64-pc-windows-msvc
-rustup default stable-x86_64-pc-windows-msvc
-```
-
-`rustup show` の "Default host" が `x86_64-pc-windows-msvc` になっていればOKです。
-
-bun は `winget install Oven-sh.Bun`(または `powershell -c "irm bun.sh/install.ps1 | iex"`)で入れられます。
-入れた後はPATHを反映させるためにターミナルを開き直してください。WebView2 は Windows 10/11 に標準で入っています。
-
-### Linux
-
-ALSA と WebKitGTK の開発パッケージが必要です(Debian/Ubuntuなら
-`libasound2-dev libwebkit2gtk-4.1-dev libsoup-3.0-dev librsvg2-dev`)。
-
-### macOS
-
-追加のパッケージは不要です。
-
-## 構成
-
-```
-crates/gb-core   エミュレーションコア(CPU / メモリマップ / MBC / APU)
-crates/gb-music  サウンドドライバ検出、曲リスト、再生とループ解析
-app              GUIのRust側(Tauri)と音声出力(cpal)、CLI
-ui               GUIの画面(React + TypeScript + Tailwind CSS、bun/Viteでビルド)
-songdb           曲データベース(ゲームの照合、曲ID → 曲キー、言語ごとの曲名)
-tools            曲データベースの生成スクリプト、スピーカーの測定スクリプト
-```
-
-## テスト
+There are no prebuilt releases yet. You need [Rust](https://rustup.rs/) and [bun](https://bun.sh/).
 
 ```sh
-cargo test --workspace
+bun install
+bun run tauri build --no-bundle   # target/release/gb-player(.exe)
+bun run tauri build               # also makes an installer on Windows
+bun run tauri dev                 # run for development
 ```
 
-CPUは [SingleStepTests/sm83](https://github.com/SingleStepTests/sm83) のテストベクタでも検証できます
-(`v1/*.json` を置いたディレクトリを `SM83_TESTS_DIR` に指定)。
+- **Windows:** use the MSVC toolchain. The GNU one fails with `dlltool.exe: program not found`.
+- **Linux:** install `libasound2-dev libwebkit2gtk-4.1-dev libsoup-3.0-dev librsvg2-dev` (Debian/Ubuntu names).
+- **macOS:** needs no extra packages.
 
-## ライセンス
+## Usage
 
-gb-player のソースコードは [MIT License](LICENSE) です。
+Run `gb-player` and drop a ROM, GBS file or music folder on the window. From the command line:
 
-使っているライブラリはそれぞれのライセンスに従います。ほとんどは MIT か Apache-2.0 で、
-音声ファイルのデコードに使う [symphonia](https://github.com/pdeljanov/Symphonia) と、Tauri が使う一部のクレート
-(cssparser など)は MPL-2.0 です。どれも変更せずに使っていて、ソースは crates.io から入手できます。
-ビルドしたアプリを配布するときは、これらのライセンス表示を添えてください。
+```sh
+gb-player pokemon.gb                         # open a ROM
+gb-player --info pokemon.gb                  # list the songs and their loop lengths
+gb-player --wav pokemon.gb 1 out.wav 2       # song 1, two loops and a fade, to WAV
+gb-player --wav pokemon.gb 1 out.wav 2 gbc-speaker stems   # through the speaker, plus one file per channel
+gb-player --lang en pokemon.gb               # choose the language
+```
 
-## 権利表記
+| Key | Action |
+| --- | --- |
+| Space | Play or pause |
+| ← → | Previous or next song |
+| Ctrl+O / Ctrl+F | Open a ROM / search |
+| Ctrl+M | Switch to the mini player |
+| Ctrl+, | Settings |
+| F | Fill the window with the piano roll and waveform |
 
-gb-player は個人が作った非公式のツールで、任天堂・株式会社ポケモン・株式会社ゲームフリーク・
-株式会社クリーチャーズとは関係ありません。「ポケットモンスター」「ポケモン」「Pokémon」「ゲームボーイ」
-「Game Boy」は各権利者の商標または登録商標です。
+Media keys and headset buttons work while the window is in the background.
 
-ROMやGBSファイル、ゲームの音楽はリポジトリにも配布物にも含みません。手元の正規に入手したソフトから、
-各自で吸い出したものを使ってください。曲名の一覧(`songdb/`)は、曲の識別と表示のための名前だけを収めています。
+Settings, playlists and themes are stored in `%APPDATA%\gb-player` (`~/.config/gb-player` on Linux and macOS).
+
+## Song names
+
+ROMs don't contain song names, so they come from [`songdb/`](songdb/README.md). They are the official titles where a soundtrack lists the song, and describe the place or scene otherwise. Corrections and translations are welcome as pull requests.
+
+## Development
+
+```
+crates/gb-core   emulation core (CPU, memory map, MBC, APU)
+crates/gb-music  driver detection, song lists, playback, loop analysis
+app              Tauri backend, audio output, CLI
+ui               React + TypeScript + Tailwind CSS frontend
+songdb           song database
+tools            song database generators, speaker measurement scripts
+```
+
+Run the tests with `cargo test --workspace`. To also check the CPU against [SingleStepTests/sm83](https://github.com/SingleStepTests/sm83), point `SM83_TESTS_DIR` at its `v1/` folder.
+
+## License
+
+[MIT](LICENSE).
+
+GB Player is an unofficial project with no ties to Nintendo, The Pokémon Company, GAME FREAK or Creatures, and includes no ROMs or game music. Pokémon and Game Boy are trademarks of their respective owners.
