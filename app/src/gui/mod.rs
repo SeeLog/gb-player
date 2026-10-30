@@ -182,6 +182,9 @@ pub fn run(initial_rom: Option<PathBuf>, language: Option<String>) {
                 // The window starts hidden (see tauri.conf.json), so the full window does not
                 // flash up before it becomes the mini player.
                 if let Some(window) = handle.get_webview_window("main") {
+                    if let Err(e) = side::set_taskbar_icon(&window) {
+                        eprintln!("{e}");
+                    }
                     let shaped = if s.mini().on {
                         mini::show_mini(&window, s.mini())
                     } else {

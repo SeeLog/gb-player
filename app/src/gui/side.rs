@@ -9,6 +9,19 @@ use tauri::{
 /// The space between the two windows.
 const GAP: f64 = 8.0;
 
+/// Give `window` the icon entry drawn for the taskbar. Tauri's default is the 32 px entry, which
+/// Windows shrinks to the taskbar's 24 px and so blurs the pixel art.
+#[cfg(windows)]
+pub fn set_taskbar_icon<R: Runtime>(window: &WebviewWindow<R>) -> tauri::Result<()> {
+    let size = (24.0 * window.scale_factor()?).round() as u32;
+    window.set_icon(tauri::image::Image::from_app_icon_resource(size)?)
+}
+
+#[cfg(not(windows))]
+pub fn set_taskbar_icon<R: Runtime>(_window: &WebviewWindow<R>) -> tauri::Result<()> {
+    Ok(())
+}
+
 /// Open the window `label`, or bring it to the front when it is open.
 pub fn open<R: Runtime>(
     handle: &AppHandle<R>,
@@ -30,6 +43,7 @@ pub fn open<R: Runtime>(
         .decorations(false)
         .visible(false)
         .build()?;
+    set_taskbar_icon(&window)?;
     if let Some(main) = handle.get_webview_window("main") {
         place_beside(&window, &main, size)?;
     }
