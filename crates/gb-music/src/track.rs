@@ -8,6 +8,7 @@ use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use symphonia::core::codecs::audio::well_known::{CODEC_ID_ADPCM_IMA_WAV, CODEC_ID_ADPCM_MS};
 use symphonia::core::codecs::audio::{AudioCodecParameters, AudioDecoder, AudioDecoderOptions};
 use symphonia::core::errors::Error;
 use symphonia::core::formats::probe::Hint;
@@ -302,6 +303,9 @@ pub struct TrackDecoder {
     track: u32,
     time_base: Option<TimeBase>,
     sample_rate: Option<u32>,
+    /// Blocks of ADPCM, which symphonia's WAV reader cannot seek in except to the start: it takes
+    /// the byte position as frames times the size of a block. They decode on their own.
+    adpcm: bool,
     out_rate: u32,
     /// The loop, in time stamps: from its end, decoding goes on from its start.
     looping: Option<Loop>,
@@ -320,6 +324,7 @@ impl TrackDecoder {
         let (format, _) = open(path)?;
         let (t, params) = default_track(format.as_ref())?;
         let (track, time_base, sample_rate) = (t.id, t.time_base, params.sample_rate);
+        let adpcm = matches!(params.codec, CODEC_ID_ADPCM_MS | CODEC_ID_ADPCM_IMA_WAV);
         let decoder = symphonia::default::get_codecs()
             .make_audio_decoder(params, &AudioDecoderOptions::default())?;
         Ok(TrackDecoder {
@@ -329,6 +334,7 @@ impl TrackDecoder {
             track,
             time_base,
             sample_rate,
+            adpcm,
             out_rate: out_rate.max(1),
             looping: None,
             since_jump: 0,
@@ -384,10 +390,15 @@ impl TrackDecoder {
     /// Decode on from the time stamp `ts`; what was decoded before stays in the resampler.
     fn go_to(&mut self, ts: u64) -> Result<(), TrackError> {
         let to = SeekTo::Timestamp {
-            ts: Timestamp::try_from(ts).unwrap_or(Timestamp::MAX),
+            ts: if self.adpcm {
+                Timestamp::ZERO
+            } else {
+                Timestamp::try_from(ts).unwrap_or(Timestamp::MAX)
+            },
             track_id: self.track,
         };
         match self.format.seek(SeekMode::Accurate, to) {
+            Ok(_) if self.adpcm => self.skip_to = ts,
             Ok(seeked) => self.skip_to = seeked.required_ts.get().max(0) as u64,
             // A file that cannot seek is decoded again from its start, dropping what comes
             // before.
@@ -433,6 +444,9 @@ impl TrackDecoder {
             }
         };
         if packet.track_id != self.track {
+            return;
+        }
+        if self.adpcm && packet.pts.get().max(0) as u64 + packet.dur.get() <= self.skip_to {
             return;
         }
         let decoded = match self.decoder.decode(&packet) {
@@ -642,5 +656,110 @@ mod tests {
         assert!(is_audio(Path::new("song.flac")));
         assert!(!is_audio(Path::new("game.gb")));
         assert!(!is_audio(Path::new("noext")));
+    }
+
+    /// A stereo WAV file of a little over 3 seconds of noise in blocks of ADPCM: no encoder is
+    /// needed, as only the header of a block has values that the decoder refuses. The nibbles
+    /// are ones that shrink MS ADPCM's step, which would otherwise overflow.
+    fn adpcm_wav(name: &str, format_tag: u16, extra: &[u8], valid: fn(&mut [u8])) -> PathBuf {
+        const BLOCK: u16 = 256;
+        const NIBBLES: [u8; 8] = [0, 1, 2, 3, 13, 14, 15, 1];
+        let mut state = 0x2545_f491u32;
+        let mut data = Vec::new();
+        for _ in 0..550 {
+            let mut block: Vec<u8> = (0..BLOCK)
+                .map(|_| {
+                    state ^= state << 13;
+                    state ^= state >> 17;
+                    state ^= state << 5;
+                    let (high, low) = (state >> 8 & 7, state & 7);
+                    NIBBLES[high as usize] << 4 | NIBBLES[low as usize]
+                })
+                .collect();
+            valid(&mut block);
+            data.extend(block);
+        }
+        let mut fmt = Vec::new();
+        fmt.extend(format_tag.to_le_bytes());
+        fmt.extend(2u16.to_le_bytes());
+        fmt.extend(44_100u32.to_le_bytes());
+        fmt.extend(44_100u32.to_le_bytes());
+        fmt.extend(BLOCK.to_le_bytes());
+        fmt.extend(4u16.to_le_bytes());
+        fmt.extend((extra.len() as u16).to_le_bytes());
+        fmt.extend(extra);
+        let mut wav = b"RIFF\0\0\0\0WAVEfmt ".to_vec();
+        wav.extend((fmt.len() as u32).to_le_bytes());
+        wav.extend(fmt);
+        wav.extend(b"data");
+        wav.extend((data.len() as u32).to_le_bytes());
+        wav.extend(data);
+        let size = wav.len() as u32 - 8;
+        wav[4..8].copy_from_slice(&size.to_le_bytes());
+        let path =
+            std::env::temp_dir().join(format!("gb-music-track-{}-{name}.wav", std::process::id()));
+        std::fs::write(&path, wav).unwrap();
+        path
+    }
+
+    fn adpcm_files(test: &str) -> [PathBuf; 2] {
+        [
+            // The decoder has the standard coefficients of its own, and passes over these.
+            adpcm_wav(&format!("{test}-ms"), 2, &[0; 32], |block| {
+                block[0] %= 7;
+                block[1] %= 7;
+            }),
+            adpcm_wav(&format!("{test}-ima"), 0x11, &[249, 0], |block| {
+                block[2] %= 89;
+                block[6] %= 89;
+            }),
+        ]
+    }
+
+    fn read_frames(decoder: &mut TrackDecoder, frames: usize) -> Vec<f32> {
+        let mut out = Vec::new();
+        decoder.read(&mut out, frames);
+        out
+    }
+
+    #[test]
+    fn adpcm_seeks_to_what_decoding_from_the_start_gives() {
+        for path in adpcm_files("seek") {
+            let open = || TrackDecoder::open(&path, 44_100).unwrap();
+            let whole = read_frames(&mut open(), 200_000);
+            assert!(whole.len() / 2 > 3 * 44_100, "{}", whole.len());
+
+            let mut decoder = open();
+            decoder.seek(1.25).unwrap();
+            let got = read_frames(&mut decoder, 200_000);
+            assert!(got == whole[2 * 55_125..], "{path:?}: {}", got.len());
+            // And back, from the end.
+            decoder.seek(0.5).unwrap();
+            let got = read_frames(&mut decoder, 1000);
+            assert!(got == whole[2 * 22_050..][..2000], "{path:?}");
+            std::fs::remove_file(&path).unwrap();
+        }
+    }
+
+    #[test]
+    fn adpcm_loops_like_decoding_from_the_start() {
+        for path in adpcm_files("loop") {
+            let mut decoder = TrackDecoder::open(&path, 44_100).unwrap();
+            let whole = read_frames(&mut decoder, 200_000);
+            let (start, end) = (11_025, 33_075);
+
+            let mut decoder = TrackDecoder::open(&path, 44_100).unwrap();
+            decoder.set_loop(Some(Loop { start, end }));
+            let got = read_frames(&mut decoder, 33_075 + 2 * 22_050 + 100);
+
+            let (start, end) = (2 * start as usize, 2 * end as usize);
+            let round = &whole[start..end];
+            let mut want = whole[..end].to_vec();
+            want.extend(round);
+            want.extend(round);
+            want.extend(&round[..200]);
+            assert!(got == want, "{path:?}: {} vs {}", got.len(), want.len());
+            std::fs::remove_file(&path).unwrap();
+        }
     }
 }
