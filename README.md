@@ -1,18 +1,22 @@
 English | [日本語](README.ja.md)
 
-<img src="docs/social-preview.png" alt="GB Player" width="480">
+![GB Player](docs/social-preview.png)
 
 # GB Player
+
+[![Rust](https://github.com/SeeLog/gb-player/actions/workflows/rust.yml/badge.svg)](https://github.com/SeeLog/gb-player/actions/workflows/rust.yml)
+[![Frontend](https://github.com/SeeLog/gb-player/actions/workflows/frontend.yml/badge.svg)](https://github.com/SeeLog/gb-player/actions/workflows/frontend.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 GB Player plays the music in Game Boy and Game Boy Color ROMs by running each game's own sound engine on a small emulator. Open a ROM, pick a song, and let it loop forever or fade out after a set number of loops.
 
 | Prism theme, piano roll | Nebula theme, waveform |
 | --- | --- |
-| ![The full window in the Prism theme with the piano roll](docs/screenshots/en-prism-notes.png) | ![The full window in the Nebula theme with the waveform](docs/screenshots/en-nebula-wave.png) |
+| ![The full window in the Prism theme, playing with the piano roll](docs/screenshots/en-prism-notes.gif) | ![The full window in the Nebula theme, playing with the waveform](docs/screenshots/en-nebula-wave.gif) |
 
 | Mini player, clear purple | Mini player, classic style |
 | --- | --- |
-| ![The mini player in clear purple with the piano roll](docs/screenshots/en-mini-gbc-notes.png) | ![The mini player in the classic style with the waveform](docs/screenshots/en-mini-dmg-wave.png) |
+| ![The mini player in clear purple, playing with the piano roll](docs/screenshots/en-mini-gbc-notes.gif) | ![The mini player in the classic style, playing with the waveform](docs/screenshots/en-mini-dmg-wave.gif) |
 
 - Game Boy-style mini player with buttons that work
 - Piano roll and waveform, with a mute and level meter per channel
@@ -22,6 +26,12 @@ GB Player plays the music in Game Boy and Game Boy Color ROMs by running each ga
 - Playlists across ROMs, favourites, history and shuffle
 - Editable [themes](themes/README.md), with background images
 - Also plays GBS files and audio files (MP3, FLAC and others)
+
+## How it works
+
+GB Player uses no recordings or converted music data. It finds the sound engine in the ROM by its machine code and calls it once per frame, as the game does. The engine runs on an emulated CPU and writes to an emulated sound chip, which makes the waveform as it plays. The game's graphics and logic don't run, only its music.
+
+You can listen to that output directly, or through an effect that recreates a real GBC's speaker and console noise, measured from recordings of the hardware.
 
 ## Supported games
 
@@ -86,10 +96,16 @@ crates/gb-music  driver detection, song lists, playback, loop analysis
 app              Tauri backend, audio output, CLI
 ui               React + TypeScript + Tailwind CSS frontend
 songdb           song database
-tools            song database generators, speaker measurement scripts
 ```
 
 Run the tests with `cargo test --workspace`. To also check the CPU against [SingleStepTests/sm83](https://github.com/SingleStepTests/sm83), point `SM83_TESTS_DIR` at its `v1/` folder.
+
+## Credits
+
+- [pret](https://github.com/pret)'s disassemblies (pokered, pokeyellow, pokegold, pokecrystal), the basis of the engine detection and the song database
+- The [Pokémon Game Sound Library](https://soundlibrary.pokemon.co.jp/) and the HeartGold & SoulSilver soundtrack, for the official song titles
+- [SingleStepTests/sm83](https://github.com/SingleStepTests/sm83), for checking the CPU
+- [Tauri](https://tauri.app/), [Symphonia](https://github.com/pdeljanov/Symphonia), [cpal](https://github.com/RustAudio/cpal) and [React](https://react.dev/), among other libraries
 
 ## License
 

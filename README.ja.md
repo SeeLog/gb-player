@@ -1,18 +1,22 @@
 [English](README.md) | 日本語
 
-<img src="docs/social-preview.png" alt="GB Player" width="480">
+![GB Player](docs/social-preview.png)
 
 # GB Player
+
+[![Rust](https://github.com/SeeLog/gb-player/actions/workflows/rust.yml/badge.svg)](https://github.com/SeeLog/gb-player/actions/workflows/rust.yml)
+[![Frontend](https://github.com/SeeLog/gb-player/actions/workflows/frontend.yml/badge.svg)](https://github.com/SeeLog/gb-player/actions/workflows/frontend.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 ゲームボーイとゲームボーイカラーのROMに入っている曲を聴くプレイヤーです。ゲーム自身のサウンドエンジンを小さなエミュレータの上で動かして鳴らします。ROMを開いて曲を選べば、無限ループでも、決めた回数でフェードアウトでも聴けます。
 
 | Prism テーマ、ピアノロール | Nebula テーマ、波形 |
 | --- | --- |
-| ![Prism テーマでピアノロールを表示した全体画面](docs/screenshots/ja-prism-notes.png) | ![Nebula テーマで波形を表示した全体画面](docs/screenshots/ja-nebula-wave.png) |
+| ![Prism テーマでピアノロールを動かしている全体画面](docs/screenshots/ja-prism-notes.gif) | ![Nebula テーマで波形を動かしている全体画面](docs/screenshots/ja-nebula-wave.gif) |
 
 | ミニプレイヤー、クリアパープル | ミニプレイヤー、クラシック風 |
 | --- | --- |
-| ![クリアパープルのミニプレイヤーでピアノロールを表示](docs/screenshots/ja-mini-gbc-notes.png) | ![クラシック風のミニプレイヤーで波形を表示](docs/screenshots/ja-mini-dmg-wave.png) |
+| ![クリアパープルのミニプレイヤーでピアノロールを動かしている](docs/screenshots/ja-mini-gbc-notes.gif) | ![クラシック風のミニプレイヤーで波形を動かしている](docs/screenshots/ja-mini-dmg-wave.gif) |
 
 - ゲームボーイ風のミニプレイヤー(ボタンで操作できます)
 - ピアノロールと波形の表示、チャンネルごとのミュートとレベルメーター
@@ -22,6 +26,12 @@
 - ROMをまたぐプレイリスト、お気に入り、履歴、シャッフル
 - 背景画像も使える[テーマ](themes/README.ja.md)の編集
 - GBSファイルと音声ファイル(MP3、FLACなど)の再生
+
+## 仕組み
+
+録音や変換した音楽データは使いません。ROMの中からサウンドエンジンを機械語のパターンで探し、ゲームと同じように1フレームごとに呼び出します。エンジンはエミュレートしたCPUの上で動いて、エミュレートした音源チップに書き込み、音源チップが再生しながら波形を作ります。ゲームの画面や進行は動かさず、音楽だけを鳴らします。
+
+この出力をそのまま聴くことも、実機を録音して測ったGBCのスピーカーと本体のノイズを再現して聴くこともできます。
 
 ## 対応ソフト
 
@@ -86,10 +96,16 @@ crates/gb-music  ドライバ検出、曲リスト、再生、ループ解析
 app              Tauri側、音声出力、CLI
 ui               画面(React + TypeScript + Tailwind CSS)
 songdb           曲データベース
-tools            曲データベースの生成、スピーカーの測定スクリプト
 ```
 
 テストは `cargo test --workspace` です。CPUを [SingleStepTests/sm83](https://github.com/SingleStepTests/sm83) でも確かめるときは、`SM83_TESTS_DIR` に `v1/` のフォルダを指定します。
+
+## クレジット
+
+- [pret](https://github.com/pret) の逆アセンブル(pokered、pokeyellow、pokegold、pokecrystal): エンジンの検出と曲データベースの元にしています
+- [Pokémon Game Sound Library](https://soundlibrary.pokemon.co.jp/) と『ハートゴールド&ソウルシルバー』のサウンドトラック: 公式の曲名
+- [SingleStepTests/sm83](https://github.com/SingleStepTests/sm83): CPUの検証
+- [Tauri](https://tauri.app/)、[Symphonia](https://github.com/pdeljanov/Symphonia)、[cpal](https://github.com/RustAudio/cpal)、[React](https://react.dev/) などのライブラリ
 
 ## ライセンス
 
