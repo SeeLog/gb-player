@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Measure a console's speaker against gb-player's line out (see docs/GBC_SPEAKER.md).
+"""Measure a console's speaker against gb-player's line out.
 
 Usage:
   speaker_measure.py response --render line.wav --recording rec.wav --noise silence.wav --out rec.csv

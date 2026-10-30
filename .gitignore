@@ -8,3 +8,4 @@
 /node_modules
 /ui/dist
 /app/gen/schemas
+/notes/

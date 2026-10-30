@@ -18,7 +18,6 @@ Game Boy / Game Boy Color のROM(.gb / .gbc)を読み込み、ゲーム自身の
   その曲で鳴った音を収めるオクターブ単位で、曲の途中では狭まらない
 - 出力は「ライン」(音源の出力そのまま)と「GBCスピーカー」から選べる。GBCスピーカーは実機のゲームボーイカラーで測った
   スピーカーの特性と、液晶などから漏れる本体のノイズ(「実機のノイズを再現」、オフにもできる)を再現したモノラルの音
-  (測り方と結果は [docs/GBC_SPEAKER.md](docs/GBC_SPEAKER.md))
 - 一般の音声ファイル(WAV・FLAC・MP3・Ogg Vorbis・M4A(AAC/ALAC)・AIFF)も、フォルダ単位で開いて
   ROMと同じように再生できる。GBCスピーカーの音もかけられる(タグの `LOOPSTART` / `LOOPLENGTH` か
   WAVの `smpl` チャンクのループ点があれば、ROMの曲と同じようにループする。無ければ無限ループでは曲全体を繰り返す)
@@ -245,8 +244,6 @@ ui               GUIの画面(React + TypeScript + Tailwind CSS、bun/Viteでビ
 songdb           曲データベース(ゲームの照合、曲ID → 曲キー、言語ごとの曲名)
 tools            曲データベースの生成スクリプト、スピーカーの測定スクリプト
 ```
-
-設計の詳細は [docs/DESIGN.md](docs/DESIGN.md) を参照してください。
 
 ## テスト
 
