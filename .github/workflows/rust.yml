@@ -25,16 +25,17 @@ jobs:
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
 
-  # Windows minutes count double on a private repo, so this runs only when started by hand.
   windows:
-    if: github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
       - uses: Swatinem/rust-cache@v2
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
+      - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
       # The exe embeds the web UI, so tauri build also builds the frontend.
       - run: bun run tauri build --no-bundle
@@ -42,3 +43,21 @@ jobs:
         with:
           name: gb-player-windows
           path: target/release/gb-player.exe
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo test --workspace
+      - run: bun run tauri build --no-bundle
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gb-player-macos
+          path: target/release/gb-player
