@@ -252,8 +252,7 @@ impl Effect for Interference {
     }
 }
 
-/// The speaker's response, fitted to the measurement: (kind, Hz, Q, dB). `tools/speaker_measure.py
-/// fit` prints these.
+/// The speaker's response, fitted to the measurement: (kind, Hz, Q, dB).
 const GBC_SPEAKER_FILTERS: &[(FilterKind, f64, f64, f64)] = &[
     (FilterKind::HighPass, 904.8, 1.574, 0.0),
     (FilterKind::HighPass, 181.1, 0.400, 0.0),
@@ -271,9 +270,9 @@ const GBC_SPEAKER_FILTERS: &[(FilterKind, f64, f64, f64)] = &[
 const GBC_SPEAKER_GAIN_DB: f64 = -9.5;
 
 /// The tones heard from the GBC's speaker with nothing playing, at their level relative to the
-/// filtered music (before [`GBC_SPEAKER_GAIN_DB`]); `tools/speaker_measure.py noise` prints
-/// them. Most are harmonics of the 59.7 Hz frame rate, gathered around the LCD's line rate (154
-/// lines a frame, 9198 Hz), which is by far the loudest of them.
+/// filtered music (before [`GBC_SPEAKER_GAIN_DB`]). Most are harmonics of the 59.7 Hz frame rate,
+/// gathered around the LCD's line rate (154 lines a frame, 9198 Hz), which is by far the loudest
+/// of them.
 const GBC_INTERFERENCE: &[Tone] = &[
     harmonic(11, 2.02e-3),
     harmonic(22, 7.36e-4),
