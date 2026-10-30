@@ -4,6 +4,12 @@
 *.gbs
 *.sav
 *.wav
+*.mp3
+*.flac
+*.ogg
+*.m4a
+*.aif
+*.aiff
 /rom/
 /node_modules
 /ui/dist
