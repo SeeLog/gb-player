@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { api, onLibrary, onThemeDraft, onTick, previous } from "./lib/api";
+import { api, onLibrary, onMenu, onThemeDraft, onTick, previous } from "./lib/api";
 import { MAC, MOD, translator, type Translate } from "./lib/format";
 import type { Library } from "./lib/types";
 import BigView from "./lib/BigView";
@@ -208,6 +208,15 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    const toggleMini = () => {
+      const library = latest.current.library;
+      if (library) api.setMini(!library.mini);
+    };
+    const unlisten = onMenu((item) => {
+      if (item === "open_rom") pickRom();
+      else if (item === "settings") api.openSettings();
+      else toggleMini();
+    });
     const onKey = (e: KeyboardEvent) => {
       const typing = e.target instanceof HTMLInputElement;
       // Menus and drop-down lists take their own keys (arrows, Space, Escape).
@@ -216,19 +225,22 @@ export default function App() {
         !!e.target.closest(
           '[data-base-ui-focusable], [role="combobox"], [role="alertdialog"], [role="radio"], [role="switch"]',
         );
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "o") {
+      // On macOS Cmd+O, Cmd+, Cmd+M and Ctrl+Cmd+F are the menu bar's, and left alone they go on
+      // to it.
+      const notMenu = e.ctrlKey || (e.metaKey && !MAC);
+      const menuFullscreen = MAC && e.ctrlKey && e.metaKey;
+      if (notMenu && e.key.toLowerCase() === "o") {
         e.preventDefault();
         pickRom();
-      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
+      } else if ((e.ctrlKey || e.metaKey) && !menuFullscreen && e.key.toLowerCase() === "f") {
         e.preventDefault();
         search.current?.focus();
-      } else if ((e.ctrlKey || e.metaKey) && e.key === ",") {
+      } else if (notMenu && e.key === ",") {
         e.preventDefault();
         api.openSettings();
-      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "m") {
+      } else if (notMenu && e.key.toLowerCase() === "m") {
         e.preventDefault();
-        const library = latest.current.library;
-        if (library) api.setMini(!library.mini);
+        toggleMini();
       } else if (typing) {
         if (e.key === "Escape") (e.target as HTMLElement).blur();
       } else if (inPopup) {
@@ -245,8 +257,11 @@ export default function App() {
       }
     };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
+    return () => {
+      void unlisten.then((f) => f());
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [pickRom]);
 
   return (
     <>

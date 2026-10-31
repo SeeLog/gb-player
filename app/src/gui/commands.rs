@@ -12,7 +12,7 @@ use tauri_plugin_dialog::DialogExt;
 use super::prefs::{self, Folder};
 use super::session::folder_id;
 use super::views::LibraryView;
-use super::{editor, mini, playlists};
+use super::{editor, menu, mini, playlists};
 use super::{emit_library, App};
 use crate::i18n::Text;
 use crate::settings::Shuffle;
@@ -466,6 +466,9 @@ pub fn set_language(handle: AppHandle, app: State<'_, App>, language: String) {
     let mut s = app.lock();
     s.set_language(language);
     emit_library(&handle, &s);
+    if let Err(e) = menu::install(&handle, s.text()) {
+        eprintln!("{e}");
+    }
 }
 
 #[tauri::command]
