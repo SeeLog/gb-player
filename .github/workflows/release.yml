@@ -55,9 +55,78 @@ jobs:
           path: out/*
           if-no-files-found: error
 
+  macos:
+    runs-on: macos-latest
+    # The signing secrets are in this environment, which asks for approval. Only a tag gets it, so
+    # a manual run stays unsigned.
+    environment: ${{ github.ref_type == 'tag' && 'macos-signing' || '' }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - uses: oven-sh/setup-bun@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-about@0.9
+      - run: bun install --frozen-lockfile
+      - id: version
+        run: |
+          version=$(cargo pkgid -p gb-player | sed 's/.*[#@]//')
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "The tag $GITHUB_REF_NAME doesn't match the version $version in Cargo.toml"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - run: cargo test --workspace
+      - run: |
+          cargo about generate --config release/about.toml release/about.hbs -o THIRD_PARTY_LICENSES.txt
+          bun release/frontend-licenses.ts >> THIRD_PARTY_LICENSES.txt
+      # Tauri signs and notarizes during the build when these are set, and tries to when they are
+      # empty, so they have to be unset for a manual run.
+      - env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
+        run: |
+          names="APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_API_ISSUER APPLE_API_KEY"
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            for name in $names APPLE_API_PRIVATE_KEY; do
+              if [ -z "${!name}" ]; then
+                echo "The secret $name is missing from the macos-signing environment"
+                exit 1
+              fi
+            done
+            export APPLE_API_KEY_PATH="$RUNNER_TEMP/AuthKey.p8"
+            printf '%s' "$APPLE_API_PRIVATE_KEY" > "$APPLE_API_KEY_PATH"
+          else
+            unset $names
+          fi
+          unset APPLE_API_PRIVATE_KEY
+          bun run tauri build --target universal-apple-darwin --config \
+            '{"bundle":{"resources":{"../LICENSE":"LICENSE","../THIRD_PARTY_LICENSES.txt":"THIRD_PARTY_LICENSES.txt"}}}'
+      - if: github.ref_type == 'tag'
+        run: |
+          app="target/universal-apple-darwin/release/bundle/macos/GB Player.app"
+          spctl --assess --type execute --verbose "$app"
+          xcrun stapler validate "$app"
+      - env:
+          NAME: gb-player-${{ steps.version.outputs.version }}-macos-universal
+        run: |
+          mkdir -p out
+          cp target/universal-apple-darwin/release/bundle/dmg/*.dmg "out/$NAME.dmg"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: gb-player-${{ steps.version.outputs.version }}-macos-universal
+          path: out/*
+          if-no-files-found: error
+
   release:
     if: github.ref_type == 'tag'
-    needs: windows
+    needs: [windows, macos]
     runs-on: ubuntu-latest
     permissions:
       contents: write
