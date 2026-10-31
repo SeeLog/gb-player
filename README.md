@@ -51,7 +51,7 @@ There are no prebuilt releases yet. You need [Rust](https://rustup.rs/) and [bun
 ```sh
 bun install
 bun run tauri build --no-bundle   # target/release/gb-player(.exe)
-bun run tauri build               # also makes an installer on Windows
+bun run tauri build               # also makes an installer on Windows, a .dmg on macOS
 bun run tauri dev                 # run for development
 ```
 

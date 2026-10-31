@@ -51,7 +51,7 @@ ROMとGBSファイルは付属しません。各自で用意してください�
 ```sh
 bun install
 bun run tauri build --no-bundle   # target/release/gb-player(.exe)
-bun run tauri build               # Windowsならインストーラも作る
+bun run tauri build               # Windowsならインストーラ、macOSなら.dmgも作る
 bun run tauri dev                 # 開発用に起動
 ```
 

@@ -1,5 +1,5 @@
-# What `cargo about` lists in THIRD_PARTY_LICENSES: the crates in the Windows exe.
-targets = ["x86_64-pc-windows-msvc"]
+# What `cargo about` lists in THIRD_PARTY_LICENSES: the crates in the released apps.
+targets = ["x86_64-pc-windows-msvc", "aarch64-apple-darwin", "x86_64-apple-darwin"]
 private = { ignore = true }
 ignore-build-dependencies = true
 ignore-dev-dependencies = true
