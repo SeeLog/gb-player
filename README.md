@@ -44,9 +44,24 @@ These are the only games that work out of the box. GB Player finds their engine 
 
 ROMs and GBS files are not included. You need to provide your own.
 
+## Download
+
+Get the latest version from [Releases](https://github.com/SeeLog/gb-player/releases/latest).
+
+| System | File |
+| --- | --- |
+| Windows (64-bit) | `gb-player-<version>-windows-x64-setup.exe` (installer) or `gb-player-<version>-windows-x64.zip` (no install) |
+| macOS (Apple Silicon and Intel) | `gb-player-<version>-macos-universal.dmg` |
+
+- **Windows:** the app isn't signed, so SmartScreen may show "Windows protected your PC". To run it anyway, click **More info**, then **Run anyway**. The zip needs the [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/), which Windows 11 already includes.
+- **macOS:** open the `.dmg` and drag GB Player to Applications.
+- **Linux:** there is no download, so build it yourself.
+
+The app has been checked by hand on Windows and on macOS 27 (Apple Silicon). On Linux it is only built and tested in CI.
+
 ## Build
 
-There are no prebuilt releases yet. You need [Rust](https://rustup.rs/) and [bun](https://bun.sh/).
+You need [Rust](https://rustup.rs/) and [bun](https://bun.sh/).
 
 ```sh
 bun install
@@ -58,8 +73,6 @@ bun run tauri dev                 # run for development
 - **Windows:** use the MSVC toolchain. The GNU one fails with `dlltool.exe: program not found`.
 - **Linux:** install `libasound2-dev libwebkit2gtk-4.1-dev libsoup-3.0-dev librsvg2-dev` (Debian/Ubuntu names).
 - **macOS:** needs no extra packages.
-
-The app has been checked by hand on Windows and on macOS 27 (Apple Silicon). On Linux it is only built and tested in CI.
 
 ## Usage
 
