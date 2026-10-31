@@ -17,7 +17,7 @@ const FULL_MIN: LogicalSize<f64> = LogicalSize {
 /// The size of the full window when none was kept, as in `tauri.conf.json`.
 const FULL_SIZE: LogicalSize<f64> = LogicalSize {
     width: 1040.0,
-    height: 760.0,
+    height: 850.0,
 };
 /// The mini player's size, which cannot be changed: it is drawn to fit.
 const MINI_SIZE: LogicalSize<f64> = LogicalSize {
@@ -198,13 +198,28 @@ pub fn show_full<R: Runtime>(window: &WebviewWindow<R>, full: Option<Bounds>) ->
     results.into_iter().collect()
 }
 
+/// Make `window` no taller than the screen leaves room for, as the default size may be on a small
+/// one, and put it in the middle.
+fn fit_screen<R: Runtime>(window: &WebviewWindow<R>) -> tauri::Result<()> {
+    let Some(monitor) = window.current_monitor()? else {
+        return Ok(());
+    };
+    let room = monitor.work_area().size.height;
+    if window.outer_size()?.height > room {
+        window.set_size(PhysicalSize::new(window.inner_size()?.width, room))?;
+        window.center()?;
+    }
+    Ok(())
+}
+
 /// Start the full window where it was, if that is kept here rather than by the window-state
 /// plugin; and at a usable size if it is smaller than the full window may be, as when the mini
-/// player's size was left behind.
+/// player's size was left behind, or taller than the screen.
 pub fn check_full<R: Runtime>(window: &WebviewWindow<R>, mini: &Mini) -> tauri::Result<()> {
     if KEPT_IN_POINTS && mini.full.is_some() {
         return show_full(window, mini.full);
     }
+    fit_screen(window)?;
     let size = window
         .inner_size()?
         .to_logical::<f64>(window.scale_factor()?);

@@ -5,7 +5,7 @@
         "label": "main",
         "title": "GB Player",
         "width": 1040,
-        "height": 760,
+        "height": 850,
         "minWidth": 760,
         "minHeight": 600,
         "titleBarStyle": "Overlay",
