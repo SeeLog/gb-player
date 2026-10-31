@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useMemo, useState, type ReactNode } from "r
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { api, onLibrary, onThemeDraft } from "./api";
 import { clearHistory } from "./actions";
-import { translator, type Translate } from "./format";
+import { MAC, translator, type Translate } from "./format";
 import type { Folder, Library } from "./types";
 import Icon from "./Icon";
 import { Toggle } from "./NowPlaying";
@@ -83,16 +83,20 @@ function Settings({ library, t, editing }: { library: Library; t: Translate; edi
     >
       {/* The window has no system frame: this bar is its title bar. */}
       <div data-tauri-drag-region className="-mx-4 flex items-center justify-between px-4 pt-3">
-        <h2 className="pointer-events-none text-[15px] font-bold">{t("settings")}</h2>
-        <Tip text={t("settings_close")}>
-          <button
-            className={iconButton}
-            onClick={() => getCurrentWindow().close()}
-            aria-label={t("settings_close")}
-          >
-            <Icon name="close" size={18} />
-          </button>
-        </Tip>
+        <h2 className={`pointer-events-none text-[15px] font-bold ${MAC ? "pl-[72px]" : ""}`}>
+          {t("settings")}
+        </h2>
+        {!MAC && (
+          <Tip text={t("settings_close")}>
+            <button
+              className={iconButton}
+              onClick={() => getCurrentWindow().close()}
+              aria-label={t("settings_close")}
+            >
+              <Icon name="close" size={18} />
+            </button>
+          </Tip>
+        )}
       </div>
 
       <div className="-mx-1.5 flex flex-1 flex-col gap-5 overflow-y-auto px-1.5">

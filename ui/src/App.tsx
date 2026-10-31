@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { flushSync } from "react-dom";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { api, onLibrary, onThemeDraft, onTick, previous } from "./lib/api";
-import { translator, type Translate } from "./lib/format";
+import { MAC, MOD, translator, type Translate } from "./lib/format";
 import type { Library } from "./lib/types";
 import BigView from "./lib/BigView";
 import ContextMenu, { type MenuState } from "./lib/ContextMenu";
@@ -272,26 +272,28 @@ export default function App() {
         {!mini && (
           <header
             data-tauri-drag-region
-            className="flex h-10 flex-none items-center gap-2.5 border-b border-line bg-panel pl-3"
+            className={`flex h-10 flex-none items-center gap-2.5 border-b border-line bg-panel ${MAC ? "pl-[88px]" : "pl-3"}`}
           >
-            <div
-              data-tauri-drag-region
-              className="flex flex-none items-center gap-2 font-bold tracking-[0.02em] whitespace-nowrap *:pointer-events-none"
-            >
-              <span
-                className="size-[22px] rounded-md [background:radial-gradient(circle_at_50%_50%,var(--accent-edge,var(--accent))_0_5px,transparent_5.5px),var(--accent-sheen,linear-gradient(var(--accent-ink),var(--accent-ink)))] shadow-[inset_0_0_0_2px_var(--accent-edge,var(--accent))]"
-                aria-hidden="true"
-              />
-              <span>GB Player</span>
-            </div>
+            {!MAC && (
+              <div
+                data-tauri-drag-region
+                className="flex flex-none items-center gap-2 font-bold tracking-[0.02em] whitespace-nowrap *:pointer-events-none"
+              >
+                <span
+                  className="size-[22px] rounded-md [background:radial-gradient(circle_at_50%_50%,var(--accent-edge,var(--accent))_0_5px,transparent_5.5px),var(--accent-sheen,linear-gradient(var(--accent-ink),var(--accent-ink)))] shadow-[inset_0_0_0_2px_var(--accent-edge,var(--accent))]"
+                  aria-hidden="true"
+                />
+                <span>GB Player</span>
+              </div>
+            )}
             <div data-tauri-drag-region className="flex-1 self-stretch" />
-            <Tip text={`${t("open_rom")} (Ctrl+O)`}>
+            <Tip text={`${t("open_rom")} (${MOD}+O)`}>
               <button className={headerButton} onClick={pickRom} aria-label={t("open_rom")}>
                 <Icon name="open" size={18} />
                 <span className={headerLabel}>{t("open_rom")}</span>
               </button>
             </Tip>
-            <Tip text={`${t("settings")} (Ctrl+,)`}>
+            <Tip text={`${t("settings")} (${MOD}+,)`}>
               <button
                 className={`${headerControl} w-[30px] justify-center`}
                 onClick={() => api.openSettings()}

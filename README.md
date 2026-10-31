@@ -59,6 +59,8 @@ bun run tauri dev                 # run for development
 - **Linux:** install `libasound2-dev libwebkit2gtk-4.1-dev libsoup-3.0-dev librsvg2-dev` (Debian/Ubuntu names).
 - **macOS:** needs no extra packages.
 
+The app has been checked by hand on Windows and on macOS 27 (Apple Silicon). On Linux it is only built and tested in CI.
+
 ## Usage
 
 Run `gb-player` and drop a ROM, GBS file or music folder on the window. From the command line:
@@ -75,9 +77,9 @@ gb-player --lang en pokemon.gb               # choose the language
 | --- | --- |
 | Space | Play or pause |
 | ← → | Previous or next song |
-| Ctrl+O / Ctrl+F | Open a ROM / search |
-| Ctrl+M | Switch to the mini player |
-| Ctrl+, | Settings |
+| Ctrl/Cmd+O / Ctrl/Cmd+F | Open a ROM / search |
+| Ctrl/Cmd+M | Switch to the mini player |
+| Ctrl/Cmd+, | Settings |
 | F | Fill the window with the piano roll and waveform |
 
 Media keys and headset buttons work while the window is in the background.

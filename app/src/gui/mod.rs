@@ -90,9 +90,14 @@ pub fn run(initial_rom: Option<PathBuf>, language: Option<String>) {
         .plugin(tauri_plugin_dialog::init())
         .plugin(
             // Only the size and place: the frame comes from tauri.conf.json. The theme editor
-            // opens beside the main window each time instead.
+            // opens beside the main window each time instead. Nothing on macOS, where the plugin's
+            // physical pixels don't hold across screens: `mini` keeps those in points instead.
             tauri_plugin_window_state::Builder::new()
-                .with_state_flags(StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED)
+                .with_state_flags(if cfg!(target_os = "macos") {
+                    StateFlags::empty()
+                } else {
+                    StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED
+                })
                 .with_denylist(&[editor::LABEL, prefs::LABEL])
                 .build(),
         )
@@ -169,6 +174,9 @@ pub fn run(initial_rom: Option<PathBuf>, language: Option<String>) {
             WindowEvent::Destroyed if window.label() == editor::LABEL => {
                 let _ = window.emit(editor::DRAFT_EVENT, ());
             }
+            WindowEvent::Resized(_) | WindowEvent::Focused(_) => {
+                side::after_window_change(window);
+            }
             _ => {}
         })
         .setup(move |a| {
@@ -230,7 +238,13 @@ pub fn run(initial_rom: Option<PathBuf>, language: Option<String>) {
     match result {
         Ok(tauri_app) => tauri_app.run(|handle, event| {
             if let RunEvent::Exit = event {
-                handle.state::<App>().lock().save_settings();
+                let app = handle.state::<App>();
+                let mut s = app.lock();
+                // Quitting from the menu closes no window first.
+                if let Some(main) = handle.get_webview_window("main") {
+                    mini::remember(&main, s.mini());
+                }
+                s.save_settings();
             }
         }),
         Err(e) => eprintln!("{e}"),

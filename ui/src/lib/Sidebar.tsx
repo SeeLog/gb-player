@@ -4,7 +4,7 @@
 // its right-click menu).
 import { memo, useEffect, useRef, useState } from "react";
 import { api } from "./api";
-import type { Translate } from "./format";
+import { MOD, type Translate } from "./format";
 import type { Library } from "./types";
 import Icon from "./Icon";
 import { useTick } from "./tick";
@@ -59,7 +59,7 @@ export default memo(function Sidebar({
     <nav className="flex min-h-0 flex-col gap-1 overflow-y-auto border-r border-line px-2 py-3">
       <div className={`${label} flex items-center justify-between pr-1`}>
         <span>{t("now_open")}</span>
-        <Tip text={`${t("open_rom")} (Ctrl+O)`}>
+        <Tip text={`${t("open_rom")} (${MOD}+O)`}>
           <button
             className="grid size-6 place-items-center rounded-md text-muted hover:bg-hover hover:text-text"
             onClick={pickRom}

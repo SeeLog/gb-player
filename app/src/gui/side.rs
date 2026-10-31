@@ -1,6 +1,8 @@
 //! Windows that open beside the main window, so that what they change can be seen in it: the
 //! theme editor's and the settings'.
 
+#[cfg(target_os = "macos")]
+use tauri::LogicalPosition;
 use tauri::{
     AppHandle, LogicalSize, Manager, PhysicalPosition, Runtime, WebviewUrl, WebviewWindow,
     WebviewWindowBuilder,
@@ -22,6 +24,28 @@ pub fn set_taskbar_icon<R: Runtime>(_window: &WebviewWindow<R>) -> tauri::Result
     Ok(())
 }
 
+/// Undo what macOS and the window library do when a window changes: the system's window buttons
+/// go back to their own place, as the webview's parent only moves them again when it is drawn,
+/// and going in or out of full screen takes the keyboard away from the page.
+#[cfg(target_os = "macos")]
+pub fn after_window_change<R: Runtime>(window: &tauri::Window<R>) {
+    let Ok(ns_window) = window.ns_window() else {
+        return;
+    };
+    // SAFETY: this is the NSWindow of `window`, which keeps it alive; window events come on the
+    // main thread.
+    let ns_window = unsafe { &*(ns_window as *const objc2_app_kit::NSWindow) };
+    if let Some(view) = ns_window.contentView() {
+        view.setNeedsDisplay(true);
+    }
+    if let Some(webview) = window.get_webview_window(window.label()) {
+        let _ = AsRef::<tauri::webview::Webview<R>>::as_ref(&webview).set_focus();
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn after_window_change<R: Runtime>(_window: &tauri::Window<R>) {}
+
 /// Open the window `label`, or bring it to the front when it is open.
 pub fn open<R: Runtime>(
     handle: &AppHandle<R>,
@@ -35,14 +59,19 @@ pub fn open<R: Runtime>(
         return window.set_focus();
     }
     // Shown once it is in place. No system frame, as the main window: the page's own header
-    // is its title bar.
-    let window = WebviewWindowBuilder::new(handle, label, WebviewUrl::App("index.html".into()))
+    // is its title bar, under the system's window buttons on macOS.
+    let builder = WebviewWindowBuilder::new(handle, label, WebviewUrl::App("index.html".into()))
         .title(title)
         .inner_size(size.width, size.height)
         .min_inner_size(min_size.width, min_size.height)
-        .decorations(false)
-        .visible(false)
-        .build()?;
+        .decorations(cfg!(target_os = "macos"))
+        .visible(false);
+    #[cfg(target_os = "macos")]
+    let builder = builder
+        .title_bar_style(tauri::TitleBarStyle::Overlay)
+        .hidden_title(true)
+        .traffic_light_position(LogicalPosition::new(14.0, 24.0));
+    let window = builder.build()?;
     set_taskbar_icon(&window)?;
     if let Some(main) = handle.get_webview_window("main") {
         place_beside(&window, &main, size)?;

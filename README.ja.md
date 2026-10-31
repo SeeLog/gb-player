@@ -59,6 +59,8 @@ bun run tauri dev                 # 開発用に起動
 - **Linux:** `libasound2-dev libwebkit2gtk-4.1-dev libsoup-3.0-dev librsvg2-dev` を入れてください(Debian/Ubuntuの場合)。
 - **macOS:** 追加のパッケージは要りません。
 
+動作はWindowsとmacOS 27(Apple Silicon)で確認しています。LinuxはCIでのビルドとテストのみです。
+
 ## 使い方
 
 `gb-player` を起動して、ROMやGBSファイル、音楽フォルダをウィンドウにドロップします。コマンドラインからも使えます。
@@ -75,9 +77,9 @@ gb-player --lang ja pokemon.gb               # 言語を指定
 | --- | --- |
 | Space | 再生、一時停止 |
 | ← → | 前の曲、次の曲 |
-| Ctrl+O / Ctrl+F | ROMを開く / 検索 |
-| Ctrl+M | ミニプレイヤーに切り替え |
-| Ctrl+, | 設定 |
+| Ctrl/Cmd+O / Ctrl/Cmd+F | ROMを開く / 検索 |
+| Ctrl/Cmd+M | ミニプレイヤーに切り替え |
+| Ctrl/Cmd+, | 設定 |
 | F | ピアノロールと波形をウィンドウいっぱいに表示 |
 
 メディアキーとヘッドセットのボタンは、ウィンドウが裏にあっても効きます。

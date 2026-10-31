@@ -66,7 +66,8 @@ pub struct Mini {
     pub notes: bool,
     /// Where the mini player was (its size is fixed).
     pub bounds: Option<Bounds>,
-    /// Where the full window was before it became the mini player, to go back to.
+    /// Where the full window was before it became the mini player, to go back to. On macOS also
+    /// where it was when the app closed.
     pub full: Option<Bounds>,
 }
 
@@ -82,7 +83,7 @@ impl Default for Mini {
     }
 }
 
-/// The place and size of a window, in physical pixels.
+/// The place and size of a window, in physical pixels; in points on macOS.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Bounds {
     pub x: i32,
