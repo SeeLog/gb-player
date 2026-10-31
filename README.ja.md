@@ -44,9 +44,24 @@
 
 ROMとGBSファイルは付属しません。各自で用意してください。
 
+## ダウンロード
+
+最新版は[Releases](https://github.com/SeeLog/gb-player/releases/latest)からダウンロードできます。
+
+| システム | ファイル |
+| --- | --- |
+| Windows(64ビット) | `gb-player-<version>-windows-x64-setup.exe`(インストーラ)か `gb-player-<version>-windows-x64.zip`(インストール不要) |
+| macOS(Apple SiliconとIntel) | `gb-player-<version>-macos-universal.dmg` |
+
+- **Windows:** 署名していないので、SmartScreenが「WindowsによってPCが保護されました」と表示することがあります。実行するには「詳細情報」を押してから「実行」を押してください。zip版には[WebView2 ランタイム](https://developer.microsoft.com/microsoft-edge/webview2/)が必要です。Windows 11には最初から入っています。
+- **macOS:** `.dmg` を開いて、GB Playerをアプリケーションフォルダにドラッグしてください。
+- **Linux:** 配布していないので、自分でビルドしてください。
+
+動作はWindowsとmacOS 27(Apple Silicon)で確認しています。LinuxはCIでのビルドとテストのみです。
+
 ## ビルド
 
-配布用のバイナリはまだありません。[Rust](https://rustup.rs/) と [bun](https://bun.sh/) が必要です。
+[Rust](https://rustup.rs/) と [bun](https://bun.sh/) が必要です。
 
 ```sh
 bun install
@@ -58,8 +73,6 @@ bun run tauri dev                 # 開発用に起動
 - **Windows:** MSVC版のツールチェーンを使ってください。GNU版は `dlltool.exe: program not found` で失敗します。
 - **Linux:** `libasound2-dev libwebkit2gtk-4.1-dev libsoup-3.0-dev librsvg2-dev` を入れてください(Debian/Ubuntuの場合)。
 - **macOS:** 追加のパッケージは要りません。
-
-動作はWindowsとmacOS 27(Apple Silicon)で確認しています。LinuxはCIでのビルドとテストのみです。
 
 ## 使い方
 
