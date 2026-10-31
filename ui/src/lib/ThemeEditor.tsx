@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { api, onLibrary, sendThemeDraft } from "./api";
-import { translator, type Translate } from "./format";
+import { MAC, translator, type Translate } from "./format";
 import type { Background, Console, Library, Sheen } from "./types";
 import Icon from "./Icon";
 import {
@@ -245,16 +245,20 @@ function ThemeEditor({
     >
       {/* The window has no system frame: this bar is its title bar. */}
       <div data-tauri-drag-region className="-mx-4 flex items-center justify-between px-4 pt-3">
-        <h2 className="pointer-events-none text-[15px] font-bold">{t("theme_editor")}</h2>
-        <Tip text={t("theme_close")}>
-          <button
-            className={`${iconButton} size-[30px]`}
-            onClick={onClose}
-            aria-label={t("theme_close")}
-          >
-            <Icon name="close" size={18} />
-          </button>
-        </Tip>
+        <h2 className={`pointer-events-none text-[15px] font-bold ${MAC ? "pl-[72px]" : ""}`}>
+          {t("theme_editor")}
+        </h2>
+        {!MAC && (
+          <Tip text={t("theme_close")}>
+            <button
+              className={`${iconButton} size-[30px]`}
+              onClick={onClose}
+              aria-label={t("theme_close")}
+            >
+              <Icon name="close" size={18} />
+            </button>
+          </Tip>
+        )}
       </div>
 
       <div className="-mx-1.5 flex flex-1 flex-col gap-[18px] overflow-y-auto px-1.5">

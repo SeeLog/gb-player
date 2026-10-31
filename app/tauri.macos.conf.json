@@ -1,0 +1,19 @@
+{
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "GB Player",
+        "width": 1040,
+        "height": 760,
+        "minWidth": 760,
+        "minHeight": 600,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "trafficLightPosition": { "x": 14, "y": 24 },
+        "visible": false,
+        "transparent": true
+      }
+    ]
+  }
+}

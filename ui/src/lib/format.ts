@@ -2,6 +2,12 @@ import type { Length } from "./types";
 
 export type Translate = (key: string, args?: Record<string, string | number>) => string;
 
+/** macOS, where the system's window buttons replace the page's. */
+export const MAC = /Mac/.test(navigator.userAgent);
+
+/** The key to name in shortcut hints. Shortcuts take either Ctrl or Cmd. */
+export const MOD = MAC ? "Cmd" : "Ctrl";
+
 /** A translator for `table`; `{name}` placeholders are replaced by `args`. */
 export function translator(table: Record<string, string>): Translate {
   return (key, args = {}) =>

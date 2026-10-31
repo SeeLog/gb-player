@@ -8,7 +8,7 @@ import { clearHistory, deletePlaylist, locateEntry } from "./actions";
 import { openExport } from "./Export";
 import type { MenuItem } from "./ContextMenu";
 import { notify } from "./Toasts";
-import type { Translate } from "./format";
+import { MOD, type Translate } from "./format";
 import type { Library, PlaylistView } from "./types";
 import { tickStore } from "./tick";
 
@@ -213,7 +213,7 @@ async function windowItems(t: Translate, actions: MenuActions): Promise<MenuItem
   const [onTop, maximized] = await Promise.all([win.isAlwaysOnTop(), win.isMaximized()]);
   return [
     { label: t("always_on_top"), checked: onTop, onSelect: () => win.setAlwaysOnTop(!onTop) },
-    { label: t("mini_player"), shortcut: "Ctrl+M", onSelect: () => api.setMini(true) },
+    { label: t("mini_player"), shortcut: `${MOD}+M`, onSelect: () => api.setMini(true) },
     ...bigItems(t, actions),
     "separator",
     { label: t("window_minimize"), onSelect: () => win.minimize() },
@@ -263,7 +263,7 @@ function playbackItems(hasRom: boolean, t: Translate, actions: MenuActions): Men
     { label: t("next"), shortcut: "→", disabled: !hasRom, onSelect: () => api.skip(1) },
     "separator",
     ...bigItems(t, actions),
-    { label: t("open_rom"), shortcut: "Ctrl+O", onSelect: actions.pickRom },
+    { label: t("open_rom"), shortcut: `${MOD}+O`, onSelect: actions.pickRom },
   ];
 }
 

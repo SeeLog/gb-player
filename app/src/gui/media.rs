@@ -55,6 +55,13 @@ fn attach(window: &WebviewWindow) -> Result<MediaControls, String> {
     controls
         .attach(move |event| on_event(&handle, event))
         .map_err(|e| format!("{e:?}"))?;
+    // macOS only takes a player that has played for one that can wait for the media keys. The
+    // first update of the ticker corrects this right away.
+    if cfg!(target_os = "macos") {
+        controls
+            .set_playback(MediaPlayback::Playing { progress: None })
+            .map_err(|e| format!("{e:?}"))?;
+    }
     Ok(controls)
 }
 
@@ -94,6 +101,11 @@ pub fn show(handle: &AppHandle, now: NowPlaying) {
             ..MediaMetadata::default()
         };
         let playback = match now.playback {
+            // macOS gives the media keys to a player that isn't stopped, and with none it opens
+            // Apple Music. Toggling starts a song here, so wait for the key as if paused.
+            Playback::Stopped if cfg!(target_os = "macos") => {
+                MediaPlayback::Paused { progress: None }
+            }
             Playback::Stopped => MediaPlayback::Stopped,
             Playback::Paused => MediaPlayback::Paused { progress: None },
             Playback::Playing => MediaPlayback::Playing { progress: None },

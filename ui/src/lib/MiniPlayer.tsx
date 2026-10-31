@@ -11,7 +11,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { RESTART_AFTER, api, previous } from "./api";
-import type { Translate } from "./format";
+import { MOD, type Translate } from "./format";
 import type { Console, Library, Shuffle } from "./types";
 import Icon from "./Icon";
 import Marquee from "./Marquee";
@@ -206,7 +206,7 @@ function TopEdge({ library, t, model }: { library: Library; t: Translate; model:
           <Icon name="pin" size={14} />
         </button>
       </Tip>
-      <Tip text={`${t("mini_exit")} (Ctrl+M)`}>
+      <Tip text={`${t("mini_exit")} (${MOD}+M)`}>
         <button
           className={`${button} opacity-60 hover:opacity-100`}
           onClick={() => api.setMini(false)}
