@@ -51,7 +51,7 @@ jobs:
           7z a "out/$NAME.zip" "$NAME"
       - uses: actions/upload-artifact@v7
         with:
-          name: windows
+          name: gb-player-${{ steps.version.outputs.version }}-windows-x64
           path: out/*
           if-no-files-found: error
 
@@ -64,7 +64,8 @@ jobs:
     steps:
       - uses: actions/download-artifact@v8
         with:
-          name: windows
+          pattern: gb-player-*
+          merge-multiple: true
           path: out
       - env:
           GH_TOKEN: ${{ github.token }}
