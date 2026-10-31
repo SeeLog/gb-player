@@ -6,6 +6,7 @@ mod commands;
 mod editor;
 mod export;
 mod media;
+mod menu;
 mod mini;
 mod playlists;
 mod prefs;
@@ -157,6 +158,7 @@ pub fn run(initial_rom: Option<PathBuf>, language: Option<String>) {
             export::start_export,
             export::cancel_export,
         ])
+        .on_menu_event(menu::on_event)
         .on_window_event(|window, event| match event {
             // The window is gone by the time the app exits: keep where the mini player is now.
             // The theme editor and the settings go with it.
@@ -187,6 +189,9 @@ pub fn run(initial_rom: Option<PathBuf>, language: Option<String>) {
                 s.reload_themes();
                 s.reload_playlists();
                 s.open_at_start(initial_rom.as_deref());
+                if let Err(e) = menu::install(&handle, s.text()) {
+                    eprintln!("{e}");
+                }
                 // The window starts hidden (see tauri.conf.json), so the full window does not
                 // flash up before it becomes the mini player.
                 if let Some(window) = handle.get_webview_window("main") {

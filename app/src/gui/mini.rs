@@ -168,6 +168,10 @@ pub fn set<R: Runtime>(window: &WebviewWindow<R>, mini: &mut Mini, on: bool) -> 
     } else {
         remember(window, mini);
         mini.on = false;
+        // The menu bar on macOS can get here with the mini player in the Dock.
+        if window.is_minimized()? {
+            window.unminimize()?;
+        }
         show_full(window, mini.full)?;
     }
     // Changing the window's style on macOS takes the keyboard away from the page.

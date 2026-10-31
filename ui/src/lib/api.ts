@@ -116,6 +116,12 @@ export const onExport = (f: (p: ExportProgress) => void): Promise<UnlistenFn> =>
 export const onTick = (f: (t: Tick) => void): Promise<UnlistenFn> =>
   listen<Tick>("tick", (e) => f(e.payload));
 
+/** An item of the menu bar on macOS was chosen (see `gui/menu.rs`). */
+export const onMenu = (
+  f: (item: "open_rom" | "settings" | "mini_player") => void,
+): Promise<UnlistenFn> =>
+  listen<"open_rom" | "settings" | "mini_player">("menu", (e) => f(e.payload));
+
 /** The theme editor's draft as it changes, and `null` once its window is closed. */
 export const onThemeDraft = (f: (d: Draft | null) => void): Promise<UnlistenFn> =>
   listen<Draft | null>("theme-draft", (e) => f(e.payload));
