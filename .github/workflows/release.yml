@@ -108,11 +108,21 @@ jobs:
           unset APPLE_API_PRIVATE_KEY
           bun run tauri build --target universal-apple-darwin --config \
             '{"bundle":{"resources":{"../LICENSE":"LICENSE","../THIRD_PARTY_LICENSES.txt":"THIRD_PARTY_LICENSES.txt"}}}'
+      # Tauri notarizes the app but not the .dmg around it.
       - if: github.ref_type == 'tag'
+        env:
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
         run: |
           app="target/universal-apple-darwin/release/bundle/macos/GB Player.app"
           spctl --assess --type execute --verbose "$app"
           xcrun stapler validate "$app"
+          dmg=$(echo target/universal-apple-darwin/release/bundle/dmg/*.dmg)
+          xcrun notarytool submit "$dmg" --wait \
+            --key "$RUNNER_TEMP/AuthKey.p8" --key-id "$APPLE_API_KEY" --issuer "$APPLE_API_ISSUER"
+          xcrun stapler staple "$dmg"
+          spctl --assess --type open --context context:primary-signature --verbose "$dmg"
+          xcrun stapler validate "$dmg"
       - env:
           NAME: gb-player-${{ steps.version.outputs.version }}-macos-universal
         run: |
