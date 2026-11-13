@@ -5,7 +5,7 @@
 usage = """usage:
   gb-player [--lang <code>] [rom]
   gb-player [--lang <code>] --info <rom>
-  gb-player [--lang <code>] --wav <rom> <song#> <out.wav> [loops] [line|gbc-speaker] [stems]
+  gb-player [--lang <code>] --wav <rom> <song#> <out.wav> [loops] [line|gbc-speaker|gbc-headphones] [stems]
 <rom> can also be an audio file (song 1); stems also writes a file per channel"""
 info_loops = "intro {intro}s, loop {loop}s"
 info_ends = "ends at {at}s"
@@ -17,9 +17,9 @@ err_song_number = "song# must be a number"
 err_song_start = "song# starts at 1"
 err_no_song = "no such song"
 err_loops = "loops must be a number"
-err_profile = "the output must be line or gbc-speaker"
+err_profile = "the output must be line, gbc-speaker or gbc-headphones"
 err_playback = "playback failed: {error}"
-err_wav_arg = "after <out.wav> come the loops, line or gbc-speaker, and stems"
+err_wav_arg = "after <out.wav> come the loops, one of line, gbc-speaker and gbc-headphones, and stems"
 err_stems_audio = "an audio file has no channels to write stems of"
 
 # Window
@@ -120,10 +120,12 @@ tempo_files = "Audio files play at their own tempo"
 output = "Output"
 output_line = "Line"
 output_line_hint = "The sound chip's output as it is"
-output_gbcSpeaker = "GBC speaker"
-output_gbcSpeaker_hint = "Like a Game Boy Color's own speaker (mono)"
+output_gbcSpeaker = "Speaker"
+output_gbcSpeaker_hint = "A Game Boy Color's own speaker (mono)"
+output_gbcHeadphones = "Headphones"
+output_gbcHeadphones_hint = "A Game Boy Color's headphone jack"
 speaker_noise = "Recreate the console's noise"
-speaker_noise_hint = "Recreates the faint noise from a real console's speaker, which leaks from its screen and circuits."
+speaker_noise_hint = "Recreates the faint noise from a real console's speaker or headphones, which leaks from its screen and circuits. It stays as loud when you turn the volume down (but stops at 0)."
 channel_pulse1 = "Pulse 1"
 channel_pulse2 = "Pulse 2"
 channel_wave = "Wave"

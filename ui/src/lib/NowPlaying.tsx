@@ -21,7 +21,7 @@ import { tickStore, useTick } from "./tick";
 const CHANNELS = ["channel_pulse1", "channel_pulse2", "channel_wave", "channel_noise"];
 const LOOP_COUNTS: (number | null)[] = [null, 1, 2, 3];
 const SHUFFLES: Shuffle[] = ["off", "list", "all"];
-const PROFILES: Profile[] = ["line", "gbcSpeaker"];
+const PROFILES: Profile[] = ["line", "gbcSpeaker", "gbcHeadphones"];
 /** The tempos (percent) the slider stops at: 5 apart below 100 and 10 above, so that half and
  * double speed are as far from 100 either way. */
 const TEMPOS = [

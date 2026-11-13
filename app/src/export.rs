@@ -63,7 +63,7 @@ pub fn length_of(player: &Player, song: &Song) -> Result<SongLength, String> {
 pub struct Options {
     pub loops: u32,
     pub profile: Profile,
-    /// The console's own noise, with the GBC speaker.
+    /// The console's own noise, with a GBC's speaker or headphones.
     pub noise: bool,
     /// The fade-out after the last loop.
     pub fade_secs: f32,
@@ -86,7 +86,7 @@ impl Part {
     pub fn with_stems(options: &Options) -> Vec<Part> {
         let mut parts = vec![Part::Mix];
         parts.extend((0..4).map(Part::Channel));
-        if options.profile == Profile::GbcSpeaker && options.noise {
+        if options.profile != Profile::Line && options.noise {
             parts.push(Part::Console);
         }
         parts

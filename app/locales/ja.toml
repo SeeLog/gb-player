@@ -4,7 +4,7 @@
 usage = """使い方:
   gb-player [--lang <言語コード>] [rom]
   gb-player [--lang <言語コード>] --info <rom>
-  gb-player [--lang <言語コード>] --wav <rom> <曲番号> <出力.wav> [ループ回数] [line|gbc-speaker] [stems]
+  gb-player [--lang <言語コード>] --wav <rom> <曲番号> <出力.wav> [ループ回数] [line|gbc-speaker|gbc-headphones] [stems]
 <rom> には音声ファイルも指定できます(曲番号は1)。stems を付けるとチャンネルごとのファイルも書き出します"""
 info_loops = "イントロ {intro}秒, ループ {loop}秒"
 info_ends = "{at}秒で終了"
@@ -16,9 +16,9 @@ err_song_number = "曲番号は数字で指定してください"
 err_song_start = "曲番号は1から始まります"
 err_no_song = "その番号の曲はありません"
 err_loops = "ループ回数は数字で指定してください"
-err_profile = "出力先は line か gbc-speaker で指定してください"
+err_profile = "出力先は line、gbc-speaker、gbc-headphones のどれかで指定してください"
 err_playback = "再生に失敗しました: {error}"
-err_wav_arg = "<出力.wav> の後に指定できるのはループ回数、line か gbc-speaker、stems です"
+err_wav_arg = "<出力.wav> の後に指定できるのはループ回数、line・gbc-speaker・gbc-headphones のどれか、stems です"
 err_stems_audio = "音声ファイルにはチャンネルがないため、チャンネルごとには書き出せません"
 
 # ウィンドウ
@@ -119,10 +119,12 @@ tempo_files = "音声ファイルは元のテンポで再生します"
 output = "出力"
 output_line = "ライン"
 output_line_hint = "音源の出力そのまま"
-output_gbcSpeaker = "GBCスピーカー"
-output_gbcSpeaker_hint = "ゲームボーイカラー本体のスピーカー風の音(モノラル)"
+output_gbcSpeaker = "スピーカー"
+output_gbcSpeaker_hint = "ゲームボーイカラー本体のスピーカーの音(モノラル)"
+output_gbcHeadphones = "イヤホン"
+output_gbcHeadphones_hint = "ゲームボーイカラーのイヤホン端子の音"
 speaker_noise = "実機のノイズを再現"
-speaker_noise_hint = "実機のスピーカーから小さく聞こえる、液晶や回路から漏れたノイズを再現します。"
+speaker_noise_hint = "実機のスピーカーやイヤホンから小さく聞こえる、液晶や回路から漏れたノイズを再現します。音量を下げても同じ大きさで鳴ります(音量0では鳴りません)。"
 channel_pulse1 = "矩形波1"
 channel_pulse2 = "矩形波2"
 channel_wave = "波形メモリ"
