@@ -20,7 +20,7 @@ GB Player plays the music in Game Boy and Game Boy Color ROMs by running each ga
 
 - Game Boy-style mini player with buttons that work
 - Piano roll and waveform, with a mute and level meter per channel
-- Effect that recreates a real GBC's speaker
+- Effects that recreate a real GBC's speaker and headphone jack
 - Tempo from 50% to 200% at the same pitch
 - WAV export, per channel too
 - Playlists across ROMs, favourites, history and shuffle
@@ -31,7 +31,7 @@ GB Player plays the music in Game Boy and Game Boy Color ROMs by running each ga
 
 GB Player uses no recordings or converted music data. It finds the sound engine in the ROM by its machine code and calls it once per frame, as the game does. The engine runs on an emulated CPU and writes to an emulated sound chip, which makes the waveform as it plays. The game's graphics and logic don't run, only its music.
 
-You can listen to that output directly, or through an effect that recreates a real GBC's speaker and console noise, measured from recordings of the hardware.
+You can listen to that output directly, or through effects that recreate a real GBC's speaker or headphone jack and its noise, measured from recordings of the hardware.
 
 ## Supported games
 

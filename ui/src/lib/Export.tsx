@@ -75,7 +75,7 @@ export default function Export({ t }: { t: Translate }) {
   const canStem = !!plan && plan.withChannels > 0;
   const output = plan
     ? t(`output_${plan.profile}`) +
-      (plan.profile === "gbcSpeaker" && plan.noise ? ` (${t("export_noise")})` : "")
+      (plan.profile !== "line" && plan.noise ? ` (${t("export_noise")})` : "")
     : "";
 
   async function start() {
@@ -96,7 +96,7 @@ export default function Export({ t }: { t: Translate }) {
       : [
           t("export_stems_hint"),
           plan.withChannels < plan.songs ? t("export_stems_some", { n: plan.withChannels }) : "",
-          plan.profile === "gbcSpeaker" && plan.noise ? t("export_stems_noise") : "",
+          plan.profile !== "line" && plan.noise ? t("export_stems_noise") : "",
         ]
           .filter(Boolean)
           .join(" ");

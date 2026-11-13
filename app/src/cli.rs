@@ -1,10 +1,10 @@
 //! Command-line helpers for checking a ROM without the GUI.
 //!
 //!   gb-player --info <rom>                      list detected songs and their loop points
-//!   gb-player --wav <rom> <song#> <out.wav> [loops] [line|gbc-speaker] [stems]
+//!   gb-player --wav <rom> <song#> <out.wav> [loops] [line|gbc-speaker|gbc-headphones] [stems]
 //!                                               render a song to a WAV file, from the line out
-//!                                               (the default) or a GBC's speaker; `stems`
-//!                                               adds a file per channel
+//!                                               (the default) or a GBC's speaker or headphone
+//!                                               jack; `stems` adds a file per channel
 //!
 //! An audio file can stand in for the ROM, as a ROM with that one song.
 //!
@@ -115,6 +115,7 @@ fn wav(t: &Text, path: &str, song: &str, out: &str, rest: &[String]) -> Result<(
         match arg.as_str() {
             "line" => options.profile = Profile::Line,
             "gbc-speaker" => options.profile = Profile::GbcSpeaker,
+            "gbc-headphones" => options.profile = Profile::GbcHeadphones,
             "stems" => stems = true,
             n if n.starts_with(|c: char| c.is_ascii_digit()) => {
                 options.loops = n.parse().map_err(|_| t.get("err_loops"))?

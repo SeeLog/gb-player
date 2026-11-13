@@ -29,7 +29,7 @@ export interface RomView {
  * random one of any open ROM (or of the playlist being played). */
 export type Shuffle = "off" | "list" | "all";
 /** Where the sound comes out: the line out, or a console's speaker. */
-export type Profile = "line" | "gbcSpeaker";
+export type Profile = "line" | "gbcSpeaker" | "gbcHeadphones";
 
 export interface Theme {
   id: string;
