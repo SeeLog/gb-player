@@ -243,9 +243,8 @@ pub struct Player {
     /// Times the song has started over by itself since it was played.
     repeats: u32,
     pub fade_secs: f32,
-    /// Applied after the [`Profile`]'s filters, as the console's volume wheel comes after the
-    /// chip: turning it down makes the music quieter but changes nothing else. The console's
-    /// noise comes after it, as loud whatever the volume.
+    /// Applied after the [`Profile`]'s filters and noise, as the listener's own volume: the
+    /// console's noise goes down with the music.
     pub volume: f32,
     /// In percent of the game's own; see [`Player::set_tempo`].
     tempo: u32,
@@ -639,6 +638,7 @@ impl Player {
             }
         };
         self.effects.process(&mut samples);
+        self.effects.add_noise(&mut samples);
         let (g0, g1) = (
             self.gain_at(from),
             self.gain_at(from + music as f64 / FRAME_SUB as f64),
@@ -649,10 +649,6 @@ impl Player {
         for (i, s) in samples.iter().enumerate() {
             let t = (i / 2) as f32 / n;
             self.buf.push(s * (g0 + (g1 - g0) * t) * self.volume);
-        }
-        // The console's noise is as loud whatever the volume, but none at all at 0.
-        if self.volume > 0.0 {
-            self.effects.add_noise(&mut self.buf);
         }
         self.sub += music;
         self.frame = self.frame.saturating_add((self.sub / FRAME_SUB) as u32);
@@ -1057,7 +1053,7 @@ mod tests {
     }
 
     #[test]
-    fn the_consoles_noise_does_not_follow_the_volume() {
+    fn the_consoles_noise_follows_the_volume() {
         let render = |volume: f32| {
             let mut p = counting_player();
             p.set_profile(Profile::GbcSpeaker, true);
@@ -1070,7 +1066,9 @@ mod tests {
         let (full, half, none) = (render(0.8), render(0.4), render(0.0));
         assert!(full.iter().any(|&v| v != 0.0));
         assert!(full.chunks(2).all(|f| f[0] == f[1]));
-        assert_eq!(full, half);
+        for (f, h) in full.iter().zip(&half) {
+            assert!((f * 0.5 - h).abs() < 1e-6, "{f} {h}");
+        }
         assert!(none.iter().all(|&v| v == 0.0));
     }
 

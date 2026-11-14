@@ -1,8 +1,8 @@
 //! Effects on the APU's output: what happens to the sound on its way out of the console. A
 //! [`Profile`] picks where it comes out (the line out as the APU makes it, or a real console's
-//! headphone jack or speaker) and builds the [`Chain`] for it. The filters come before the fade
-//! and the volume; the console's own noise comes after them, as it does after the console's
-//! volume wheel: it is as loud whatever the volume.
+//! headphone jack or speaker) and builds the [`Chain`] for it: its filters, then the console's
+//! own noise, all before the fade and the volume. The volume is the listener's, as if turning
+//! down a recording of the console at full volume, so the noise goes down with the music.
 //!
 //! The GBC was measured on a real Game Boy Color. A test ROM's sine steps from the headphone jack,
 //! against the same ROM rendered here, give the chip's side: a first-order high-pass at 323 Hz,
@@ -89,7 +89,7 @@ impl Chain {
         }
     }
 
-    /// Add the console's noise, after the fade and the volume.
+    /// Add the console's noise, after the filters and before the fade and the volume.
     pub fn add_noise(&mut self, samples: &mut [f32]) {
         if let Some(n) = &mut self.noise {
             n.process(samples);
